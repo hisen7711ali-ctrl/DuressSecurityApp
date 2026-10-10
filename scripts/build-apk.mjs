@@ -4,8 +4,8 @@ import path from "node:path";
 import process from "node:process";
 
 const root = process.cwd();
-const run = (cmd, args) => new Promise((resolve, reject) => {
-  const p = spawn(cmd, args, { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
+  const p = spawn(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
   p.on("error", reject);
   p.on("exit", code => code === 0 ? resolve() : reject(new Error(`${cmd} exited with ${code}`)));
 });
@@ -13,9 +13,10 @@ const run = (cmd, args) => new Promise((resolve, reject) => {
 try {
   await run(process.execPath, ["scripts/android-setup.mjs"]);
   await run("npx", ["cap", "sync", "android"]);
-  const wrapper = path.join(root, "android", process.platform === "win32" ? "gradlew.bat" : "gradlew");
+  const androidDir = path.join(root, "android");
+  const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
-  await run(wrapper, ["assembleDebug"]);
+  await run(wrapper, ["assembleDebug"], androidDir);
   console.log("Debug APK created at android/app/build/outputs/apk/debug/app-debug.apk");
 } catch (error) {
   console.error("APK build failed. Check the first Gradle/Android SDK error above.");
