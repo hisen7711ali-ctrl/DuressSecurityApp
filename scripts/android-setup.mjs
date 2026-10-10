@@ -15,7 +15,7 @@ const run = (cmd, args, env = process.env) => new Promise((resolve, reject) => {
 try {
   await access(path.join(root, "node_modules", "@capacitor", "cli"));
 } catch {
-  console.error("Capacitor packages are missing. Run npm install first (internet access required)." );
+  console.error("Capacitor packages are missing. Run npm install first (internet access required).");
   process.exit(1);
 }
 
@@ -80,6 +80,11 @@ for (const entry of entries) {
     manifest = manifest.replace("</application>", `    ${entry}\n  </application>`);
   }
 }
+// Strict offline build: the Android app must not receive INTERNET or network-state
+// permissions. The WebView only serves bundled Capacitor assets.
+manifest = manifest
+  .replace(/\s*<uses-permission\s+android:name="android\.permission\.INTERNET"\s*\/>/g, "")
+  .replace(/\s*<uses-permission\s+android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/g, "");
 await writeFile(manifestPath, manifest);
 
 const mainActivity = path.join(androidDir, "app/src/main/java/com/duresssecurity/app/MainActivity.kt");
@@ -104,4 +109,4 @@ if (await access(gradlePath).then(() => true).catch(() => false)) {
     await writeFile(ktsPath, gradle);
   }
 }
-console.log("Android native wrapper prepared. Next run: npm run android:sync, then build/run from Android Studio.");
+console.log("Android native wrapper prepared in strict offline mode. Next run: npm run android:sync, then build/run from Android Studio.");
