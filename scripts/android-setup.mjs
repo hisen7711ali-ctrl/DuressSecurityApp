@@ -87,6 +87,25 @@ manifest = manifest
   .replace(/\s*<uses-permission\s+android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/g, "");
 await writeFile(manifestPath, manifest);
 
+// The native security layer is Kotlin. Capacitor's generated Android app is
+// Java-oriented and may not apply the Kotlin Gradle plugin, in which case .kt
+// sources are silently left out of the APK. That produces a deceptively
+// successful build whose launcher Activity then crashes with
+// ClassNotFoundException at runtime. Make Kotlin compilation explicit.
+const rootGradlePath = path.join(androidDir, "build.gradle");
+if (await access(rootGradlePath).then(() => true).catch(() => false)) {
+  let rootGradle = await readFile(rootGradlePath, "utf8");
+  if (!rootGradle.includes("org.jetbrains.kotlin.android")) {
+    const kotlinPlugin = '    id "org.jetbrains.kotlin.android" version "2.0.21" apply false\n';
+    if (/plugins\s*\{/.test(rootGradle)) {
+      rootGradle = rootGradle.replace(/plugins\s*\{/, match => `${match}\n${kotlinPlugin}`);
+    } else {
+      rootGradle = `plugins {\n${kotlinPlugin}}\n\n${rootGradle}`;
+    }
+    await writeFile(rootGradlePath, rootGradle);
+  }
+}
+
 const mainActivity = path.join(androidDir, "app/src/main/java/com/duresssecurity/app/MainActivity.kt");
 const javaMainActivity = path.join(androidDir, "app/src/main/java/com/duresssecurity/app/MainActivity.java");
 await mkdir(path.dirname(mainActivity), { recursive: true });
@@ -98,15 +117,27 @@ const ktsPath = path.join(androidDir, "app/build.gradle.kts");
 const dep = 'implementation "androidx.biometric:biometric:1.1.0"';
 if (await access(gradlePath).then(() => true).catch(() => false)) {
   let gradle = await readFile(gradlePath, "utf8");
+  if (!gradle.includes("org.jetbrains.kotlin.android")) {
+    gradle = gradle.replace(/plugins\s*\{/, match => `${match}\n    id "org.jetbrains.kotlin.android"`);
+  }
+  if (!gradle.includes("kotlinOptions")) {
+    gradle = gradle.replace(/android\s*\{/, match => `${match}\n    kotlinOptions { jvmTarget = "17" }`);
+  }
   if (!gradle.includes("androidx.biometric:biometric")) {
     gradle = gradle.replace(/dependencies\s*\{/, match => `${match}\n    ${dep}`);
-    await writeFile(gradlePath, gradle);
   }
+  await writeFile(gradlePath, gradle);
 } else if (await access(ktsPath).then(() => true).catch(() => false)) {
   let gradle = await readFile(ktsPath, "utf8");
+  if (!gradle.includes("org.jetbrains.kotlin.android")) {
+    gradle = gradle.replace(/plugins\s*\{/, match => `${match}\n    id("org.jetbrains.kotlin.android")`);
+  }
+  if (!gradle.includes("kotlinOptions")) {
+    gradle = gradle.replace(/android\s*\{/, match => `${match}\n    kotlinOptions { jvmTarget = "17" }`);
+  }
   if (!gradle.includes("androidx.biometric:biometric")) {
     gradle = gradle.replace(/dependencies\s*\{/, match => `${match}\n    implementation("androidx.biometric:biometric:1.1.0")`);
-    await writeFile(ktsPath, gradle);
   }
+  await writeFile(ktsPath, gradle);
 }
-console.log("Android native wrapper prepared in strict offline mode. Next run: npm run android:sync, then build/run from Android Studio.");
+console.log("Android native wrapper prepared in strict offline mode with explicit Kotlin compilation. Next run: npm run android:sync, then build/run from Android Studio.");
