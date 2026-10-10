@@ -16,8 +16,8 @@ test("offline guard allows no remote host", async () => {
 
 test("offline Android setup strips network permissions", async () => {
   const source = await read("scripts/android-setup.mjs");
-  assert.match(source, /android\.permission\.INTERNET/);
-  assert.match(source, /android\.permission\.ACCESS_NETWORK_STATE/);
+  assert.ok(source.includes('android\\.permission\\.INTERNET'));
+  assert.ok(source.includes('android\\.permission\\.ACCESS_NETWORK_STATE'));
 });
 
 test("offline manifest additions do not request internet access", async () => {
