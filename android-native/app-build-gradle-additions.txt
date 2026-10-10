@@ -1,0 +1,19 @@
+# These are merged by scripts/android-setup.mjs into the Capacitor-generated Android project.
+# Stable AndroidX Biometric dependency used by SecurityAdminPlugin.kt:
+implementation "androidx.biometric:biometric:1.1.0"
+
+# Native source files copied into android/app/src/main/java/com/duresssecurity/admin/:
+# - AdminReceiver.kt
+# - BootCompletedReceiver.kt
+# - SecurityAdminPlugin.kt
+# - SecureStorage.kt (AES-GCM with a key held in Android Keystore)
+# - AppLockAccessibilityService.kt (package-name-only opt-in app gate)
+
+# Native resources copied by the setup script:
+# - res/xml/device_admin.xml
+# - res/xml/app_lock_accessibility_service.xml
+# - res/values/duress-security-strings.xml
+
+# The setup script also merges the permissions/receiver/service manifest entries, adds a
+# launcher-intent <queries> declaration (without QUERY_ALL_PACKAGES), replaces MainActivity
+# with the registered plugin, and disables Android auto-backup for Keystore-bound data.

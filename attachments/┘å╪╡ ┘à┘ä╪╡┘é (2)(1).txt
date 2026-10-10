@@ -1,0 +1,442 @@
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Storage;
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+#if ANDROID
+using Android.OS;
+using Android.Provider;
+#endif
+
+namespace DuressSecurityApp
+{
+    public partial class SettingsPage : ContentPage
+    {
+        private bool _isInternalChange = false;
+        private const string DEFAULT_MASTER_PIN = "8888";
+
+        public ObservableCollection<AppItem> InstalledApps { get; set; } = new();
+
+        public SettingsPage()
+        {
+            InitializeComponent();
+
+            if (AppsCollectionView != null)
+            {
+                AppsCollectionView.ItemsSource = InstalledApps;
+            }
+
+            if (LangPicker != null)
+                LangPicker.SelectedIndex = 0;
+
+            PopulatePinPicker(isEnglish: false);
+            EnsureDefaultMasterPin();
+            UpdatePinUiState();
+
+            LoadSettingsState();
+        }
+
+        private void LoadSettingsState()
+        {
+            _isInternalChange = true;
+
+            if (HomeLockSwitch != null) HomeLockSwitch.IsToggled = Preferences.Get("HOME_LOCK_ENABLED", true);
+            if (AppLockSwitch != null) AppLockSwitch.IsToggled = Preferences.Get("APP_LOCK_ENABLED", false);
+            if (PreventUninstallSwitch != null) PreventUninstallSwitch.IsToggled = Preferences.Get("PREVENT_UNINSTALL_ENABLED", false);
+
+            if (AppSelectionContainer != null)
+                AppSelectionContainer.IsVisible = AppLockSwitch?.IsToggled ?? false;
+
+            if (AppLockSwitch?.IsToggled == true)
+            {
+                Task.Run(() => LoadInstalledApps());
+            }
+
+            _isInternalChange = false;
+        }
+
+        private void SaveSettingsState()
+        {
+            Preferences.Set("HOME_LOCK_ENABLED", HomeLockSwitch?.IsToggled ?? true);
+            Preferences.Set("APP_LOCK_ENABLED", AppLockSwitch?.IsToggled ?? false);
+            Preferences.Set("PREVENT_UNINSTALL_ENABLED", PreventUninstallSwitch?.IsToggled ?? false);
+        }
+
+        private string NormalizePin(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+
+            var sb = new StringBuilder();
+            foreach (char c in input.Trim())
+            {
+                if (char.IsDigit(c) || char.IsLetter(c))
+                {
+                    sb.Append(c);
+                }
+            }
+            return sb.ToString();
+        }
+
+        private void EnsureDefaultMasterPin()
+        {
+            string currentMaster = NormalizePin(Preferences.Get("PIN_TYPE_0", ""));
+            if (string.IsNullOrEmpty(currentMaster))
+            {
+                Preferences.Set("PIN_TYPE_0", DEFAULT_MASTER_PIN);
+            }
+        }
+
+        private void UpdatePinUiState()
+        {
+            if (PinNoticeLabel == null) return;
+
+            string currentMaster = NormalizePin(Preferences.Get("PIN_TYPE_0", DEFAULT_MASTER_PIN));
+            bool isDefault = (currentMaster == DEFAULT_MASTER_PIN);
+
+            if (isDefault)
+            {
+                PinNoticeLabel.Text = "تنبيه: الرمز الرئيسي الحالي الافتراضي هو (8888).";
+            }
+            else
+            {
+                PinNoticeLabel.Text = "ملاحظة: تم تحديث الرمز الرئيسي بنجاح وهو معتمد حالياً.";
+            }
+        }
+
+        private void PopulatePinPicker(bool isEnglish)
+        {
+            if (TargetPinPicker == null) return;
+
+            int selected = TargetPinPicker.SelectedIndex;
+            TargetPinPicker.Items.Clear();
+
+            if (isEnglish)
+            {
+                TargetPinPicker.Items.Add("Master PIN (الرئيسي)");
+                TargetPinPicker.Items.Add("Duress PIN (الإكراه)");
+                TargetPinPicker.Items.Add("Screen Lock PIN (قفل الشاشة)");
+                TargetPinPicker.Items.Add("Format PIN (التصفير)");
+            }
+            else
+            {
+                TargetPinPicker.Items.Add("الرمز الرئيسي (Master PIN)");
+                TargetPinPicker.Items.Add("رمز الإكراه / التمويه (Duress PIN)");
+                TargetPinPicker.Items.Add("رمز قفل الشاشة (Lock PIN)");
+                TargetPinPicker.Items.Add("رمز الفورمات / التصفير (Format PIN)");
+            }
+
+            TargetPinPicker.SelectedIndex = selected >= 0 ? selected : 0;
+        }
+
+        private async void OnNewPinEntryTapped(object sender, EventArgs e)
+        {
+            bool isEng = LangPicker?.SelectedIndex == 1;
+            string? rawPin = await ShowPinPopupAsync(isEng ? "Enter New PIN (4 chars)" : "أدخل الرمز الجديد (4 خانات)");
+            string cleanPin = NormalizePin(rawPin);
+
+            if (string.IsNullOrEmpty(cleanPin)) return;
+
+            if (cleanPin.Length != 4)
+            {
+                await DisplayAlert(
+                    isEng ? "Invalid Input" : "خطأ في الإدخال",
+                    isEng ? "The PIN must consist of exactly 4 characters!" : "يجب أن يتكون الرمز من 4 خانات بالضبط (أرقام أو أحرف)!",
+                    isEng ? "OK" : "حسناً"
+                );
+                return;
+            }
+
+            if (NewPinEntry != null)
+            {
+                NewPinEntry.Text = cleanPin;
+            }
+        }
+
+        private async void OnSaveClicked(object sender, EventArgs e)
+        {
+            bool isEng = LangPicker?.SelectedIndex == 1;
+
+            if (TargetPinPicker?.SelectedIndex == -1)
+            {
+                await DisplayAlert(
+                    isEng ? "Notice" : "تنبيه",
+                    isEng ? "Please select a PIN type first" : "يرجى اختيار نوع الرمز المراد تغييره أولاً",
+                    isEng ? "OK" : "موافق"
+                );
+                return;
+            }
+
+            string newPin = NormalizePin(NewPinEntry?.Text);
+
+            if (string.IsNullOrEmpty(newPin) || newPin.Length != 4)
+            {
+                await DisplayAlert(
+                    isEng ? "Error" : "خطأ في الرمز الجديد",
+                    isEng ? "Please enter a valid 4-character PIN first" : "يرجى كتابة رمز جديد مكون من 4 خانات (أرقام أو أحرف) أولاً",
+                    isEng ? "OK" : "موافق"
+                );
+                return;
+            }
+
+            int targetIndex = TargetPinPicker.SelectedIndex;
+            string currentMaster = NormalizePin(Preferences.Get("PIN_TYPE_0", DEFAULT_MASTER_PIN));
+
+            string? checkMasterRaw = await ShowPinPopupAsync(isEng ? "Enter Current Master PIN to Confirm" : "أدخل الرمز الرئيسي الحالي لتأكيد الحفظ");
+            string checkMaster = NormalizePin(checkMasterRaw);
+
+            if (string.IsNullOrEmpty(checkMaster)) return;
+
+            if (checkMaster != currentMaster)
+            {
+                await DisplayAlert(
+                    isEng ? "Error" : "فشل التأكيد",
+                    isEng ? "Incorrect Master PIN! Changes were NOT saved." : "الرمز الرئيسي الحالي غير صحيح! لم يتم حفظ التغييرات.",
+                    isEng ? "OK" : "موافق"
+                );
+                return;
+            }
+
+            Preferences.Set($"PIN_TYPE_{targetIndex}", newPin);
+
+            if (targetIndex == 2)
+            {
+                Preferences.Set("LOCK_PIN", newPin);
+            }
+
+            if (NewPinEntry != null)
+            {
+                NewPinEntry.Text = string.Empty;
+            }
+            UpdatePinUiState();
+
+            string selectedTypeName = TargetPinPicker.Items[targetIndex];
+            await DisplayAlert(
+                isEng ? "Success" : "تم الحفظ بنجاح",
+                isEng ? $"({selectedTypeName}) has been updated successfully!" : $"تم تحديث ({selectedTypeName}) بنجاح وإعتماده!",
+                isEng ? "OK" : "موافق"
+            );
+        }
+
+        private async void OnSecuritySwitchToggled(object sender, ToggledEventArgs e)
+        {
+            if (_isInternalChange) return;
+
+            var sw = sender as Switch;
+            if (sw == null) return;
+
+            bool targetState = e.Value;
+            string currentMaster = NormalizePin(Preferences.Get("PIN_TYPE_0", DEFAULT_MASTER_PIN));
+            bool isEng = LangPicker?.SelectedIndex == 1;
+
+            string? enteredPinRaw = await ShowPinPopupAsync(isEng ? "Enter Master PIN to confirm" : "أدخل الرمز الرئيسي للتحقق");
+            string enteredPin = NormalizePin(enteredPinRaw);
+
+            if (enteredPin == currentMaster)
+            {
+                try
+                {
+                    if (sw == AppLockSwitch && AppSelectionContainer != null)
+                    {
+                        AppSelectionContainer.IsVisible = targetState;
+                        if (targetState && InstalledApps.Count == 0)
+                        {
+                            Task.Run(() => LoadInstalledApps());
+                        }
+                    }
+                    else if (sw == PreventUninstallSwitch)
+                    {
+                        ToggleDeviceAdminProtection(targetState);
+                    }
+
+                    SaveSettingsState();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}");
+                }
+            }
+            else
+            {
+                RevertSwitchState(sw, !targetState);
+                if (!string.IsNullOrEmpty(enteredPin))
+                {
+                    await DisplayAlert(isEng ? "Error" : "خطأ", isEng ? "Incorrect Master PIN!" : "الرمز الرئيسي غير صحيح!", isEng ? "OK" : "موافق");
+                }
+            }
+        }
+
+        private void RevertSwitchState(Switch sw, bool newState)
+        {
+            _isInternalChange = true;
+            sw.IsToggled = newState;
+            _isInternalChange = false;
+        }
+
+        private async Task<string?> ShowPinPopupAsync(string title)
+        {
+            var popup = new PinPopupPage(title, LockContext.InputOnly);
+            await Navigation.PushModalAsync(popup);
+
+            while (Navigation.ModalStack.Contains(popup))
+            {
+                await Task.Delay(50);
+            }
+
+            return popup.ResultPin;
+        }
+
+        private void LoadInstalledApps()
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+                var pm = context.PackageManager;
+                if (pm == null) return;
+
+                var packages = pm.GetInstalledApplications(Android.Content.PM.PackageInfoFlags.MetaData);
+                string savedList = Preferences.Get("LOCKED_PACKAGES_LIST", "");
+                var lockedSet = new System.Collections.Generic.HashSet<string>(savedList.Split(','));
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    InstalledApps.Clear();
+                    foreach (var app in packages)
+                    {
+                        if ((app.Flags & Android.Content.PM.ApplicationInfoFlags.System) == 0)
+                        {
+                            string label = pm.GetApplicationLabel(app) ?? app.PackageName;
+                            bool isLocked = lockedSet.Contains(app.PackageName);
+                            var item = new AppItem { Name = label, PackageName = app.PackageName, IsLocked = isLocked };
+                            InstalledApps.Add(item);
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Load Apps Error: {ex.Message}");
+            }
+#endif
+        }
+
+        public void OnAppCheckBoxChanged(object sender, CheckedChangedEventArgs e)
+        {
+#if ANDROID
+            var lockedPackages = InstalledApps.Where(a => a.IsLocked).Select(a => a.PackageName);
+            Platforms.Android.AppLockState.SaveLockedApps(lockedPackages);
+#endif
+        }
+
+        private void OnLanguageChanged(object sender, EventArgs e)
+        {
+            bool isEng = LangPicker?.SelectedIndex == 1;
+
+            FlowDirection = isEng ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
+
+            this.Title = isEng ? "Security & Preferences Settings" : "إعدادات الأمان والتفضيلات";
+            if (SysPrefHeader != null) SysPrefHeader.Text = isEng ? "System Preferences" : "تفضيلات النظام";
+            if (ThemeLabel != null) ThemeLabel.Text = isEng ? "Theme (Dark / Light)" : "المظهر (ليلي / نهاري)";
+            if (LangLabel != null) LangLabel.Text = isEng ? "Language" : "اللغة";
+
+            if (LockSectionHeader != null) LockSectionHeader.Text = isEng ? "Protection & Lock" : "الحماية والقفل";
+            if (HomeLockLabel != null) HomeLockLabel.Text = isEng ? "Home Screen Lock" : "قفل الشاشة الرئيسية (Home Screen)";
+            if (AppLockLabel != null) AppLockLabel.Text = isEng ? "Enable App Lock" : "تفعيل قفل التطبيقات";
+            if (SelectAppsLabel != null) SelectAppsLabel.Text = isEng ? "Select installed apps to lock:" : "اختر التطبيقات المثبتة لقفلها:";
+            if (PreventUninstallLabel != null) PreventUninstallLabel.Text = isEng ? "Protect App from Uninstallation" : "حماية التطبيق من الإلغاء والحذف";
+            if (PermBtn != null) PermBtn.Text = isEng ? "Grant System Permissions" : "منح صلاحيات النظام للخدمة";
+
+            if (PinHeader != null) PinHeader.Text = isEng ? "Manage PIN Codes" : "إدارة الرموز السرية";
+            if (TargetPinPicker != null) TargetPinPicker.Title = isEng ? "Select PIN to change" : "اختر الرمز المراد تغييره";
+            if (NewPinEntry != null) NewPinEntry.Placeholder = isEng ? "New PIN (4 chars)" : "الرمز الجديد (4 خانات)";
+            if (SaveBtn != null) SaveBtn.Text = isEng ? "Save Changes" : "حفظ التغييرات";
+
+            PopulatePinPicker(isEng);
+            UpdatePinUiState();
+        }
+
+        private void ToggleDeviceAdminProtection(bool enable)
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+                var dpm = (Android.App.Admin.DevicePolicyManager?)context.GetSystemService(Android.Content.Context.DevicePolicyService);
+                if (dpm == null) return;
+
+                var component = new Android.Content.ComponentName(context, context.PackageName + ".AdminReceiver");
+
+                if (enable && !dpm.IsAdminActive(component))
+                {
+                    var intent = new Android.Content.Intent(Android.App.Admin.DevicePolicyManager.ActionAddDeviceAdmin);
+                    intent.PutExtra(Android.App.Admin.DevicePolicyManager.ExtraDeviceAdmin, component);
+                    intent.AddFlags(Android.Content.ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Device Admin Error: {ex.Message}");
+            }
+#endif
+        }
+
+        private void OnRequestPermissionsClicked(object sender, EventArgs e)
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
+                {
+                    if (!Settings.CanDrawOverlays(context))
+                    {
+                        var intentOverlay = new Android.Content.Intent(
+                            Settings.ActionManageOverlayPermission,
+                            Android.Net.Uri.Parse($"package:{context.PackageName}"));
+                        intentOverlay.AddFlags(Android.Content.ActivityFlags.NewTask);
+                        context.StartActivity(intentOverlay);
+                    }
+                }
+
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Lollipop)
+                {
+                    var intentUsage = new Android.Content.Intent(Settings.ActionUsageAccessSettings);
+                    intentUsage.AddFlags(Android.Content.ActivityFlags.NewTask);
+                    context.StartActivity(intentUsage);
+                }
+
+                var serviceIntent = new Android.Content.Intent(context, typeof(Platforms.Android.AppLockForegroundService));
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                {
+                    context.StartForegroundService(serviceIntent);
+                }
+                else
+                {
+                    context.StartService(serviceIntent);
+                }
+
+                DisplayAlert("نجاح", "تم توجيهك لشاشات الأذونات وشغلت الخدمة.", "موافق");
+            }
+            catch (Exception ex)
+            {
+                DisplayAlert("خطأ", ex.Message, "موافق");
+            }
+#endif
+        }
+
+        private void OnThemeToggled(object sender, ToggledEventArgs e)
+        {
+            if (Application.Current != null)
+            {
+                Application.Current.UserAppTheme = e.Value ? AppTheme.Dark : AppTheme.Light;
+            }
+            SaveSettingsState();
+        }
+    }
+}

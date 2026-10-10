@@ -1,0 +1,37 @@
+<!-- Merge these permission/service/receiver entries into the Capacitor-generated manifest. -->
+<!-- Also add the following <queries> block beside <application> (android-setup.mjs does this):
+<queries>
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+</queries>
+-->
+<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+
+<receiver
+    android:name="com.duresssecurity.admin.AdminReceiver"
+    android:permission="android.permission.BIND_DEVICE_ADMIN"
+    android:exported="true">
+    <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+    <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+</receiver>
+
+<receiver
+    android:name="com.duresssecurity.admin.BootCompletedReceiver"
+    android:exported="true">
+    <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+</receiver>
+
+<service
+    android:name="com.duresssecurity.admin.AppLockAccessibilityService"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+    android:exported="true"
+    android:label="Duress Security App Lock">
+    <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+    <meta-data android:name="android.accessibilityservice" android:resource="@xml/app_lock_accessibility_service" />
+</service>

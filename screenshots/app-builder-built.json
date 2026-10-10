@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "DuressSecurityApp",
+      "hasCanvas": false,
+      "bodyTextLen": 352,
+      "bodyTextHash": "61c61df29c95074ceef6e707c21fa3fea4d46a379474014502494ed4b3da1519",
+      "bodyTextPrefix": "مرحباً بك أدخل رمز المرور استخدم الرمز المناسب حسب الحالة رموز ا",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "DuressSecurityApp",
+      "hasCanvas": false,
+      "bodyTextLen": 352,
+      "bodyTextHash": "61c61df29c95074ceef6e707c21fa3fea4d46a379474014502494ed4b3da1519",
+      "bodyTextPrefix": "مرحباً بك أدخل رمز المرور استخدم الرمز المناسب حسب الحالة رموز ا",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

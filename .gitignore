@@ -1,0 +1,27 @@
+# Node / web build output
+node_modules/
+dist/
+.output/
+coverage/
+*.log
+npm-debug.log*
+
+# Generated native Android build artifacts (keep source project if generated)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Signing material and local environment secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

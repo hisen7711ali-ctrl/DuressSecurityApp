@@ -1,0 +1,406 @@
+MainPage.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.MainPage"
+             BackgroundColor="{AppThemeBinding Light=#FDFBF7, Dark=#0F172A}">
+
+    <ScrollView Padding="20">
+        <Grid ColumnDefinitions="*, Auto" ColumnSpacing="24" RowDefinitions="Auto,*">
+
+            <!-- الجزء الرئيسي: لوحة الرمز -->
+            <VerticalStackLayout Grid.Column="0" Spacing="20" HorizontalOptions="Center" VerticalOptions="Center">
+
+                <Label Text="VAULT SHELL" FontSize="12" CharacterSpacing="2" FontAttributes="Bold" HorizontalOptions="Center" TextColor="#0EA5E9"/>
+                <Label Text="أدخل رمز المرور" FontSize="22" FontAttributes="Bold" HorizontalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+
+                <!-- عرض الرمز -->
+                <Border BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="#0EA5E9" StrokeThickness="1.5" WidthRequest="220" HeightRequest="50">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="PinDisplay" Text="••••" FontSize="24" HorizontalOptions="Center" VerticalOptions="Center" TextColor="#0EA5E9"/>
+                </Border>
+
+                <!-- لوحة الأرقام والحروف -->
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,*,*" RowSpacing="12" ColumnSpacing="12" WidthRequest="260">
+                    <Button Text="1" Grid.Row="0" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="2" Grid.Row="0" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="أ" Grid.Row="0" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+
+                    <Button Text="4" Grid.Row="1" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="5" Grid.Row="1" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="ي" Grid.Row="1" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+
+                    <Button Text="7" Grid.Row="2" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="8" Grid.Row="2" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="ع" Grid.Row="2" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+
+                    <Button Text="⌫" Grid.Row="3" Grid.Column="0" Clicked="OnDeleteClicked" Style="{StaticResource ActionKeyBtn}"/>
+                    <Button Text="0" Grid.Row="3" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtn}"/>
+                    <Button Text="✓" Grid.Row="3" Grid.Column="2" Clicked="OnConfirmClicked" Style="{StaticResource ConfirmKeyBtn}"/>
+                </Grid>
+            </VerticalStackLayout>
+
+            <!-- قسم تلميحات الجانبي (مستطيل الأحاديث المتحرك) -->
+            <Border Grid.Column="1" WidthRequest="280" BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E6DBB9, Dark=#334155}" Padding="16">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="💡 إضاءات إيمانية" FontSize="16" FontAttributes="Bold" TextColor="#D97706" FlowDirection="RightToLeft"/>
+                    <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E6DBB9, Dark=#334155}"/>
+
+                    <!-- مستطيل الحديث المتحرك الفردي -->
+                    <Frame BackgroundColor="{AppThemeBinding Light=#FDFBF7, Dark=#0F172A}" 
+                           BorderColor="{AppThemeBinding Light=#E6DBB9, Dark=#374151}" 
+                           CornerRadius="10" 
+                           Padding="15" 
+                           HeightRequest="140"
+                           VerticalOptions="Center">
+                        <Grid VerticalOptions="Center" HorizontalOptions="Center">
+                            <Label x:Name="BannerTipLabel" 
+                                   Text="جاري تحميل الإضاءات..." 
+                                   FontSize="13" 
+                                   TextColor="{AppThemeBinding Light=#3F3D30, Dark=#CBD5E1}" 
+                                   HorizontalTextAlignment="Center"
+                                   VerticalTextAlignment="Center"
+                                   LineBreakMode="WordWrap"
+                                   FlowDirection="RightToLeft"/>
+                        </Grid>
+                    </Frame>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </ScrollView>
+</ContentPage>
+PinPopupPage.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.PinPopupPage"
+             BackgroundColor="#80000000">
+
+    <Border BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1E293B}" 
+            Stroke="{AppThemeBinding Light=#CBD5E1, Dark=#334155}" 
+            StrokeThickness="1"
+            VerticalOptions="Center" HorizontalOptions="Center" 
+            WidthRequest="320" Padding="20">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="20"/>
+        </Border.StrokeShape>
+
+        <VerticalStackLayout Spacing="16">
+            <Label x:Name="TitleLabel" Text="أدخل الرمز الرئيسي للتحقق" FontAttributes="Bold" FontSize="16" HorizontalOptions="Center" TextColor="{AppThemeBinding Light=#1E293B, Dark=#F8FAFC}"/>
+
+            <Border BackgroundColor="{AppThemeBinding Light=#F1F5F9, Dark=#0F172A}" StrokeThickness="0" HeightRequest="45">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="10"/>
+                </Border.StrokeShape>
+                <Label x:Name="PinDisplay" FontSize="22" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" TextColor="#D97706"/>
+            </Border>
+
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,*,*" RowSpacing="10" ColumnSpacing="10">
+                <Button Text="1" Grid.Row="0" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="2" Grid.Row="0" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="4" Grid.Row="0" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+
+                <Button Text="5" Grid.Row="1" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="7" Grid.Row="1" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="8" Grid.Row="1" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+
+                <Button Text="أ" Grid.Row="2" Grid.Column="0" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="ي" Grid.Row="2" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="ع" Grid.Row="2" Grid.Column="2" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+
+                <Button Text="⌫" Grid.Row="3" Grid.Column="0" Clicked="OnDeleteClicked" Style="{StaticResource ActionKeyBtnPopup}"/>
+                <Button Text="0" Grid.Row="3" Grid.Column="1" Clicked="OnNumClicked" Style="{StaticResource KeyPadBtnPopup}"/>
+                <Button Text="✓" Grid.Row="3" Grid.Column="2" Clicked="OnConfirmClicked" Style="{StaticResource ConfirmKeyBtnPopup}"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,6,0,0">
+                <Button x:Name="CancelButton" Text="إلغاء" Grid.Column="0" Clicked="OnCancelClicked" BackgroundColor="#EF4444" TextColor="White" CornerRadius="10" HeightRequest="44"/>
+                <Button x:Name="ConfirmButton" Text="تأكيد" Grid.Column="1" Clicked="OnConfirmClicked" BackgroundColor="#10B981" TextColor="White" CornerRadius="10" HeightRequest="44"/>
+            </Grid>
+        </VerticalStackLayout>
+    </Border>
+</ContentPage>
+SettingsPage.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.SettingsPage"
+             Title="إعدادات الأمان والتفضيلات"
+             BackgroundColor="{AppThemeBinding Light=#FDFBF7, Dark=#0F172A}">
+
+    <Grid ColumnDefinitions="2*, 1*" ColumnSpacing="20" Padding="20">
+        <!-- قسم الإعدادات -->
+        <ScrollView Grid.Column="0">
+            <VerticalStackLayout Spacing="20" FlowDirection="RightToLeft">
+
+                <!-- بطاقة تفضيلات النظام -->
+                <Border BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E6DBB9, Dark=Transparent}" StrokeThickness="1" Padding="16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="14">
+                        <Label x:Name="SysPrefHeader" Text="تفضيلات النظام" FontSize="16" FontAttributes="Bold" TextColor="#D97706"/>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="ThemeLabel" Grid.Column="0" Text="المظهر (ليلي / نهاري)" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <Switch Grid.Column="1" IsToggled="True" ThumbColor="#D97706" OnColor="#F59E0B" Toggled="OnThemeToggled"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="LangLabel" Grid.Column="0" Text="اللغة" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <Picker x:Name="LangPicker" Grid.Column="1" Title="اختر اللغة" WidthRequest="120" SelectedIndexChanged="OnLanguageChanged">
+                                <Picker.ItemsSource>
+                                    <x:Array Type="{x:Type x:String}">
+                                        <x:String>العربية</x:String>
+                                        <x:String>English</x:String>
+                                    </x:Array>
+                                </Picker.ItemsSource>
+                            </Picker>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- بطاقة إدارة الرموز السرية -->
+                <Border BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E6DBB9, Dark=Transparent}" StrokeThickness="1" Padding="16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="14">
+                        <Label x:Name="PinHeader" Text="إدارة الرموز السرية" FontSize="16" FontAttributes="Bold" TextColor="#D97706"/>
+                        <Label x:Name="PinNoticeLabel" Text="" FontSize="13" TextColor="{AppThemeBinding Light=#5C5845, Dark=#94A3B8}"/>
+
+                        <Picker x:Name="TargetPinPicker" Title="اختر الرمز المراد تغييره"/>
+
+                        <Entry x:Name="NewPinEntry" 
+                             Placeholder="الرمز الجديد (مثال: ع111)" 
+                             IsPassword="False" 
+                             MaxLength="4" 
+                             FlowDirection="RightToLeft"
+                             HorizontalTextAlignment="Start"
+                             ClearButtonVisibility="WhileEditing">
+                            <Entry.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnNewPinEntryTapped"/>
+                            </Entry.GestureRecognizers>
+                        </Entry>
+
+                        <Button x:Name="SaveBtn" Text="حفظ التغييرات" BackgroundColor="#D97706" TextColor="White" FontAttributes="Bold" CornerRadius="12" HeightRequest="46" Clicked="OnSaveClicked"/>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- بطاقة الحماية والقفل -->
+                <Border BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E6DBB9, Dark=Transparent}" StrokeThickness="1" Padding="16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="14">
+                        <Label x:Name="LockSectionHeader" Text="الحماية والقفل" FontSize="16" FontAttributes="Bold" TextColor="#D97706"/>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="HomeLockLabel" Grid.Column="0" Text="قفل الشاشة الرئيسية (Home Screen)" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <Switch x:Name="HomeLockSwitch" Grid.Column="1" IsToggled="True" ThumbColor="#D97706" OnColor="#F59E0B" Toggled="OnSecuritySwitchToggled"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="AppLockLabel" Grid.Column="0" Text="تفعيل قفل التطبيقات" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <Switch x:Name="AppLockSwitch" Grid.Column="1" IsToggled="True" ThumbColor="#D97706" OnColor="#F59E0B" Toggled="OnSecuritySwitchToggled"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="PreventUninstallLabel" Grid.Column="0" Text="حماية التطبيق من الإلغاء والحذف" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <Switch x:Name="PreventUninstallSwitch" Grid.Column="1" IsToggled="False" ThumbColor="#D97706" OnColor="#F59E0B" Toggled="OnSecuritySwitchToggled"/>
+                        </Grid>
+
+                        <!-- حاوية قائمة التطبيقات المقفولة -->
+                        <VerticalStackLayout x:Name="AppSelectionContainer" Spacing="10" Margin="0,10,0,0">
+                            <Label x:Name="SelectAppsLabel" Text="التطبيقات المحددة للقفل:" FontSize="14" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                            <CollectionView x:Name="AppsCollectionView" HeightRequest="150">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="*,Auto" Padding="5">
+                                            <Label Grid.Column="0" Text="{Binding Name}" VerticalOptions="Center" TextColor="{AppThemeBinding Light=#2D2B2A, Dark=#F8FAFC}"/>
+                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsLocked}" CheckedChanged="OnAppCheckBoxChanged"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
+
+                        <Button x:Name="PermBtn" Text="منح صلاحيات النظام للخدمة" BackgroundColor="#D97706" TextColor="White" FontAttributes="Bold" CornerRadius="12" HeightRequest="46" Margin="0,10,0,0" Clicked="OnRequestPermissionsClicked"/>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- قسم النصائح الجانبي (مستطيل متحرك) -->
+        <Border Grid.Column="1" BackgroundColor="{AppThemeBinding Light=#FFFDD0, Dark=#1E293B}" Stroke="{AppThemeBinding Light=#E6DBB9, Dark=#334155}" Padding="16">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="16"/>
+            </Border.StrokeShape>
+            <VerticalStackLayout Spacing="12" FlowDirection="RightToLeft">
+                <Label Text="📖 إضاءات ونصوص" FontSize="16" FontAttributes="Bold" TextColor="#10B981"/>
+                <BoxView HeightRequest="1" Color="{AppThemeBinding Light=#E6DBB9, Dark=#334155}"/>
+
+                <Frame BackgroundColor="{AppThemeBinding Light=#FDFBF7, Dark=#0F172A}" 
+                       BorderColor="{AppThemeBinding Light=#E6DBB9, Dark=#374151}" 
+                       CornerRadius="10" 
+                       Padding="15"
+                       HeightRequest="150"
+                       VerticalOptions="Center">
+                    <Grid VerticalOptions="Center" HorizontalOptions="Center">
+                        <Label Text="﴿وَأَعِدُّوا لَهُم مَّا اسْتَطَعْتُم مِّن قُوَّةٍ وَمِن رِّبَاطِ الْخَيْلِ﴾" 
+                               FontSize="13" 
+                               TextColor="{AppThemeBinding Light=#3F3D30, Dark=#CBD5E1}" 
+                               FontAttributes="Italic"
+                               HorizontalTextAlignment="Center"
+                               VerticalTextAlignment="Center"
+                               LineBreakMode="WordWrap"
+                               FlowDirection="RightToLeft"/>
+                    </Grid>
+                </Frame>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>
+App.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <Style x:Key="KeyPadBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#E2E8F0, Dark=#2A374A}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#0F172A, Dark=#F8FAFC}"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="KeyPadBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#E2E8F0, Dark=#D97706}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#0F172A, Dark=#FFFFFF}"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+
+            <Style x:Key="ActionKeyBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#CBD5E1, Dark=#334155}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#475569, Dark=#94A3B8}"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="ActionKeyBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#CBD5E1, Dark=#334155}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#475569, Dark=#94A3B8}"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+
+            <Style x:Key="ConfirmKeyBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#10B981"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="ConfirmKeyBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#10B981"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
+AppShell.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <Style x:Key="KeyPadBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#E2E8F0, Dark=#2A374A}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#0F172A, Dark=#F8FAFC}"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="KeyPadBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#E2E8F0, Dark=#D97706}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#0F172A, Dark=#FFFFFF}"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+
+            <Style x:Key="ActionKeyBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#CBD5E1, Dark=#334155}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#475569, Dark=#94A3B8}"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="ActionKeyBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#CBD5E1, Dark=#334155}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#475569, Dark=#94A3B8}"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+
+            <Style x:Key="ConfirmKeyBtn" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#10B981"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="HeightRequest" Value="50"/>
+            </Style>
+
+            <Style x:Key="ConfirmKeyBtnPopup" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#10B981"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="HeightRequest" Value="46"/>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
+FakeSandboxPage.xaml
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DuressSecurityApp.FakeSandboxPage"
+             BackgroundColor="#0D1117"
+             Title="مرحباً بك">
+
+    <VerticalStackLayout Spacing="20" Padding="30" VerticalOptions="Center">
+        <Image Source="dotnet_bot.png" HeightRequest="100" HorizontalOptions="Center"/>
+        <Label Text="أهلاً بك في التطبيق" TextColor="White" FontSize="22" FontAttributes="Bold" HorizontalOptions="Center"/>
+        <Label Text="يرجى إعداد حسابك للمرة الأولى." TextColor="Gray" HorizontalOptions="Center"/>
+        <Entry Placeholder="اسم المستخدم الوهمي" BackgroundColor="#161B22" TextColor="White"/>
+        <Button Text="بدء الاستخدام" BackgroundColor="#238636" TextColor="White"/>
+    </VerticalStackLayout>
+</ContentPage>

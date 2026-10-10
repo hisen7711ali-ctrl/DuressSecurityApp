@@ -1,0 +1,1047 @@
+انت لهلا ما ساويت يل اتفقنا عليه بجي نفس التصور يلي اتخيلناه
+هاد كلشي يتعلق بالمشروع بس انت ساوي
+PinPopupPage.xaml.cs
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Devices;
+using Microsoft.Maui.Storage;
+using System;
+using System.Text;
+
+#if ANDROID
+using Android.App;
+using Android.App.Admin;
+using Android.Content;
+#endif
+
+namespace DuressSecurityApp
+{
+    public enum LockContext
+    {
+        ScreenLock,
+        AppLock,
+        InputOnly
+    }
+
+    public partial class PinPopupPage : ContentPage
+    {
+        public string ResultPin { get; private set; } = string.Empty;
+        private readonly LockContext _context;
+        private readonly string _targetPackageName;
+        private readonly StringBuilder _pinBuffer = new();
+
+        // 1. المشد الخالي (Default Constructor) لضمان التوافق مع XAML
+        public PinPopupPage() : this("أدخل الرمز الرئيسي للتحقق", LockContext.InputOnly, "")
+        {
+        }
+
+        // 2. المشد الرئيسي المنشئ مع البارامترات
+        public PinPopupPage(string title, LockContext context = LockContext.InputOnly, string targetPackageName = "")
+        {
+            InitializeComponent();
+            _context = context;
+            _targetPackageName = targetPackageName;
+
+            if (TitleLabel != null)
+                TitleLabel.Text = title;
+
+            // إخفاء زر الإلغاء تماماً عند القفل الإجباري لمنع التجاوز
+            if (_context != LockContext.InputOnly && CancelButton != null)
+            {
+                CancelButton.IsVisible = false;
+            }
+
+            UpdatePinDisplay();
+        }
+
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            // إغلاق شريط الإشعارات فور ظهور النافذة لمنع التجاوز
+            CollapseStatusBar();
+        }
+
+        protected override bool OnBackButtonPressed()
+        {
+            // منع زر الرجوع نهائياً إذا كانت النافذة للقفل الإجباري
+            if (_context != LockContext.InputOnly)
+            {
+                CollapseStatusBar();
+                return true;
+            }
+            return base.OnBackButtonPressed();
+        }
+
+        private void OnNumClicked(object sender, EventArgs e)
+        {
+            if (sender is Button btn && !string.IsNullOrEmpty(btn.Text))
+            {
+                // السماح بالحروف والأرقام حتى طول 4 خانات
+                if (_pinBuffer.Length < 4)
+                {
+                    _pinBuffer.Append(btn.Text);
+                    UpdatePinDisplay();
+                }
+            }
+        }
+
+        private void OnDeleteClicked(object sender, EventArgs e)
+        {
+            if (_pinBuffer.Length > 0)
+            {
+                _pinBuffer.Remove(_pinBuffer.Length - 1, 1);
+                UpdatePinDisplay();
+            }
+        }
+
+        private async void OnCancelClicked(object sender, EventArgs e)
+        {
+            if (_context == LockContext.InputOnly)
+            {
+                _pinBuffer.Clear();
+                ResultPin = string.Empty;
+                UpdatePinDisplay();
+                await Navigation.PopModalAsync();
+            }
+        }
+
+        private async void OnConfirmClicked(object sender, EventArgs e)
+        {
+            if (_pinBuffer.Length > 0)
+            {
+                if (_context == LockContext.InputOnly)
+                {
+                    ResultPin = _pinBuffer.ToString();
+                    await Navigation.PopModalAsync();
+                }
+                else
+                {
+                    ProcessPinInput(_pinBuffer.ToString());
+                }
+            }
+        }
+
+        private void UpdatePinDisplay()
+        {
+            if (PinDisplay != null)
+            {
+                // إظهار دوائر القفل بناءً على طول النص المدخل
+                PinDisplay.Text = new string('•', _pinBuffer.Length);
+            }
+        }
+
+        private async void ProcessPinInput(string enteredPin)
+        {
+            string masterPin = Preferences.Get("PIN_TYPE_0", "8888");
+            string duressPin = Preferences.Get("PIN_TYPE_1", "");
+            string lockPin = Preferences.Get("PIN_TYPE_2", "");
+            string formatPin = Preferences.Get("PIN_TYPE_3", "");
+
+            // 1. رمز الفورمات
+            if (!string.IsNullOrEmpty(formatPin) && enteredPin == formatPin)
+            {
+                if (_context == LockContext.ScreenLock)
+                {
+                    TriggerFullDeviceWipe();
+                }
+                else
+                {
+                    WipeTargetAppData(_targetPackageName);
+                }
+                return;
+            }
+
+            // 2. رمز الإكراه
+            if (!string.IsNullOrEmpty(duressPin) && enteredPin == duressPin)
+            {
+                await Navigation.PopModalAsync();
+                if (Microsoft.Maui.Controls.Application.Current?.Windows.Count > 0)
+                {
+                    Microsoft.Maui.Controls.Application.Current.Windows[0].Page = new NavigationPage(new FakeSandboxPage());
+                }
+                return;
+            }
+
+            // 3. الرمز الصحيح
+            if (enteredPin == masterPin || (!string.IsNullOrEmpty(lockPin) && enteredPin == lockPin))
+            {
+                ResultPin = enteredPin;
+                await Navigation.PopModalAsync();
+                return;
+            }
+
+            // 4. رمز خاطئ
+            _pinBuffer.Clear();
+            UpdatePinDisplay();
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300)); } catch { }
+        }
+
+        private void CollapseStatusBar()
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+                var statusBarService = context.GetSystemService("statusbar");
+                var statusBarManager = Java.Lang.Class.ForName("android.app.StatusBarManager");
+                var collapseMethod = statusBarManager?.GetMethod("collapsePanels");
+                collapseMethod?.Invoke(statusBarService);
+            }
+            catch { }
+#endif
+        }
+
+        private void TriggerFullDeviceWipe()
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+                var dpm = (DevicePolicyManager?)context.GetSystemService(Context.DevicePolicyService);
+                dpm?.WipeData(WipeDataFlags.WipeExternalStorage);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Wipe Error: {ex.Message}");
+            }
+#endif
+        }
+
+        private void WipeTargetAppData(string packageName)
+        {
+#if ANDROID
+            try
+            {
+                var context = Android.App.Application.Context;
+                if (!string.IsNullOrEmpty(packageName))
+                {
+                    var am = (ActivityManager?)context.GetSystemService(Context.ActivityService);
+                    am?.ClearApplicationUserData();
+                }
+
+                var homeIntent = new Intent(Intent.ActionMain);
+                homeIntent.AddCategory(Intent.CategoryHome);
+                homeIntent.SetFlags(ActivityFlags.NewTask);
+                context.StartActivity(homeIntent);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"App Wipe Error: {ex.Message}");
+            }
+#endif
+        }
+    }
+}
+using Android.App;
+using Android.Content;
+using Android.App.Admin;
+
+namespace DuressSecurityApp.Platforms.Android
+{
+    [BroadcastReceiver(Permission = "android.permission.BIND_DEVICE_ADMIN", Exported = true)]
+    [MetaData("android.app.device_admin", Resource = "@xml/device_admin")]
+    public class AdminReceiver : DeviceAdminReceiver
+    {
+        public override void OnDisabled(Context? context, Intent? intent)
+        {
+            base.OnDisabled(context, intent);
+        }
+
+        public override void OnEnabled(Context? context, Intent? intent)
+        {
+            base.OnEnabled(context, intent);
+        }
+    }
+}
+using Microsoft.Extensions.Logging;
+
+namespace DuressSecurityApp;
+
+public static class MauiProgram
+{
+    public static MauiApp CreateMauiApp()
+    {
+        var builder = MauiApp.CreateBuilder();
+        builder
+            .UseMauiApp<App>()
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+            });
+
+#if DEBUG
+        builder.Logging.AddDebug();
+#endif
+
+        return builder.Build();
+    }
+}
+namespace DuressSecurityApp;
+
+public partial class MainPage : ContentPage
+{
+    private string currentInput = "";
+    private readonly List<string> _tips = new()
+    {
+        "﴿وَأَعِدُّوا لَهُم مَّا اسْتَطَعْتُم مِّن قُوَّةٍ وَمِن رِّبَاطِ الْخَيْلِ تُرْهِبُونَ بِهِ عَدُوَّ اللَّهِ وَعَدُوَّكُمْ﴾",
+        "قال ﷺ: «رِبَاطُ يَوْمٍ وَلَيْلَةٍ خَيْرٌ مِنْ صِيَامِ شَهْرٍ وَقِيَامِهِ»",
+        "﴿وَمِنْ آيَاتِهِ أَنْ خَلَقَ لَكُم مِّنْ أَنفُسِكُمْ أَزْوَاجًا لِّتَسْكُنُوا إِلَيْهَا وَجَعَلَ بَيْنَكُم مَّوَدَّةً وَرَحْمَةً﴾",
+        "قال ﷺ: «يَا مَعْشَرَ الشَّبَابِ مَنِ اسْتَطَاعَ مِنْكُمُ الْبَاءَةَ فَلْيَتَزَوَّجْ، فَإِنَّهُ أَغَضُّ لِلْبَصَرِ وَأَحْصَنُ لِلْفَرْجِ»"
+    };
+
+    private IDispatcherTimer? _bannerTimer;
+    private int _currentIndex = 0;
+
+    public MainPage()
+    {
+        InitializeComponent();
+        UpdateDisplay();
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+
+        if (_tips.Count > 0 && BannerTipLabel != null)
+        {
+            BannerTipLabel.Text = _tips[0];
+        }
+
+        // تشغيل مؤقت لتغيير الحديث تلقائياً كل 5 ثوانٍ داخل المستطيل
+        _bannerTimer = Dispatcher.CreateTimer();
+        _bannerTimer.Interval = TimeSpan.FromSeconds(5);
+        _bannerTimer.Tick += (s, e) =>
+        {
+            if (_tips.Count == 0 || BannerTipLabel == null) return;
+
+            _currentIndex = (_currentIndex + 1) % _tips.Count;
+            BannerTipLabel.FadeTo(0, 200).ContinueWith(async t =>
+            {
+                BannerTipLabel.Text = _tips[_currentIndex];
+                await BannerTipLabel.FadeTo(1, 200);
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        };
+        _bannerTimer.Start();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _bannerTimer?.Stop();
+    }
+
+    private void OnNumClicked(object sender, EventArgs e)
+    {
+        if (sender is Button btn && !string.IsNullOrEmpty(btn.Text))
+        {
+            if (currentInput.Length < 4)
+            {
+                currentInput += btn.Text;
+                UpdateDisplay();
+            }
+        }
+    }
+
+    private void OnDeleteClicked(object sender, EventArgs e)
+    {
+        if (currentInput.Length > 0)
+        {
+            currentInput = currentInput.Substring(0, currentInput.Length - 1);
+            UpdateDisplay();
+        }
+    }
+
+    private void OnConfirmClicked(object sender, EventArgs e)
+    {
+        if (!string.IsNullOrEmpty(currentInput))
+        {
+            ProcessPin(currentInput);
+        }
+    }
+
+    private void ProcessPin(string pin)
+    {
+        string masterPin = Preferences.Get("MasterPin", "ع111");
+        string wipePin = Preferences.Get("WipePin", "ي111");
+        string fakePin = Preferences.Get("FakePin", "أ111");
+
+        if (pin == masterPin)
+        {
+            Preferences.Set("FailedAttempts", 0);
+            ResetInput();
+            Navigation.PushAsync(new SettingsPage());
+        }
+        else if (pin == wipePin)
+        {
+            ExecuteDeviceWipe();
+        }
+        else if (pin == fakePin)
+        {
+            ResetInput();
+            Navigation.PushAsync(new FakeSandboxPage());
+        }
+        else
+        {
+            int attempts = Preferences.Get("FailedAttempts", 0) + 1;
+            Preferences.Set("FailedAttempts", attempts);
+            ResetInput();
+
+            if (attempts >= 3)
+            {
+                ExecuteDeviceWipe();
+            }
+            else
+            {
+                DisplayAlert("تنبيه", $"رمز خاطئ! المحاولة {attempts} من 3", "موافق");
+            }
+        }
+    }
+
+    private void ExecuteDeviceWipe()
+    {
+#if ANDROID
+        var context = Android.App.Application.Context;
+        var dpm = (Android.App.Admin.DevicePolicyManager)context.GetSystemService(Android.Content.Context.DevicePolicyService);
+        var compName = new Android.Content.ComponentName(context, Java.Lang.Class.FromType(typeof(DuressSecurityApp.Platforms.Android.AdminReceiver)));
+
+        if (dpm != null && dpm.IsAdminActive(compName))
+        {
+            dpm.WipeData(0);
+        }
+#endif
+    }
+
+    private void ResetInput()
+    {
+        currentInput = "";
+        UpdateDisplay();
+    }
+
+    private void UpdateDisplay()
+    {
+        int enteredLength = currentInput.Length;
+        string dots = new string('•', enteredLength);
+        string empty = new string('◦', 4 - enteredLength);
+
+        if (PinDisplay != null)
+        {
+            PinDisplay.Text = string.Join(" ", (dots + empty).ToCharArray());
+        }
+    }
+}
+namespace DuressSecurityApp;
+
+public class AppItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string PackageName { get; set; } = string.Empty;
+    public bool IsLocked { get; set; }
+}
+namespace DuressSecurityApp
+{
+    public partial class AppShell : Shell
+    {
+        public AppShell()
+        {
+            InitializeComponent();
+        }
+    }
+}
+
+namespace DuressSecurityApp;
+
+public partial class MainPage : ContentPage
+{
+    private string currentInput = "";
+    private readonly List<string> _tips = new()
+    {
+        "﴿وَأَعِدُّوا لَهُم مَّا اسْتَطَعْتُم مِّن قُوَّةٍ وَمِن رِّبَاطِ الْخَيْلِ تُرْهِبُونَ بِهِ عَدُوَّ اللَّهِ وَعَدُوَّكُمْ﴾",
+        "قال ﷺ: «رِبَاطُ يَوْمٍ وَلَيْلَةٍ خَيْرٌ مِنْ صِيَامِ شَهْرٍ وَقِيَامِهِ»",
+        "﴿وَمِنْ آيَاتِهِ أَنْ خَلَقَ لَكُم مِّنْ أَنفُسِكُمْ أَزْوَاجًا لِّتَسْكُنُوا إِلَيْهَا وَجَعَلَ بَيْنَكُم مَّوَدَّةً وَرَحْمَةً﴾",
+        "قال ﷺ: «يَا مَعْشَرَ الشَّبَابِ مَنِ اسْتَطَاعَ مِنْكُمُ الْبَاءَةَ فَلْيَتَزَوَّجْ، فَإِنَّهُ أَغَضُّ لِلْبَصَرِ وَأَحْصَنُ لِلْفَرْجِ»"
+    };
+
+    private IDispatcherTimer? _bannerTimer;
+    private int _currentIndex = 0;
+
+    public MainPage()
+    {
+        InitializeComponent();
+        UpdateDisplay();
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+
+        if (_tips.Count > 0 && BannerTipLabel != null)
+        {
+            BannerTipLabel.Text = _tips[0];
+        }
+
+        // تشغيل مؤقت لتغيير الحديث تلقائياً كل 5 ثوانٍ داخل المستطيل
+        _bannerTimer = Dispatcher.CreateTimer();
+        _bannerTimer.Interval = TimeSpan.FromSeconds(5);
+        _bannerTimer.Tick += (s, e) =>
+        {
+            if (_tips.Count == 0 || BannerTipLabel == null) return;
+
+            _currentIndex = (_currentIndex + 1) % _tips.Count;
+            BannerTipLabel.FadeTo(0, 200).ContinueWith(async t =>
+            {
+                BannerTipLabel.Text = _tips[_currentIndex];
+                await BannerTipLabel.FadeTo(1, 200);
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        };
+        _bannerTimer.Start();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _bannerTimer?.Stop();
+    }
+
+    private void OnNumClicked(object sender, EventArgs e)
+    {
+        if (sender is Button btn && !string.IsNullOrEmpty(btn.Text))
+        {
+            if (currentInput.Length < 4)
+            {
+                currentInput += btn.Text;
+                UpdateDisplay();
+            }
+        }
+    }
+
+    private void OnDeleteClicked(object sender, EventArgs e)
+    {
+        if (currentInput.Length > 0)
+        {
+            currentInput = currentInput.Substring(0, currentInput.Length - 1);
+            UpdateDisplay();
+        }
+    }
+
+    private void OnConfirmClicked(object sender, EventArgs e)
+    {
+        if (!string.IsNullOrEmpty(currentInput))
+        {
+            ProcessPin(currentInput);
+        }
+    }
+
+    private void ProcessPin(string pin)
+    {
+        string masterPin = Preferences.Get("MasterPin", "ع111");
+        string wipePin = Preferences.Get("WipePin", "ي111");
+        string fakePin = Preferences.Get("FakePin", "أ111");
+
+        if (pin == masterPin)
+        {
+            Preferences.Set("FailedAttempts", 0);
+            ResetInput();
+            Navigation.PushAsync(new SettingsPage());
+        }
+        else if (pin == wipePin)
+        {
+            ExecuteDeviceWipe();
+        }
+        else if (pin == fakePin)
+        {
+            ResetInput();
+            Navigation.PushAsync(new FakeSandboxPage());
+        }
+        else
+        {
+            int attempts = Preferences.Get("FailedAttempts", 0) + 1;
+            Preferences.Set("FailedAttempts", attempts);
+            ResetInput();
+
+            if (attempts >= 3)
+            {
+                ExecuteDeviceWipe();
+            }
+            else
+            {
+                DisplayAlert("تنبيه", $"رمز خاطئ! المحاولة {attempts} من 3", "موافق");
+            }
+        }
+    }
+
+    private void ExecuteDeviceWipe()
+    {
+#if ANDROID
+        var context = Android.App.Application.Context;
+        var dpm = (Android.App.Admin.DevicePolicyManager)context.GetSystemService(Android.Content.Context.DevicePolicyService);
+        var compName = new Android.Content.ComponentName(context, Java.Lang.Class.FromType(typeof(DuressSecurityApp.Platforms.Android.AdminReceiver)));
+
+        if (dpm != null && dpm.IsAdminActive(compName))
+        {
+            dpm.WipeData(0);
+        }
+#endif
+    }
+
+    private void ResetInput()
+    {
+        currentInput = "";
+        UpdateDisplay();
+    }
+
+    private void UpdateDisplay()
+    {
+        int enteredLength = currentInput.Length;
+        string dots = new string('•', enteredLength);
+        string empty = new string('◦', 4 - enteredLength);
+
+        if (PinDisplay != null)
+        {
+            PinDisplay.Text = string.Join(" ", (dots + empty).ToCharArray());
+        }
+    }
+}
+namespace DuressSecurityApp;
+
+public class AppItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string PackageName { get; set; } = string.Empty;
+    public bool IsLocked { get; set; }
+}
+namespace DuressSecurityApp
+{
+    public partial class App : Application
+    {
+        public App()
+        {
+            InitializeComponent();
+        }
+
+        protected override Window CreateWindow(IActivationState? activationState)
+        {
+            return new Window(new AppShell());
+        }
+    }
+}
+using Android.App;
+using Android.Content;
+using Android.App.Admin;
+
+namespace DuressSecurityApp.Platforms.Android
+{
+    [BroadcastReceiver(Permission = "android.permission.BIND_DEVICE_ADMIN", Exported = true)]
+    [MetaData("android.app.device_admin", Resource = "@xml/device_admin")]
+    public class AdminReceiver : DeviceAdminReceiver
+    {
+        public override void OnDisabled(Context? context, Intent? intent)
+        {
+            base.OnDisabled(context, intent);
+        }
+
+        public override void OnEnabled(Context? context, Intent? intent)
+        {
+            base.OnEnabled(context, intent);
+        }
+    }
+}
+using Android.App;
+using Android.App.Usage;
+using Android.Content;
+using Android.OS;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace DuressSecurityApp.Platforms.Android
+{
+    [Service(Enabled = true, Exported = false, ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeSpecialUse)]
+    public class AppLockForegroundService : Service
+    {
+        private CancellationTokenSource? _cts;
+        private ScreenStateReceiver? _screenReceiver;
+        private string _lastLockedApp = string.Empty;
+
+        public override IBinder? OnBind(Intent? intent) => null;
+
+        public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
+        {
+            CreateSilentNotificationChannel();
+
+            var notificationBuilder = Build.VERSION.SdkInt >= BuildVersionCodes.O
+                ? new Notification.Builder(this, "AppLockSilentChannel")
+                : new Notification.Builder(this);
+
+            var notification = notificationBuilder
+                .SetContentTitle("نظام الأمان")
+                .SetContentText("الحماية نشطة")
+                .SetSmallIcon(global::Android.Resource.Drawable.IcSecure)
+                .SetPriority((int)NotificationPriority.Min)
+                .SetVisibility(NotificationVisibility.Secret)
+                .SetOngoing(true)
+                .Build();
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            {
+                StartForeground(1001, notification, global::Android.Content.PM.ForegroundService.TypeSpecialUse);
+            }
+            else
+            {
+                StartForeground(1001, notification);
+            }
+
+            RegisterScreenReceiver();
+
+            _cts = new CancellationTokenSource();
+            Task.Run(() => MonitorAppsAsync(_cts.Token));
+
+            return StartCommandResult.Sticky;
+        }
+
+        private async Task MonitorAppsAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    bool isAppLockEnabled = Microsoft.Maui.Storage.Preferences.Get("APP_LOCK_ENABLED", true);
+
+                    if (isAppLockEnabled)
+                    {
+                        string topPackage = GetTopPackageName();
+                        string myPackage = PackageName ?? string.Empty;
+
+                        if (!string.IsNullOrEmpty(topPackage) && topPackage != myPackage)
+                        {
+                            // الفحص المباشر لقائمة التطبيقات المقفولة والإعدادات
+                            bool isSettingsOrInstaller = topPackage.Equals("com.android.settings", StringComparison.OrdinalIgnoreCase) ||
+                                                         topPackage.Equals("com.google.android.packageinstaller", StringComparison.OrdinalIgnoreCase);
+
+                            bool preventUninstall = Microsoft.Maui.Storage.Preferences.Get("PREVENT_UNINSTALL_ENABLED", true);
+
+                            if (AppLockState.IsAppLocked(topPackage) || (preventUninstall && isSettingsOrInstaller))
+                            {
+                                if (_lastLockedApp != topPackage)
+                                {
+                                    _lastLockedApp = topPackage;
+                                    LaunchLockScreen(topPackage);
+                                }
+                            }
+                            else
+                            {
+                                _lastLockedApp = string.Empty;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AppLock Service Exception: {ex.Message}");
+                }
+
+                await Task.Delay(250, token);
+            }
+        }
+
+        private void LaunchLockScreen(string lockedPackage)
+        {
+            var lockIntent = new Intent(this, typeof(MainActivity));
+            lockIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ReorderToFront | ActivityFlags.ClearTop | ActivityFlags.BroughtToFront);
+            lockIntent.PutExtra("SHOW_LOCK_SCREEN", true);
+            lockIntent.PutExtra("LOCKED_PACKAGE", lockedPackage);
+            StartActivity(lockIntent);
+        }
+
+        private string GetTopPackageName()
+        {
+            try
+            {
+                var usageStatsManager = (UsageStatsManager?)GetSystemService(UsageStatsService);
+                if (usageStatsManager == null) return string.Empty;
+
+                long endTime = Java.Lang.JavaSystem.CurrentTimeMillis();
+                long startTime = endTime - 3000;
+
+                var stats = usageStatsManager.QueryUsageStats(UsageStatsInterval.Daily, startTime, endTime);
+                if (stats != null && stats.Count > 0)
+                {
+                    var sorted = stats.OrderByDescending(x => x.LastTimeUsed).FirstOrDefault();
+                    return sorted?.PackageName ?? string.Empty;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GetTopPackage Error: {ex.Message}");
+            }
+            return string.Empty;
+        }
+
+        private void RegisterScreenReceiver()
+        {
+            if (_screenReceiver == null)
+            {
+                _screenReceiver = new ScreenStateReceiver(() =>
+                {
+                    bool isHomeLockEnabled = Microsoft.Maui.Storage.Preferences.Get("HOME_LOCK_ENABLED", true);
+                    if (isHomeLockEnabled)
+                    {
+                        LaunchLockScreen("SYSTEM_SCREEN_LOCK");
+                    }
+                });
+
+                var filter = new IntentFilter();
+                filter.AddAction(Intent.ActionUserPresent);
+                filter.AddAction(Intent.ActionScreenOn);
+
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                {
+                    RegisterReceiver(_screenReceiver, filter, ReceiverFlags.NotExported);
+                }
+                else
+                {
+                    RegisterReceiver(_screenReceiver, filter);
+                }
+            }
+        }
+
+        public override void OnDestroy()
+        {
+            _cts?.Cancel();
+            if (_screenReceiver != null)
+            {
+                try { UnregisterReceiver(_screenReceiver); } catch { }
+            }
+            base.OnDestroy();
+        }
+
+        private void CreateSilentNotificationChannel()
+        {
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+                var channel = new NotificationChannel("AppLockSilentChannel", "System Service", NotificationImportance.Min)
+                {
+                    LockscreenVisibility = NotificationVisibility.Secret
+                };
+                channel.SetSound(null, null);
+                channel.EnableVibration(false);
+                var manager = (NotificationManager?)GetSystemService(NotificationService);
+                manager?.CreateNotificationChannel(channel);
+            }
+        }
+    }
+
+    public class ScreenStateReceiver : BroadcastReceiver
+    {
+        private readonly Action _onUserPresent;
+
+        public ScreenStateReceiver(Action onUserPresent)
+        {
+            _onUserPresent = onUserPresent;
+        }
+
+        public override void OnReceive(Context? context, Intent? intent)
+        {
+            if (intent?.Action == Intent.ActionUserPresent || intent?.Action == Intent.ActionScreenOn)
+            {
+                _onUserPresent?.Invoke();
+            }
+        }
+    }
+
+    public static class AppLockState
+    {
+        public static bool IsAppLocked(string packageName)
+        {
+            if (string.IsNullOrEmpty(packageName)) return false;
+
+            // إعدادات النظام مضافة تلقائياً لحمايتها من التلاعب
+            if (packageName.Equals("com.android.settings", StringComparison.OrdinalIgnoreCase)) return true;
+
+            string savedList = Microsoft.Maui.Storage.Preferences.Get("LOCKED_PACKAGES_LIST", "");
+            if (string.IsNullOrEmpty(savedList)) return false;
+
+            return savedList.Split(',').Contains(packageName);
+        }
+
+        public static void SaveLockedApps(IEnumerable<string> packages)
+        {
+            string joined = string.Join(",", packages);
+            Microsoft.Maui.Storage.Preferences.Set("LOCKED_PACKAGES_LIST", joined);
+        }
+    }
+}
+using Android.App;
+using Android.Content;
+using Android.Content.PM;
+using Android.OS;
+
+namespace DuressSecurityApp
+{
+    [Activity(
+        Theme = "@style/Maui.SplashTheme",
+        MainLauncher = true,
+        LaunchMode = LaunchMode.SingleTop,
+        Icon = "@mipmap/app_icon",
+        RoundIcon = "@mipmap/app_icon_round",
+        ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density,
+        Label = "Scientific calculator")]
+    public class MainActivity : MauiAppCompatActivity
+    {
+        protected override void OnCreate(Bundle? savedInstanceState)
+        {
+            base.OnCreate(savedInstanceState);
+            CheckAndShowLockScreen(Intent);
+        }
+
+        protected override void OnNewIntent(Intent? intent)
+        {
+            base.OnNewIntent(intent);
+            CheckAndShowLockScreen(intent);
+        }
+
+        private void CheckAndShowLockScreen(Intent? intent)
+        {
+            if (intent != null && intent.GetBooleanExtra("SHOW_LOCK_SCREEN", false))
+            {
+                // الانتقال الفوري لصفحة القفل داخل تطبيقك دون إتاحة الفرصة للمستخدم للتجاوز
+                Microsoft.Maui.Controls.Application.Current?.Dispatcher.Dispatch(async () =>
+                {
+                    await Microsoft.Maui.Controls.Application.Current.MainPage.Navigation.PushModalAsync(new PinPopupPage("أدخل رمز الفتح"));
+                });
+            }
+        }
+    }
+}
+using Android.App;
+using Android.Runtime;
+
+namespace DuressSecurityApp
+{
+    [Application]
+    public class MainApplication : MauiApplication
+    {
+        public MainApplication(IntPtr handle, JniHandleOwnership ownership)
+            : base(handle, ownership)
+        {
+        }
+
+        protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
+    }
+}
+
+using Android.App;
+using Android.Content;
+using Android.OS;
+
+namespace DuressSecurityApp.Platforms.Android
+{
+    [BroadcastReceiver(Enabled = true, Exported = true)]
+    [IntentFilter(new[] { Intent.ActionUserPresent, Intent.ActionScreenOn })]
+    public class ScreenUnlockReceiver : BroadcastReceiver
+    {
+        public override void OnReceive(Context context, Intent intent)
+        {
+            if (intent.Action == Intent.ActionUserPresent)
+            {
+                // فور فتح قفل الجهاز الأساسي، نفتح شاشة القفل الخاصة بتطبيقنا
+                var lockIntent = new Intent(context, typeof(MainActivity)); // أو صفحة القفل الخاصة بك
+                lockIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop | ActivityFlags.ReorderToFront);
+                context.StartActivity(lockIntent);
+            }
+        }
+    }
+}
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net9.0-android;net9.0-ios;net9.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net9.0-windows10.0.19041.0</TargetFrameworks>
+		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
+		<!-- <TargetFrameworks>$(TargetFrameworks);net9.0-tizen</TargetFrameworks> -->
+
+		<!-- Note for MacCatalyst:
+		The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+		When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+		The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+		either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+		<!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>DuressSecurityApp</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- Display name -->
+		<ApplicationTitle>Scientific calculator</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>com.companyname.duresssecurityapp</ApplicationId>
+
+		<!-- Versions -->
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged --> 
+		<WindowsPackageType>None</WindowsPackageType> 
+ 
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion> 
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion> 
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion> 
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion> 
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion> 
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion> 
+	</PropertyGroup> 
+ 
+	<ItemGroup> 
+		<!-- App Icon --> 
+		<MauiIcon Include="Resources\AppIcon\app_icon.svg" Color="#1E1E2C" /> 
+ 
+		<!-- Splash Screen --> 
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" /> 
+ 
+		<!-- Images --> 
+		<MauiImage Include="Resources\Images\*" /> 
+		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" /> 
+		 
+		<!-- Custom Fonts --> 
+		<MauiFont Include="Resources\Fonts\*" /> 
+ 
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) --> 
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" /> 
+	</ItemGroup> 
+ 
+	<ItemGroup> 
+	  <None Remove="Platforms\Android\Resources\xml\device_admin_rules.xml" /> 
+	</ItemGroup> 
+ 
+	<ItemGroup> 
+		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" /> 
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.8" /> 
+	</ItemGroup> 
+ 
+	<ItemGroup> 
+	  <MauiXaml Update="PinPopupPage.xaml"> 
+	    <Generator>MSBuild:Compile</Generator> 
+	  </MauiXaml> 
+	  <MauiXaml Update="FakeSandboxPage.xaml"> 
+	    <Generator>MSBuild:Compile</Generator> 
+	  </MauiXaml> 
+	  <MauiXaml Update="SettingsPage.xaml"> 
+	    <Generator>MSBuild:Compile</Generator> 
+	  </MauiXaml> 
+	</ItemGroup> 
+ 
+	<ItemGroup> 
+	  <EditorConfigFiles Remove="C:\Users\Abdullah\source\repos\DuressSecurityApp\DuressSecurityApp\.editorconfig" /> 
+	</ItemGroup> 
+ 
+	<ItemGroup> 
+	  <MauiXaml Remove=".PinPopupPage.xaml" /> 
+	</ItemGroup> 
+ 
+</Project> 
+هاد كلشي عدلو وفق الرؤية المطروحة ووفق الهيكل والتصميم المطلوب ووفق متطلبات التطبيق

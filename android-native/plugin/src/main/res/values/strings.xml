@@ -1,0 +1,4 @@
+<resources>
+    <string name="duress_app_lock_accessibility_description">Duress Security checks only which app is currently in the foreground and shows the PIN gate for apps you selected. It does not read screen text, messages, passwords, or keystrokes.</string>
+    <string name="duress_app_lock_accessibility_summary">Visible app lock for packages you explicitly selected in Duress Security.</string>
+</resources>
