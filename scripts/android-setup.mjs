@@ -68,6 +68,7 @@ manifest = manifest.replace(/<application\b([^>]*)>/, (_, attrs0) => {
   return `<application${attrs}>`;
 });
 manifest = manifest.replace(/\s*<uses-permission\s+android:name="android\.permission\.(?:INTERNET|ACCESS_NETWORK_STATE)"\s*\/>/g, "");
+if (!manifest.includes("android.intent.category.LAUNCHER")) throw new Error("Generated Android manifest is missing the launcher category");
 await writeFile(manifestPath, manifest);
 
 const rootGradlePath = path.join(androidDir, "build.gradle");
