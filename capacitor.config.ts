@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.duresssecurity.app",
-  appName: "Duress Security",
+  appName: "الآلة الحاسبة",
   webDir: "dist/client",
   server: { androidScheme: "https" },
 };
