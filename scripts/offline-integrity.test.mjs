@@ -33,3 +33,22 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /kotlinOptions \{ jvmTarget = \"17\" \}/);
   assert.match(source, /MainActivity\.kt/);
 });
+
+test("calculator branding stays Android-safe and does not change the security package", async () => {
+  const source = await read("scripts/android-setup.mjs");
+  assert.match(source, /calculator_app_name/);
+  assert.match(source, /android:icon=\"@drawable\/ic_launcher\"/);
+  assert.match(source, /android:roundIcon=\"@drawable\/ic_launcher_round\"/);
+  assert.ok(source.includes('android\\.permission\\.INTERNET'));
+  assert.ok(source.includes('android\\.permission\\.ACCESS_NETWORK_STATE'));
+});
+
+test("calculator screen remains a calculator-only presentation layer", async () => {
+  const source = await read("src/components/fake-calculator.tsx");
+  assert.match(source, /الآلة الحاسبة/);
+  assert.match(source, /Calculator/);
+  assert.match(source, /evalExpr/);
+  assert.match(source, /onOpenOwner/);
+  assert.doesNotMatch(source, /fetch\(/);
+  assert.doesNotMatch(source, /XMLHttpRequest/);
+});
