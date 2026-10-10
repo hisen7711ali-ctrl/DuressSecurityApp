@@ -30,7 +30,7 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /org\.jetbrains\.kotlin\.android/);
   assert.match(source, /version \"2\.0\.21\" apply false/);
-  assert.match(source, /kotlinOptions \{ jvmTarget = \"17\" \}/);
+  assert.match(source, /jvmToolchain\(17\)/);
   assert.match(source, /MainActivity\.kt/);
 });
 
