@@ -31,7 +31,20 @@ jobs:
       - name: Install npm dependencies
         run: npm install --no-audit --no-fund
       - name: Run tests
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee npm-test.log
+          code=${PIPESTATUS[0]}
+          exit "$code"
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-test-log
+          path: npm-test.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Check TypeScript
         run: npm run typecheck
       - name: Build debug APK
