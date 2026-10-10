@@ -5,3 +5,4 @@
 - واجهة البداية: حاسبة قياسية متجاوبة.
 - تبقى البنية الأمنية وطبقة Kotlin وباقي الإعدادات كما هي، مع الحفاظ على `com.duresssecurity.app`.
 - يتم تضمين `MainActivity.kt` وجميع ملفات Kotlin الأصلية صراحةً في مشروع Android.
+- هدف Android الأدنى: API 23، مع bytecode Java/Kotlin 17 لتوافق أوسع.
