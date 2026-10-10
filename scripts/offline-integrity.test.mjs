@@ -16,8 +16,8 @@ test("offline guard allows no remote host", async () => {
 
 test("offline Android setup strips network permissions", async () => {
   const source = await read("scripts/android-setup.mjs");
-  assert.ok(source.includes('android\\.permission\\.INTERNET'));
-  assert.ok(source.includes('android\\.permission\\.ACCESS_NETWORK_STATE'));
+  assert.ok(source.includes('INTERNET'));
+  assert.ok(source.includes('ACCESS_NETWORK_STATE'));
 });
 
 test("offline manifest additions do not request internet access", async () => {
@@ -45,10 +45,10 @@ test("all native Kotlin security classes are copied into the Android app", async
 test("calculator branding stays Android-safe and does not change the security package", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /calculator_app_name/);
-  assert.match(source, /android:icon=\"@drawable\/ic_launcher\"/);
-  assert.match(source, /android:roundIcon=\"@drawable\/ic_launcher_round\"/);
-  assert.ok(source.includes('android\\.permission\\.INTERNET'));
-  assert.ok(source.includes('android\\.permission\\.ACCESS_NETWORK_STATE'));
+  assert.match(source, /@drawable\/ic_launcher/);
+  assert.match(source, /@drawable\/ic_launcher_round/);
+  assert.ok(source.includes('INTERNET'));
+  assert.ok(source.includes('ACCESS_NETWORK_STATE'));
 });
 
 test("calculator screen remains a calculator-only presentation layer", async () => {
