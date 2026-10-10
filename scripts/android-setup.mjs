@@ -74,7 +74,13 @@ await writeFile(manifestPath, manifest);
 const rootGradlePath = path.join(androidDir, "build.gradle");
 if (await exists(rootGradlePath)) {
   let rootGradle = await readFile(rootGradlePath, "utf8");
-  if (!rootGradle.includes("org.jetbrains.kotlin.android")) rootGradle = `plugins { id "org.jetbrains.kotlin.android" version "2.0.21" apply false }\n\n${rootGradle}`;
+  if (/buildscript\s*\{[\s\S]*?dependencies\s*\{/.test(rootGradle)) {
+    if (!rootGradle.includes("org.jetbrains.kotlin:kotlin-gradle-plugin")) {
+      rootGradle = rootGradle.replace(/(buildscript\s*\{[\s\S]*?dependencies\s*\{)/, `$1\n    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21"`);
+    }
+  } else if (!rootGradle.includes("org.jetbrains.kotlin.android")) {
+    rootGradle = `plugins { id "org.jetbrains.kotlin.android" version "2.0.21" apply false }\n\n${rootGradle}`;
+  }
   await writeFile(rootGradlePath, rootGradle);
 }
 
