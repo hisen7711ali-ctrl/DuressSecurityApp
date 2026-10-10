@@ -86,7 +86,11 @@ await cp(path.join(root, "android-native/mainactivity-patch/MainActivity.kt"), m
 const gradlePath = path.join(androidDir, "app/build.gradle");
 if (await exists(gradlePath)) {
   let gradle = await readFile(gradlePath, "utf8");
-  if (!gradle.includes("org.jetbrains.kotlin.android")) gradle = gradle.replace(/plugins\s*\{/, m => `${m}\n    id "org.jetbrains.kotlin.android" version "2.0.21"`);
+  if (!gradle.includes("org.jetbrains.kotlin.android")) {
+    const rootGradle = await readFile(rootGradlePath, "utf8");
+    if (/kotlin-gradle-plugin/.test(rootGradle)) gradle += `\napply plugin: "org.jetbrains.kotlin.android"\n`;
+    else gradle = gradle.replace(/plugins\s*\{/, m => `${m}\n    id "org.jetbrains.kotlin.android" version "2.0.21"`);
+  }
   if (!/compileSdk(?:Version)?\s+35/.test(gradle)) gradle = gradle.replace(/android\s*\{/, m => `${m}\n    compileSdk 35`);
   if (!gradle.includes("targetSdkVersion 35")) gradle = gradle.replace(/defaultConfig\s*\{/, m => `${m}\n        targetSdkVersion 35`);
   if (!gradle.includes("minSdkVersion 23")) gradle = gradle.replace(/defaultConfig\s*\{/, m => `${m}\n        minSdkVersion 23`);
