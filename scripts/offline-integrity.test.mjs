@@ -34,6 +34,14 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /MainActivity\.kt/);
 });
 
+test("all native Kotlin security classes are copied into the Android app", async () => {
+  const source = await read("scripts/android-setup.mjs");
+  for (const file of ["AdminReceiver.kt", "BootCompletedReceiver.kt", "SecurityAdminPlugin.kt", "SecureStorage.kt", "AppLockAccessibilityService.kt"]) {
+    assert.match(source, new RegExp(file.replace(".", "\\.")));
+  }
+  assert.match(source, /const mainActivity = path\.join\(androidDir, "app\/src\/main\/java\/com\/duresssecurity\/app\/MainActivity\.kt"\)/);
+});
+
 test("calculator branding stays Android-safe and does not change the security package", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /calculator_app_name/);
