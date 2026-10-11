@@ -9,10 +9,12 @@ const read = (p) => readFile(path.join(root, p), 'utf8');
 test('calculator is the first ordinary screen and owner entry is hidden behind the exact trigger', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
+  const icon = await read('scripts/brand-android-icon.mjs');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
   assert.match(shell, /calculatorFront && session === "locked"/);
   assert.match(shell, /SECRET_CALCULATOR_COMMAND.*0×0×0×9=/);
-  assert.match(shell, /session !== "locked"/);
+  assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
+  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(calculator, /onSecretCommand/);
 
   // Exact hidden owner trigger: clean calculator -> 0 -> × -> 0 -> × -> 0 -> × -> 9 -> =.
@@ -26,6 +28,11 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
 
   // Zero is a normal centered wide calculator key, not a stretched/right-aligned label.
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
+
+  // Launcher branding must visibly be a calculator, not a shield, robot, or generic mark.
+  assert.match(icon, /calculator-shaped|calculator/);
+  assert.match(icon, /<!-- calculator keys -->/);
+  assert.match(icon, /<!-- display -->/);
 });
 
 test('vault encrypts data with PBKDF2 and AES-GCM and has no plaintext fallback', async () => {
