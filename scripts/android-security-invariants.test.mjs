@@ -61,5 +61,5 @@ test('native storage failure routes the app to explicit fail-closed recovery UI'
 test('native activity marks screenshots secure and does not claim to replace Keyguard', async () => {
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(activity, /FLAG_SECURE/);
-  assert.match(activity, /do not read, replace, or dismiss a secure Android Keyguard/i);
+  assert.match(activity, /The app must not read, replace, or dismiss a secure Android Keyguard/i);
 });
