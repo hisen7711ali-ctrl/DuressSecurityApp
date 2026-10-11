@@ -58,8 +58,8 @@ test('native storage failure routes the app to explicit fail-closed recovery UI'
   assert.match(recovery, /This does not factory-reset the phone|لن يتم مسح الهاتف/);
 });
 
-test('native activity marks screenshots secure and does not claim to replace Keyguard', async () => {
+test('native activity uses a secure window and explicitly keeps the app PIN gate separate from Android Keyguard', async () => {
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(activity, /FLAG_SECURE/);
-  assert.match(activity, /The app must not read, replace, or dismiss a secure Android Keyguard/i);
+  assert.match(activity, /app-level PIN gate remains separate from Android's system Keyguard/i);
 });
