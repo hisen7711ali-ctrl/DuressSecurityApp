@@ -6,18 +6,17 @@ import com.duresssecurity.admin.SecurityAdminPlugin
 import com.getcapacitor.BridgeActivity
 
 /**
- * Capacitor MainActivity with the native security bridge and secure-window flags.
+ * Capacitor MainActivity with the native security bridge.
  * The app-level PIN gate remains separate from Android's system Keyguard.
+ *
+ * Screenshot capture is intentionally allowed. The security model protects
+ * access with the app PIN and Android permissions rather than globally blocking
+ * the user's normal screenshot function.
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
         super.onCreate(savedInstanceState)
-
-        window.setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_SECURE,
-            android.view.WindowManager.LayoutParams.FLAG_SECURE,
-        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
