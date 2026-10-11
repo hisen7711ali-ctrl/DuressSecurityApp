@@ -11,6 +11,8 @@ const ROWS = [
   ["0", ".", "="],
 ] as const;
 
+type SecretCommandHandler = (sequence: string) => boolean;
+
 function evalExpr(raw: string): string {
   const normalized = raw.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
   const tokens = normalized.match(/(?:\d+\.?\d*|\.\d+)|[()+\-*/%]/g) ?? [];
@@ -92,7 +94,13 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   );
 }
 
-export function FakeCalculator({ onOpenOwner }: { onOpenOwner: () => void }) {
+export function FakeCalculator({
+  onOpenOwner,
+  onSecretCommand,
+}: {
+  onOpenOwner: () => void;
+  onSecretCommand?: SecretCommandHandler;
+}) {
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
@@ -110,7 +118,14 @@ export function FakeCalculator({ onOpenOwner }: { onOpenOwner: () => void }) {
       return;
     }
     if (key === "%") {
-      const next = expr ? `${expr}%` : "0%";
+      // A leading % starts the deliberately unobtrusive command grammar.
+      // Normal percentage calculations (for example 50%) remain unchanged.
+      if (!expr) {
+        setExpr("%");
+        setDisplay("%");
+        return;
+      }
+      const next = `${expr}%`;
       const numeric = Number.parseFloat(expr);
       if (Number.isFinite(numeric)) {
         const result = String(numeric / 100);
@@ -123,6 +138,16 @@ export function FakeCalculator({ onOpenOwner }: { onOpenOwner: () => void }) {
       return;
     }
     if (key === "=") {
+      // Secret commands are only recognized when the expression begins with
+      // %, so ordinary calculator arithmetic can never accidentally dispatch
+      // an action. Unknown command sequences deliberately look like a normal
+      // calculator error and never invoke a handler.
+      if (expr.startsWith("%")) {
+        const handled = onSecretCommand?.(expr) ?? false;
+        setExpr(handled ? "" : "Error");
+        setDisplay(handled ? "0" : "Error");
+        return;
+      }
       const result = evalExpr(expr || display);
       setDisplay(result);
       setExpr(result === "Error" ? "" : result);
