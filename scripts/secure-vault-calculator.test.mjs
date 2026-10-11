@@ -13,7 +13,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /calculatorFront && session === "locked"/);
   assert.match(shell, /SECRET_CALCULATOR_COMMANDS.*%\+=.*security/s);
   assert.match(calculator, /onSecretCommand/);
-  assert.match(calculator, /"%\+=");/);
+  assert.match(calculator, /nextCommand === "%\+="/);
   assert.match(calculator, /secretVisible/);
   assert.match(calculator, /5000/);
   assert.match(calculator, /متابعة|Continue/);
