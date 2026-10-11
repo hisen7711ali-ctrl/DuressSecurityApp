@@ -10,14 +10,17 @@ const manifestPath = path.join(androidDir, "app", "src", "main", "AndroidManifes
 
 const exists = file => access(file).then(() => true).catch(() => false);
 
+const kotlinCompilerBlock = `kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }`;
+
 const patchGroovy = source => {
   let out = source;
   out = out.replace(/sourceCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "sourceCompatibility = JavaVersion.VERSION_17");
   out = out.replace(/targetCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "targetCompatibility = JavaVersion.VERSION_17");
   out = out.replace(/sourceCompatibility\s+JavaVersion\.VERSION_\d+/g, "sourceCompatibility JavaVersion.VERSION_17");
   out = out.replace(/targetCompatibility\s+JavaVersion\.VERSION_\d+/g, "targetCompatibility JavaVersion.VERSION_17");
-  out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, 'jvmTarget = "17"');
+  out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, 'jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17');
   out = out.replace(/jvmToolchain\(\d+\)/g, "jvmToolchain(17)");
+  out = out.replace(/kotlin\s*\{\s*kotlinOptions\s*\{[\s\S]*?\}\s*\}/g, kotlinCompilerBlock);
   out = out.replace(/tasks\.withType\(JavaCompile\)\.configureEach\s*\{[\s\S]*?\}/g, block => /options\.release/.test(block) ? "" : block);
   out = out.replace(/tasks\.withType<JavaCompile>\(\)\.configureEach\s*\{[\s\S]*?\}/g, block => /options\.release/.test(block) ? "" : block);
   out = out.replace(/\boptions\.release\s*=\s*[^\n;]+;?/g, "");
@@ -25,8 +28,8 @@ const patchGroovy = source => {
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }`);
   }
-  if (!out.includes('jvmTarget = "17"')) {
-    out += `\n\nkotlin { kotlinOptions { jvmTarget = "17" } }\n`;
+  if (!/kotlin\s*\{[\s\S]*compilerOptions\s*\{/.test(out)) {
+    out += `\n\n${kotlinCompilerBlock}\n`;
   }
   return out;
 };
@@ -36,16 +39,17 @@ const patchKts = source => {
   out = out.replace(/sourceCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "sourceCompatibility = JavaVersion.VERSION_17");
   out = out.replace(/targetCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "targetCompatibility = JavaVersion.VERSION_17");
   out = out.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_17");
-  out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, 'jvmTarget = "17"');
+  out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, 'jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17');
   out = out.replace(/jvmToolchain\(\d+\)/g, "jvmToolchain(17)");
+  out = out.replace(/kotlin\s*\{\s*kotlinOptions\s*\{[\s\S]*?\}\s*\}/g, kotlinCompilerBlock);
   out = out.replace(/tasks\.withType<JavaCompile>\(\)\.configureEach\s*\{[\s\S]*?\}/g, block => /options\.release/.test(block) ? "" : block);
   out = out.replace(/\boptions\.release\s*=\s*[^\n;]+;?/g, "");
   out = out.replace(/\boptions\.release\.set\([^\)]*\)/g, "");
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }`);
   }
-  if (!out.includes('jvmTarget = "17"')) {
-    out += `\n\nkotlin { kotlinOptions { jvmTarget = "17" } }\n`;
+  if (!/kotlin\s*\{[\s\S]*compilerOptions\s*\{/.test(out)) {
+    out += `\n\n${kotlinCompilerBlock}\n`;
   }
   return out;
 };
@@ -62,11 +66,10 @@ const finalPath = await exists(gradlePath) ? gradlePath : ktsPath;
 const finalSource = await readFile(finalPath, "utf8");
 if (/JavaVersion\.VERSION_(?!17\b)\d+/.test(finalSource)) throw new Error("Android Gradle file still contains a non-17 JavaVersion target after alignment.");
 if (/jvmTarget\s*=\s*["'](?!17["'])\d+["']/.test(finalSource)) throw new Error("Android Gradle file still contains a non-17 Kotlin JVM target after alignment.");
-if (!finalSource.includes('jvmTarget = "17"')) throw new Error("Android Gradle file is missing Kotlin JVM target 17 after alignment.");
+if (/kotlin\s*\{\s*kotlinOptions\s*\{/.test(finalSource)) throw new Error("Android Gradle file still contains obsolete Kotlin kotlinOptions configuration.");
+if (!/compilerOptions\s*\{[\s\S]*JvmTarget\.JVM_17/.test(finalSource)) throw new Error("Android Gradle file is missing Kotlin compilerOptions JVM target 17 after alignment.");
 if (/options\.release/.test(finalSource)) throw new Error("Android Gradle file still contains Java --release configuration after alignment.");
 
-// `cap sync` can reintroduce network permissions. Enforce the offline invariant
-// on the final generated manifest immediately before Gradle.
 if (await exists(manifestPath)) {
   let manifest = await readFile(manifestPath, "utf8");
   manifest = manifest.replace(/\s*<uses-permission\s+android:name="android\.permission\.(?:INTERNET|ACCESS_NETWORK_STATE)"\s*\/>/g, "");
@@ -74,4 +77,4 @@ if (await exists(manifestPath)) {
   if (/android\.permission\.(?:INTERNET|ACCESS_NETWORK_STATE)/.test(manifest)) throw new Error("Final Android manifest still requests network permissions.");
 }
 
-console.log("Android Java/Kotlin JVM targets aligned at 17, Java --release removed, and final manifest kept offline.");
+console.log("Android Java/Kotlin JVM targets aligned at 17 with Kotlin compilerOptions, Java --release removed, and final manifest kept offline.");
