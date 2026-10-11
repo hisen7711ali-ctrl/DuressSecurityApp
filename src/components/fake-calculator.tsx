@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ const ROWS = [
 ] as const;
 
 const OWNER_TRIGGER = "0×0×0×9";
+const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
 type SecretCommandHandler = (sequence: string) => boolean;
 
 function evalExpr(raw: string): string {
@@ -95,35 +96,55 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
+  // Keep the hidden trigger in a synchronous ref. Android WebView can batch rapid
+  // touch events, so the security command must not depend on React rendering between taps.
+  const ownerSequenceRef = useRef("");
+
+  function resetOwnerSequence() {
+    ownerSequenceRef.current = "";
+  }
+
+  function trackOwnerKey(key: string): boolean {
+    if (key === "=") {
+      if (ownerSequenceRef.current !== OWNER_TRIGGER) return false;
+      const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
+      if (handled) resetOwnerSequence();
+      return handled;
+    }
+
+    if (key !== "0" && key !== "×" && key !== "9") {
+      resetOwnerSequence();
+      return false;
+    }
+
+    const next = `${ownerSequenceRef.current}${key}`;
+    if (OWNER_TRIGGER.startsWith(next)) {
+      ownerSequenceRef.current = next;
+      return false;
+    }
+
+    ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
+    return false;
+  }
 
   function tap(key: string) {
     if (key === "AC") {
+      resetOwnerSequence();
       setExpr("");
       setDisplay("0");
       return;
     }
 
-    // Owner entry is the exact visible calculator sequence 0 × 0 × 0 × 9 =.
-    // While the expression is a prefix of that sequence, keep it as a normal-looking
-    // calculator expression. On the exact final '=' we consume it and open the gate.
-    const candidate = key === "=" ? expr : `${expr}${key}`;
-    const triggerPrefix = candidate === "" || OWNER_TRIGGER.startsWith(candidate);
-    if (triggerPrefix && candidate.length > 0) {
-      if (key === "=") {
-        if (expr === OWNER_TRIGGER) {
-          const handled = onSecretCommand?.(`${OWNER_TRIGGER}=`) ?? false;
-          if (handled) {
-            setExpr("");
-            setDisplay("0");
-            return;
-          }
-        }
-      } else {
-        setExpr(candidate);
-        setDisplay(candidate);
-        return;
-      }
+    // Exact owner entry: 0 × 0 × 0 × 9 =.
+    // This state machine is independent of the calculator expression and therefore
+    // cannot be broken by React state batching or fast physical taps.
+    if (trackOwnerKey(key)) {
+      setExpr("");
+      setDisplay("0");
+      return;
     }
+
+    if (key !== "0" && key !== "×" && key !== "9" && key !== "=") resetOwnerSequence();
 
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
