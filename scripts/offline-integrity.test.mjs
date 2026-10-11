@@ -42,7 +42,8 @@ test("Android build applies one final JVM/offline normalization after Capacitor 
   assert.match(build, /align-android-jvm\.mjs/);
   assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
-  assert.match(align, /jvmTarget = \"17\"/);
+  assert.match(align, /compilerOptions[\s\S]*JvmTarget\.JVM_17/);
+  assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
   assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
   assert.match(align, /Android manifest/);
   assert.match(align, /INTERNET/);
