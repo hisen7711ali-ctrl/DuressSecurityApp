@@ -30,26 +30,33 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /org\.jetbrains\.kotlin\.android/);
   assert.match(source, /version \"2\.0\.21\" apply false/);
-  assert.match(source, /jvmToolchain\(17\)/);
-  assert.match(source, /compileOptions \{ sourceCompatibility JavaVersion\.VERSION_17; targetCompatibility JavaVersion\.VERSION_17 \}/);
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android build applies one final JVM/offline normalization after Capacitor sync", async () => {
+test("Android build aligns Java and Kotlin to JVM 21 after every Capacitor sync", async () => {
   const build = await read("scripts/build-apk.mjs");
   const align = await read("scripts/align-android-jvm.mjs");
+  const debugWorkflow = await read(".github/workflows/android-debug.yml");
+  const diagnosticWorkflow = await read(".github/workflows/android-build-diagnostic.yml");
   assert.match(build, /npx[\s\S]*\[\"cap\", \"sync\", \"android\"\]/);
   assert.match(build, /align-android-jvm\.mjs/);
-  assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
-  assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
-  assert.match(align, /javaCompiler\s*=\s*javaToolchains\.compilerFor[\s\S]*JavaLanguageVersion\.of\(17\)/);
-  assert.match(align, /compilerOptions[\s\S]*JvmTarget\.JVM_17/);
+  assert.match(align, /VERSION_21/);
+  assert.match(align, /sourceCompatibility[\s\S]*21/);
+  assert.match(align, /targetCompatibility[\s\S]*21/);
+  assert.match(align, /javaCompiler\s*=\s*javaToolchains\.compilerFor[\s\S]*JavaLanguageVersion\.of\(21\)/);
+  assert.match(align, /compilerOptions[\s\S]*JvmTarget\.JVM_21/);
   assert.match(align, /KotlinCompilationTask/);
+  assert.match(align, /DURESS_JVM21_ALL_MODULES/);
   assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
   assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
   assert.match(align, /Android manifest/);
   assert.match(align, /INTERNET/);
   assert.match(align, /ACCESS_NETWORK_STATE/);
+  assert.match(debugWorkflow, /java-version: '21'/);
+  assert.match(diagnosticWorkflow, /java-version: '21'/);
+  assert.match(diagnosticWorkflow, /gradlew --version/);
+  assert.match(diagnosticWorkflow, /compileDebugJavaWithJavac/);
+  assert.match(diagnosticWorkflow, /compileDebugKotlin/);
 });
 
 test("all native Kotlin security classes are copied into the Android app", async () => {
