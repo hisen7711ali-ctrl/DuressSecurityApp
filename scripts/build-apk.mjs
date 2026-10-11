@@ -13,6 +13,7 @@ const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
 try {
   await run(process.execPath, ["scripts/android-setup.mjs"]);
   await run("npx", ["cap", "sync", "android"]);
+  await run(process.execPath, ["scripts/align-android-jvm.mjs"]);
   const androidDir = path.join(root, "android");
   const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
