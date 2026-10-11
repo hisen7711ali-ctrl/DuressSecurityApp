@@ -42,10 +42,12 @@ export function AppShell() {
     openOverlay({ kind: "unlock" });
   };
 
-  // Exact hidden owner command: 0 × 0 × 0 × 9 =.
-  // It is accepted only from the locked calculator and opens the normal PIN gate immediately.
+  // The calculator is the decoy entry screen, so the exact command itself is the
+  // authorization to show the normal security PIN gate. Do not add a session-mode
+  // check here: after a restart, during hydration, or on a calculator-only state the
+  // same deterministic trigger must still work. Destructive actions remain behind PIN.
   const handleCalculatorCommand = (sequence: string): boolean => {
-    if (sequence !== SECRET_CALCULATOR_COMMAND || session !== "locked") return false;
+    if (sequence !== SECRET_CALCULATOR_COMMAND) return false;
     openSecurityGate();
     return true;
   };
@@ -79,7 +81,7 @@ export function AppShell() {
     previousSession.current = session;
   }, [session]);
   useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
-  useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(id); }, [toast, setToast]);
+  useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
