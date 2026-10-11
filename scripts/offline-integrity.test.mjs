@@ -35,7 +35,7 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android build applies JVM and offline finalization after Capacitor sync", async () => {
+test("Android build applies one final JVM/offline normalization after Capacitor sync", async () => {
   const build = await read("scripts/build-apk.mjs");
   const align = await read("scripts/align-android-jvm.mjs");
   assert.match(build, /npx[\s\S]*\[\"cap\", \"sync\", \"android\"\]/);
@@ -43,7 +43,7 @@ test("Android build applies JVM and offline finalization after Capacitor sync", 
   assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /jvmTarget = \"17\"/);
-  assert.match(align, /options\.release/);
+  assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
   assert.match(align, /Android manifest/);
   assert.match(align, /INTERNET/);
   assert.match(align, /ACCESS_NETWORK_STATE/);
