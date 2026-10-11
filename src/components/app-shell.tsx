@@ -42,10 +42,9 @@ export function AppShell() {
     openOverlay({ kind: "unlock" });
   };
 
-  // The calculator is the decoy entry screen, so the exact command itself is the
-  // authorization to show the normal security PIN gate. Do not add a session-mode
-  // check here: after a restart, during hydration, or on a calculator-only state the
-  // same deterministic trigger must still work. Destructive actions remain behind PIN.
+  // The exact calculator command is the deterministic owner-entry trigger.
+  // It must work regardless of the current decoy/duress display state; the PIN gate
+  // remains the authorization boundary for the protected workspace.
   const handleCalculatorCommand = (sequence: string): boolean => {
     if (sequence !== SECRET_CALCULATOR_COMMAND) return false;
     openSecurityGate();
@@ -87,9 +86,14 @@ export function AppShell() {
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
+
+  // The unlock overlay always has priority over the decoy calculator, including
+  // duress mode. This is the critical path that prevents the correct hidden trigger
+  // from being swallowed by the persistent duress calculator screen.
+  if (overlay?.kind === "unlock") return <LockGate />;
+
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
-  if (calculatorFront && session === "locked" && overlay?.kind === "unlock") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
-  if (session === "locked" && overlay?.kind === "unlock") return <LockGate />;
+  if (calculatorFront && session === "locked") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
 
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
 }
