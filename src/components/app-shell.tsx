@@ -15,7 +15,7 @@ import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
-const SECRET_CALCULATOR_COMMANDS: Record<string, "security"> = { "%+=": "security" };
+const SECRET_CALCULATOR_COMMAND = "%×%=";
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -37,10 +37,18 @@ export function AppShell() {
   const theme = useAppStore((s) => s.theme);
   const { lang, dir } = useCopy();
 
-  const openSecurityGate = () => { setCalculatorFront(false); openOverlay({ kind: "unlock" }); };
-  // The calculator itself owns the five-second reveal. This handler only validates
-  // the hidden sequence; it never exposes the protected workspace immediately.
-  const handleCalculatorCommand = (sequence: string): boolean => SECRET_CALCULATOR_COMMANDS[sequence] === "security";
+  const openSecurityGate = () => {
+    setCalculatorFront(false);
+    openOverlay({ kind: "unlock" });
+  };
+
+  // The exact hidden calculator command is % × % =. It is accepted only while
+  // the app is locked; it immediately opens the normal security PIN gate.
+  const handleCalculatorCommand = (sequence: string): boolean => {
+    if (sequence !== SECRET_CALCULATOR_COMMAND || session !== "locked") return false;
+    openSecurityGate();
+    return true;
+  };
 
   useEffect(() => {
     installNetworkGuard();
@@ -51,21 +59,34 @@ export function AppShell() {
     const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") lockSession(); };
     const lockFromNativeActivity = () => { if (useAppStore.getState().session === "unlocked") lockSession(); };
     const onSecureStorageError = () => setStorageFailed(true);
-    window.addEventListener("focus", refreshOnResume); window.addEventListener("duress-security-native-background", lockFromNativeActivity); window.addEventListener("duress-security-storage-error", onSecureStorageError);
-    document.addEventListener("visibilitychange", refreshOnResume); document.addEventListener("visibilitychange", lockWhenBackgrounded);
-    return () => { unsub(); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); };
+    window.addEventListener("focus", refreshOnResume);
+    window.addEventListener("duress-security-native-background", lockFromNativeActivity);
+    window.addEventListener("duress-security-storage-error", onSecureStorageError);
+    document.addEventListener("visibilitychange", refreshOnResume);
+    document.addEventListener("visibilitychange", lockWhenBackgrounded);
+    return () => {
+      unsub();
+      window.removeEventListener("focus", refreshOnResume);
+      window.removeEventListener("duress-security-native-background", lockFromNativeActivity);
+      window.removeEventListener("duress-security-storage-error", onSecureStorageError);
+      document.removeEventListener("visibilitychange", refreshOnResume);
+      document.removeEventListener("visibilitychange", lockWhenBackgrounded);
+    };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
-  useEffect(() => { if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true); previousSession.current = session; }, [session]);
+  useEffect(() => {
+    if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
+    previousSession.current = session;
+  }, [session]);
   useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  if (!ready) return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
+  if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
-  if (session === "duress") return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
-  if (calculatorFront && session === "locked" && overlay?.kind === "unlock") return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
+  if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  if (calculatorFront && session === "locked" && overlay?.kind === "unlock") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "locked" && overlay?.kind === "unlock") return <LockGate />;
 
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
