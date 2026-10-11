@@ -15,7 +15,7 @@ import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
-const SECRET_CALCULATOR_COMMAND = "%×%=";
+const SECRET_CALCULATOR_COMMAND = "0×0×0×9=";
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -42,8 +42,8 @@ export function AppShell() {
     openOverlay({ kind: "unlock" });
   };
 
-  // The exact hidden calculator command is % × % =. It is accepted only while
-  // the app is locked; it immediately opens the normal security PIN gate.
+  // Exact hidden owner command: 0 × 0 × 0 × 9 =.
+  // It is accepted only from the locked calculator and opens the normal PIN gate immediately.
   const handleCalculatorCommand = (sequence: string): boolean => {
     if (sequence !== SECRET_CALCULATOR_COMMAND || session !== "locked") return false;
     openSecurityGate();
