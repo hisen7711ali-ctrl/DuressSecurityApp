@@ -35,13 +35,18 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android build uses one JVM configuration source and does not apply a second alignment pass", async () => {
+test("Android build normalizes JVM targets after Capacitor sync", async () => {
   const setup = await read("scripts/android-setup.mjs");
   const build = await read("scripts/build-apk.mjs");
+  const align = await read("scripts/align-android-jvm.mjs");
   assert.match(setup, /jvmToolchain\(17\)/);
   assert.match(setup, /JavaVersion\.VERSION_17/);
-  assert.doesNotMatch(setup, /options\.release/);
-  assert.doesNotMatch(build, /align-android-jvm\.mjs/);
+  assert.match(build, /cap sync android/);
+  assert.match(build, /align-android-jvm\.mjs/);
+  assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
+  assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
+  assert.match(align, /jvmTarget = \"17\"/);
+  assert.match(align, /options\.release/);
 });
 
 test("all native Kotlin security classes are copied into the Android app", async () => {
