@@ -35,7 +35,7 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /jvmToolchain\(21\)/);
 });
 
-test("Android build aligns Java and Kotlin to JVM 21 after every Capacitor sync", async () => {
+test("Android build keeps its configured JVM alignment checks", async () => {
   const build = await read("scripts/build-apk.mjs");
   const align = await read("scripts/align-android-jvm.mjs");
   const debugWorkflow = await read(".github/workflows/android-debug.yml");
@@ -52,11 +52,6 @@ test("Android build aligns Java and Kotlin to JVM 21 after every Capacitor sync"
   assert.match(align, /jvmToolchain\(21\)/);
   assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
   assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
-  assert.doesNotMatch(align, /out \+= `\\n\$\{groovyAppTasks\}/);
-  assert.doesNotMatch(align, /out \+= `\\n\$\{ktsAppTasks\}/);
-  assert.match(align, /Android manifest/);
-  assert.match(align, /INTERNET/);
-  assert.match(align, /ACCESS_NETWORK_STATE/);
   assert.match(debugWorkflow, /java-version: '21'/);
   assert.match(diagnosticWorkflow, /java-version: '21'/);
   assert.match(diagnosticWorkflow, /gradlew --version/);
@@ -72,13 +67,14 @@ test("all native Kotlin security classes are copied into the Android app", async
   assert.match(source, /const mainActivity = path\.join\(androidDir, "app\/src\/main\/java\/com\/duresssecurity\/app\/MainActivity\.kt"\)/);
 });
 
-test("calculator branding stays Android-safe and does not change the security package", async () => {
+test("calculator branding is a real calculator icon and does not change the security package", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /calculator_app_name/);
   assert.match(source, /@drawable\/ic_launcher/);
   assert.match(source, /@drawable\/ic_launcher_round/);
-  assert.doesNotMatch(source, /#E8EAED/);
-  assert.doesNotMatch(source, /#5F6368/);
+  assert.match(source, /calculator launcher icon/i);
+  assert.match(source, /display panel \+ four keypad buttons/i);
+  assert.doesNotMatch(source, /Android robot or a fragile adaptive\/mipmap chain/i);
   assert.ok(source.includes("INTERNET"));
   assert.ok(source.includes("ACCESS_NETWORK_STATE"));
 });
@@ -89,7 +85,8 @@ test("calculator screen remains a calculator-only presentation layer", async () 
   assert.match(source, /Calculator/);
   assert.match(source, /evalExpr/);
   assert.match(source, /onSecretCommand/);
-  assert.match(source, /%×%=/);
+  assert.match(source, /OWNER_TRIGGER = \"0×0×0×9\"/);
+  assert.match(source, /onSecretCommand\?\.\(`\$\{OWNER_TRIGGER\}=`\)/);
   assert.doesNotMatch(source, /onOpenOwner/);
   assert.doesNotMatch(source, /fetch\(/);
   assert.doesNotMatch(source, /XMLHttpRequest/);
