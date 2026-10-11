@@ -11,10 +11,11 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   const calculator = await read('src/components/fake-calculator.tsx');
   const icon = await read('scripts/brand-android-icon.mjs');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
-  assert.match(shell, /calculatorFront && session === "locked"/);
   assert.match(shell, /SECRET_CALCULATOR_COMMAND.*0×0×0×9=/);
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
+  assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
   // Exact hidden owner trigger: clean calculator -> 0 -> × -> 0 -> × -> 0 -> × -> 9 -> =.
@@ -33,6 +34,15 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(icon, /calculator-shaped|calculator/);
   assert.match(icon, /<!-- calculator keys -->/);
   assert.match(icon, /<!-- display -->/);
+});
+
+test('hidden trigger remains usable while duress mode is active', async () => {
+  const shell = await read('src/components/app-shell.tsx');
+  const gateIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
+  const duressIndex = shell.indexOf('if (session === "duress") return <FakeCalculator');
+  assert.ok(gateIndex >= 0, 'unlock overlay guard must exist');
+  assert.ok(duressIndex >= 0, 'duress calculator guard must exist');
+  assert.ok(gateIndex < duressIndex, 'unlock gate must have priority over duress calculator');
 });
 
 test('vault encrypts data with PBKDF2 and AES-GCM and has no plaintext fallback', async () => {
