@@ -36,13 +36,14 @@ for (const file of ["device_admin.xml", "app_lock_accessibility_service.xml"]) {
 await writeFile(path.join(valuesDest, "duress_security_strings.xml"), await readFile(path.join(root, "android-native/plugin/src/main/res/values/strings.xml"), "utf8"));
 await writeFile(path.join(valuesDest, "calculator_branding.xml"), `<resources>\n  <string name="calculator_app_name">الآلة الحاسبة</string>\n</resources>\n`);
 
-// Single-source professional launcher icon. Do not use the generic Android robot
-// or a fragile adaptive/mipmap chain on the target's older launcher.
+// Single-source professional calculator launcher icon. The visible identity is deliberately
+// a calculator: display panel + four keypad buttons, with no Android robot or security shield.
 const iconXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-<path android:fillColor="#081426" android:pathData="M20,4h68c10,0 16,6 16,16v68c0,10 -6,16 -16,16H20C10,104 4,98 4,88V20C4,10 10,4 20,4Z"/>
-<path android:fillColor="#23C7D9" android:pathData="M54,16l29,12v21c0,18 -11,32 -29,42C36,81 25,67 25,49V28Z"/>
-<path android:fillColor="#F8FAFC" android:pathData="M39,34h21c10,0 18,8 18,18s-8,18 -18,18H39V34Zm11,9v18h9c5,0 9,-4 9,-9s-4,-9 -9,-9H50Z"/>
-<path android:fillColor="#23C7D9" android:pathData="M39,34h10v36H39z"/>
+<path android:fillColor="#071426" android:pathData="M20,3h68c10.5,0 17,6.5 17,17v68c0,10.5 -6.5,17 -17,17H20C9.5,105 3,98.5 3,88V20C3,9.5 9.5,3 20,3Z"/>
+<path android:fillColor="#F8FAFC" android:pathData="M28,19h52c4.4,0 8,3.6 8,8v54c0,4.4 -3.6,8 -8,8H28c-4.4,0 -8,-3.6 -8,-8V27c0,-4.4 3.6,-8 8,-8Z"/>
+<path android:fillColor="#0B1B31" android:pathData="M28,27h52c0,0 0,0 0,0v17c0,2.2 -1.8,4 -4,4H32c-2.2,0 -4,-1.8 -4,-4V27Z"/>
+<path android:fillColor="#23C7D9" android:pathData="M34,32h40v7H34z"/>
+<path android:fillColor="#0B1B31" android:pathData="M31,54h12v10H31zM48,54h12v10H48zM65,54h12v10H65zM31,69h12v10H31zM48,69h12v10H48zM65,69h12v10H65z"/>
 </vector>`;
 await writeFile(path.join(drawableDest, "ic_launcher.xml"), iconXml);
 await writeFile(path.join(drawableDest, "ic_launcher_round.xml"), iconXml);
@@ -100,4 +101,4 @@ if (await exists(gradlePath)) {
   await writeFile(gradlePath, gradle);
 }
 
-console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and professional calculator branding.");
+console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and calculator launcher branding.");
