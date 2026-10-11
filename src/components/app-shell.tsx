@@ -17,8 +17,6 @@ import { installNetworkGuard } from "@/lib/network-guard";
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
-  // Calculator is the first ordinary screen. Entry into the security workspace is
-  // explicit and visible; no secret calculator expression triggers a security action.
   const [calculatorFront, setCalculatorFront] = useState(true);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
@@ -47,19 +45,32 @@ export function AppShell() {
         refreshSecurity();
       }
     };
-    // Use local React state: updating the persisted Zustand store here would
-    // invoke setItem again and could loop if the native store remains unavailable.
+    const lockWhenBackgrounded = () => {
+      if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") {
+        // Lock before the WebView becomes background-visible. This covers app
+        // switching, Home, Recents, and screen-off on Android WebView versions
+        // that emit visibilitychange.
+        lockSession();
+      }
+    };
+    const lockFromNativeActivity = () => {
+      if (useAppStore.getState().session === "unlocked") lockSession();
+    };
     const onSecureStorageError = () => setStorageFailed(true);
     window.addEventListener("focus", refreshOnResume);
+    window.addEventListener("duress-security-native-background", lockFromNativeActivity);
     window.addEventListener("duress-security-storage-error", onSecureStorageError);
     document.addEventListener("visibilitychange", refreshOnResume);
+    document.addEventListener("visibilitychange", lockWhenBackgrounded);
     return () => {
       unsub();
       window.removeEventListener("focus", refreshOnResume);
+      window.removeEventListener("duress-security-native-background", lockFromNativeActivity);
       window.removeEventListener("duress-security-storage-error", onSecureStorageError);
       document.removeEventListener("visibilitychange", refreshOnResume);
+      document.removeEventListener("visibilitychange", lockWhenBackgrounded);
     };
-  }, [hydrateSession, refreshNativePermissions, refreshSecurity]);
+  }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
   useEffect(() => {
     if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") {
