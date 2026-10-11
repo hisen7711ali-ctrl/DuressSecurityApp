@@ -36,19 +36,13 @@ for (const file of ["device_admin.xml", "app_lock_accessibility_service.xml"]) {
 await writeFile(path.join(valuesDest, "duress_security_strings.xml"), await readFile(path.join(root, "android-native/plugin/src/main/res/values/strings.xml"), "utf8"));
 await writeFile(path.join(valuesDest, "calculator_branding.xml"), `<resources>\n  <string name="calculator_app_name">الآلة الحاسبة</string>\n</resources>\n`);
 
+// Single-source professional launcher icon. Do not use the generic Android robot
+// or a fragile adaptive/mipmap chain on the target's older launcher.
 const iconXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-<path android:fillColor="#E8EAED" android:pathData="M18,5L90,5Q103,5 103,18L103,90Q103,103 90,103L18,103Q5,103 5,90L5,18Q5,5 18,5Z"/>
-<path android:fillColor="#5F6368" android:pathData="M23,14L85,14Q91,14 91,20L91,88Q91,94 85,94L23,94Q17,94 17,88L17,20Q17,14 23,14Z"/>
-<path android:fillColor="#F8F9FA" android:pathData="M24,20L84,20Q87,20 87,23L87,38Q87,41 84,41L24,41Q21,41 21,38L21,23Q21,20 24,20Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M25,46L38,46Q41,46 41,49L41,58Q41,61 38,61L25,61Q22,61 22,58L22,49Q22,46 25,46Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M48,46L61,46Q64,46 64,49L64,58Q64,61 61,61L48,61Q45,61 45,58L45,49Q45,46 48,46Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M71,46L84,46Q87,46 87,49L87,58Q87,61 84,61L71,61Q68,61 68,58L68,49Q68,46 71,46Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M25,65L38,65Q41,65 41,68L41,77Q41,80 38,80L25,80Q22,80 22,77L22,68Q22,65 25,65Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M48,65L61,65Q64,65 64,68L64,77Q64,80 61,80L48,80Q45,80 45,77L45,68Q45,65 48,65Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M71,65L84,65Q87,65 87,68L87,77Q87,80 84,80L71,80Q68,80 68,77L68,68Q68,65 71,65Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M25,84L38,84Q41,84 41,87L41,89Q41,92 38,92L25,92Q22,92 22,89L22,87Q22,84 25,84Z"/>
-<path android:fillColor="#9AA0A6" android:pathData="M48,84L61,84Q64,84 64,87L64,89Q64,92 61,92L48,92Q45,92 45,89L45,87Q45,84 48,84Z"/>
-<path android:fillColor="#F9AB00" android:pathData="M71,84L84,84Q87,84 87,87L87,89Q87,92 84,92L71,92Q68,92 68,89L68,87Q68,84 71,84Z"/>
+<path android:fillColor="#081426" android:pathData="M20,4h68c10,0 16,6 16,16v68c0,10 -6,16 -16,16H20C10,104 4,98 4,88V20C4,10 10,4 20,4Z"/>
+<path android:fillColor="#23C7D9" android:pathData="M54,16l29,12v21c0,18 -11,32 -29,42C36,81 25,67 25,49V28Z"/>
+<path android:fillColor="#F8FAFC" android:pathData="M39,34h21c10,0 18,8 18,18s-8,18 -18,18H39V34Zm11,9v18h9c5,0 9,-4 9,-9s-4,-9 -9,-9H50Z"/>
+<path android:fillColor="#23C7D9" android:pathData="M39,34h10v36H39z"/>
 </vector>`;
 await writeFile(path.join(drawableDest, "ic_launcher.xml"), iconXml);
 await writeFile(path.join(drawableDest, "ic_launcher_round.xml"), iconXml);
@@ -106,4 +100,4 @@ if (await exists(gradlePath)) {
   await writeFile(gradlePath, gradle);
 }
 
-console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and calculator branding.");
+console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and professional calculator branding.");
