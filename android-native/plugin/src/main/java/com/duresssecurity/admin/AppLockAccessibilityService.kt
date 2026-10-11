@@ -21,10 +21,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Explicitly enabled Android Accessibility service used only to observe the foreground
- * app's package name and gate packages the owner selected inside Duress Security.
- * It does not read text, screenshots, keystrokes or window content. A successful
- * master app PIN dismisses the gate for that app until the user leaves it.
+ * Explicitly enabled Accessibility service used only to observe the foreground
+ * package and gate packages selected by the owner. It does not read text,
+ * screenshots, keystrokes or window content from other apps.
+ *
+ * Security invariant: a missing/corrupt/undecryptable policy fails CLOSED. The
+ * service never interprets storage failure as "protection disabled".
  */
 class AppLockAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
@@ -45,8 +47,6 @@ class AppLockAccessibilityService : AccessibilityService() {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val foregroundPackage = event.packageName?.toString() ?: return
 
-        // Opening the main app is the transparent recovery route: it lets the owner
-        // change the package list or turn app lock off after authenticating normally.
         if (foregroundPackage == packageName) {
             dismissGate()
             currentTarget = null
@@ -56,6 +56,15 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         if (foregroundPackage != unlockedTarget) unlockedTarget = null
         val policy = readPolicy()
+        if (policy == null) {
+            // Fail closed: without a trustworthy policy we cannot prove that the
+            // foreground app is allowed. Keep a non-dismissible recovery gate up.
+            if (currentTarget != foregroundPackage || lockView == null) {
+                showGate(foregroundPackage, storageUnavailable = true)
+            }
+            return
+        }
+
         val shouldProtect = policy.enabled && policy.overlayEnabled &&
             policy.lockedPackages.contains(foregroundPackage) && foregroundPackage != packageName
 
@@ -68,9 +77,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         if (currentTarget != foregroundPackage || lockView == null) showGate(foregroundPackage)
     }
 
-    override fun onInterrupt() {
-        dismissGate()
-    }
+    override fun onInterrupt() { dismissGate() }
 
     override fun onDestroy() {
         dismissGate()
@@ -84,9 +91,12 @@ class AppLockAccessibilityService : AccessibilityService() {
         val masterPin: String,
     )
 
-    private fun readPolicy(): Policy {
+    private data class AttemptState(val attempts: Int, val blockedUntil: Long)
+
+    /** null means the encrypted policy could not be read or validated. */
+    private fun readPolicy(): Policy? {
         val raw = try { SecureStorage(this).get("duress-security-app") } catch (_: Exception) { null }
-            ?: return Policy(false, true, emptySet(), "0000")
+            ?: return null
         return try {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
@@ -97,23 +107,61 @@ class AppLockAccessibilityService : AccessibilityService() {
                 }
             }
             val pins = state.optJSONObject("pins")
+            val master = pins?.optString("master")?.takeIf { it.isNotBlank() } ?: return null
             Policy(
                 enabled = state.optBoolean("appLockEnabled", false),
                 overlayEnabled = state.optBoolean("overlayEnabled", true),
                 lockedPackages = locked,
-                masterPin = pins?.optString("master")?.takeIf { it.isNotBlank() } ?: "0000",
+                masterPin = master,
             )
         } catch (_: Exception) {
-            Policy(false, true, emptySet(), "0000")
+            null
         }
     }
 
-    private fun showGate(targetPackage: String) {
+    private fun attemptKey(targetPackage: String) = "duress-security-applock-attempts:$targetPackage"
+
+    private fun loadAttemptState(targetPackage: String): AttemptState {
+        return try {
+            val raw = SecureStorage(this).get(attemptKey(targetPackage)) ?: return AttemptState(0, 0L)
+            val obj = JSONObject(raw)
+            AttemptState(
+                attempts = obj.optInt("attempts", 0).coerceAtLeast(0),
+                blockedUntil = obj.optLong("blockedUntil", 0L).coerceAtLeast(0L),
+            )
+        } catch (_: Exception) {
+            // If the attempt record is unreadable, do not silently reset it.
+            // Keep the gate blocked until the main security store is recovered.
+            AttemptState(Int.MAX_VALUE, Long.MAX_VALUE)
+        }
+    }
+
+    private fun saveAttemptState(targetPackage: String, state: AttemptState): Boolean {
+        return try {
+            SecureStorage(this).put(
+                attemptKey(targetPackage),
+                JSONObject()
+                    .put("attempts", state.attempts)
+                    .put("blockedUntil", state.blockedUntil)
+                    .toString(),
+            )
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun clearAttemptState(targetPackage: String) {
+        try { SecureStorage(this).remove(attemptKey(targetPackage)) } catch (_: Exception) { }
+    }
+
+    private fun showGate(targetPackage: String, storageUnavailable: Boolean = false) {
         if (lockView != null && currentTarget == targetPackage) return
         dismissGate()
         currentTarget = targetPackage
-        attempts = 0
-        blockedUntil = 0L
+
+        val persistedAttempts = loadAttemptState(targetPackage)
+        attempts = persistedAttempts.attempts
+        blockedUntil = persistedAttempts.blockedUntil
 
         val isArabic = currentLanguage().equals("ar", ignoreCase = true)
         val root = LinearLayout(this).apply {
@@ -127,8 +175,6 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
-                // Back must not silently dismiss the gate; Home remains a normal
-                // system action and the overlay disappears when another app opens.
                 keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP
             }
         }
@@ -140,14 +186,18 @@ class AppLockAccessibilityService : AccessibilityService() {
             gravity = Gravity.CENTER
         }
         val title = TextView(this).apply {
-            text = if (isArabic) "التطبيق محمي" else "App protected"
+            text = if (storageUnavailable) {
+                if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable"
+            } else if (isArabic) "التطبيق محمي" else "App protected"
             textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         }
         val subtitle = TextView(this).apply {
-            text = if (isArabic) "أدخل رمز Duress Security للمتابعة" else "Enter your Duress Security master PIN to continue"
+            text = if (storageUnavailable) {
+                if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery."
+            } else if (isArabic) "أدخل رمز Duress Security للمتابعة" else "Enter your Duress Security master PIN to continue"
             textSize = 14f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -161,6 +211,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             gravity = Gravity.CENTER
             textSize = 20f
             maxLines = 1
+            isEnabled = !storageUnavailable
             setPadding(dp(12), dp(12), dp(12), dp(12))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(22, 32, 50))
@@ -169,7 +220,9 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
         }
         val error = TextView(this).apply {
-            text = " "
+            text = if (storageUnavailable) {
+                if (isArabic) "استعد التخزين الآمن من داخل Duress Security" else "Recover secure storage from Duress Security"
+            } else " "
             textSize = 12f
             setTextColor(Color.rgb(255, 105, 105))
             gravity = Gravity.CENTER
@@ -178,30 +231,50 @@ class AppLockAccessibilityService : AccessibilityService() {
         val unlock = Button(this).apply {
             text = if (isArabic) "فتح التطبيق" else "Unlock app"
             isAllCaps = false
+            isEnabled = !storageUnavailable
             setTextColor(Color.rgb(6, 18, 29))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(40, 220, 230))
                 cornerRadius = dp(12).toFloat()
             }
             setOnClickListener {
-                if (System.currentTimeMillis() < blockedUntil) {
+                val now = System.currentTimeMillis()
+                if (now < blockedUntil) {
                     error.text = if (isArabic) "انتظر قبل إعادة المحاولة" else "Please wait before retrying"
                     return@setOnClickListener
                 }
+
+                val policy = readPolicy()
+                if (policy == null) {
+                    error.text = if (isArabic) "التخزين الآمن غير متاح" else "Secure storage is unavailable"
+                    return@setOnClickListener
+                }
+
                 val typed = normalizePin(input.text?.toString().orEmpty())
-                val master = normalizePin(readPolicy().masterPin)
+                val master = normalizePin(policy.masterPin)
                 if (typed.isNotEmpty() && typed == master) {
                     unlockedTarget = targetPackage
+                    clearAttemptState(targetPackage)
+                    attempts = 0
+                    blockedUntil = 0L
                     dismissGate()
                     return@setOnClickListener
                 }
-                attempts += 1
+
+                // Attempts survive gate recreation, app switches, service restarts
+                // and process death. There is no reset in showGate().
+                attempts = (attempts + 1).coerceAtMost(1_000_000)
                 input.setText("")
                 if (attempts >= 5) {
-                    attempts = 0
-                    blockedUntil = System.currentTimeMillis() + 15_000L
+                    blockedUntil = now + 15_000L
+                    if (!saveAttemptState(targetPackage, AttemptState(attempts, blockedUntil))) {
+                        blockedUntil = Long.MAX_VALUE
+                    }
                     error.text = if (isArabic) "محاولات كثيرة. انتظر 15 ثانية" else "Too many attempts. Wait 15 seconds"
                 } else {
+                    if (!saveAttemptState(targetPackage, AttemptState(attempts, blockedUntil))) {
+                        blockedUntil = Long.MAX_VALUE
+                    }
                     error.text = if (isArabic) "الرمز غير صحيح" else "Incorrect PIN"
                 }
                 input.requestFocus()
@@ -219,7 +292,9 @@ class AppLockAccessibilityService : AccessibilityService() {
         root.addView(error, matchWrap())
         root.addView(unlock, LinearLayout.LayoutParams(-1, dp(52)))
         val footer = TextView(this).apply {
-            text = if (isArabic) "هذه الحماية مفعّلة من إعدادات التطبيق" else "This gate is controlled in the app settings"
+            text = if (storageUnavailable) {
+                if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection"
+            } else if (isArabic) "هذه الحماية مفعّلة من إعدادات التطبيق" else "This gate is controlled in the app settings"
             textSize = 11f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
@@ -239,10 +314,12 @@ class AppLockAccessibilityService : AccessibilityService() {
                 PixelFormat.TRANSLUCENT,
             ).apply { gravity = Gravity.CENTER }
             windowManager?.addView(root, params)
-            input.requestFocus()
-            input.post {
-                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                    ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            if (!storageUnavailable) {
+                input.requestFocus()
+                input.post {
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                }
             }
         } catch (_: Exception) {
             lockView = null
