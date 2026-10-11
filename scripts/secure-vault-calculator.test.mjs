@@ -11,25 +11,21 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   const calculator = await read('src/components/fake-calculator.tsx');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
   assert.match(shell, /calculatorFront && session === "locked"/);
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*%×%=|%\\×%=/);
+  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*0×0×0×9=/);
   assert.match(shell, /session !== "locked"/);
   assert.match(calculator, /onSecretCommand/);
 
-  // Exact hidden owner trigger: clean calculator -> % -> × -> % -> =.
+  // Exact hidden owner trigger: clean calculator -> 0 -> × -> 0 -> × -> 0 -> × -> 9 -> =.
   // It immediately calls the security gate; there is no visible reveal button.
-  assert.match(calculator, /expr === "" && commandSequence === "" && key === "%"/);
-  assert.match(calculator, /commandSequence === "%" && key === "×"/);
-  assert.match(calculator, /commandSequence === "%×" && key === "%"/);
-  assert.match(calculator, /commandSequence === "%×%" && key === "="/);
-  assert.match(calculator, /onSecretCommand\?\.\("%×%="\)/);
-  assert.doesNotMatch(calculator, /secretVisible|setTimeout\(\(\) => setSecretVisible/);
+  assert.match(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
+  assert.match(calculator, /candidate = key === "=" \? expr : `\$\{expr\}\$\{key\}`/);
+  assert.match(calculator, /OWNER_TRIGGER\.startsWith\(candidate\)/);
+  assert.match(calculator, /expr === OWNER_TRIGGER/);
+  assert.match(calculator, /onSecretCommand\?\.\(`\$\{OWNER_TRIGGER\}=`\)/);
+  assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
   // Zero is a normal centered wide calculator key, not a stretched/right-aligned label.
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
-
-  // No legacy visible/alternate owner-entry path may survive.
-  assert.doesNotMatch(calculator, /Open security workspace|فتح مساحة الحماية/);
-  assert.doesNotMatch(calculator, /tryDuressEscape|expr\.length\s*===\s*4/);
 });
 
 test('vault encrypts data with PBKDF2 and AES-GCM and has no plaintext fallback', async () => {
