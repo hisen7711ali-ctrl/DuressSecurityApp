@@ -11,12 +11,13 @@ const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
 });
 
 try {
-  // android-setup.mjs is the single source of truth for Android Java/Kotlin
-  // compiler targets. Do not post-process its Gradle output with a second
-  // JVM-alignment pass, because that can reintroduce incompatible target or
-  // --release combinations after Capacitor sync.
+  // android-setup.mjs owns the Android Java/Kotlin compiler configuration.
+  // Capacitor sync regenerates/overwrites app/build.gradle, so the setup pass
+  // must run once after sync as well; otherwise Capacitor can restore Java 21
+  // while Kotlin remains on 17 and Gradle rejects the mixed JVM targets.
   await run(process.execPath, ["scripts/android-setup.mjs"]);
   await run("npx", ["cap", "sync", "android"]);
+  await run(process.execPath, ["scripts/android-setup.mjs"]);
   const androidDir = path.join(root, "android");
   const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
