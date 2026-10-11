@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppsScreen } from "@/components/apps-screen";
 import { BottomNav } from "@/components/bottom-nav";
 import { ExtendedLockScreen } from "@/components/extended-lock-screen";
-import { FakeCalculator } from "@/components/fake-calculator";
+import { FakeCalculator } from "@/components/fullscreen-calculator";
 import { FilesScreen } from "@/components/files-screen";
 import { HomeScreen } from "@/components/home-screen";
 import { LockGate } from "@/components/lock-gate";
@@ -37,17 +37,8 @@ export function AppShell() {
   const theme = useAppStore((s) => s.theme);
   const { lang, dir } = useCopy();
 
-  const openSecurityGate = () => {
-    setCalculatorFront(false);
-    openOverlay({ kind: "unlock" });
-  };
-
-  const handleCalculatorCommand = (sequence: string): boolean => {
-    const command = SECRET_CALCULATOR_COMMANDS[sequence];
-    if (command !== "security") return false;
-    openSecurityGate();
-    return true;
-  };
+  const openSecurityGate = () => { setCalculatorFront(false); openOverlay({ kind: "unlock" }); };
+  const handleCalculatorCommand = (sequence: string): boolean => { if (SECRET_CALCULATOR_COMMANDS[sequence] !== "security") return false; openSecurityGate(); return true; };
 
   useEffect(() => {
     installNetworkGuard();
@@ -58,26 +49,12 @@ export function AppShell() {
     const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") lockSession(); };
     const lockFromNativeActivity = () => { if (useAppStore.getState().session === "unlocked") lockSession(); };
     const onSecureStorageError = () => setStorageFailed(true);
-    window.addEventListener("focus", refreshOnResume);
-    window.addEventListener("duress-security-native-background", lockFromNativeActivity);
-    window.addEventListener("duress-security-storage-error", onSecureStorageError);
-    document.addEventListener("visibilitychange", refreshOnResume);
-    document.addEventListener("visibilitychange", lockWhenBackgrounded);
-    return () => {
-      unsub();
-      window.removeEventListener("focus", refreshOnResume);
-      window.removeEventListener("duress-security-native-background", lockFromNativeActivity);
-      window.removeEventListener("duress-security-storage-error", onSecureStorageError);
-      document.removeEventListener("visibilitychange", refreshOnResume);
-      document.removeEventListener("visibilitychange", lockWhenBackgrounded);
-    };
+    window.addEventListener("focus", refreshOnResume); window.addEventListener("duress-security-native-background", lockFromNativeActivity); window.addEventListener("duress-security-storage-error", onSecureStorageError);
+    document.addEventListener("visibilitychange", refreshOnResume); document.addEventListener("visibilitychange", lockWhenBackgrounded);
+    return () => { unsub(); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
-  useEffect(() => {
-    if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
-    previousSession.current = session;
-  }, [session]);
-
+  useEffect(() => { if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true); previousSession.current = session; }, [session]);
   useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(id); }, [toast, setToast]);
 
@@ -89,21 +66,5 @@ export function AppShell() {
   if (calculatorFront && session === "locked" && overlay?.kind === "unlock") return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
   if (session === "locked" && overlay?.kind === "unlock") return <LockGate />;
 
-  return (
-    <div className="bg-mountains min-h-svh">
-      <div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70">
-        <div className="flex-1">
-          {panel === "pins" ? <PinsPanel /> : null}
-          {panel === "none" && tab === "home" ? <HomeScreen /> : null}
-          {panel === "none" && tab === "protect" ? <AppsScreen /> : null}
-          {panel === "none" && tab === "files" ? <FilesScreen /> : null}
-          {panel === "none" && tab === "settings" ? <SettingsScreen /> : null}
-        </div>
-      </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>
-      {openedApp ? <OpenedApp /> : null}
-      {overlay ? <LockGate /> : null}
-      {toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}
-    </div>
-  );
+  return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
 }
