@@ -47,5 +47,5 @@ jobs:
         with:
           name: android-build-diagnostic-log
           path: android-build.log
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 3
