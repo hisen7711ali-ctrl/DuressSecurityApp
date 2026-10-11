@@ -1,22 +1,24 @@
-package com.duresssecurity.app // match whatever applicationId `npx cap add android` used
+package com.duresssecurity.app
 
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import com.duresssecurity.admin.SecurityAdminPlugin
 import com.getcapacitor.BridgeActivity
 
 /**
  * Capacitor MainActivity with the native security bridge.
  * The app-level PIN gate remains separate from Android's system Keyguard.
- *
- * Screenshot capture is intentionally allowed. The security model protects
- * access with the app PIN and Android permissions rather than globally blocking
- * the user's normal screenshot function.
+ * Screenshots are explicitly allowed in calculator and security/settings screens.
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
         super.onCreate(savedInstanceState)
+
+        // Never apply FLAG_SECURE: the user must be able to capture screenshots
+        // of the calculator, security workspace and settings for documentation/testing.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -24,16 +26,13 @@ class MainActivity : BridgeActivity() {
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
-                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
             )
         }
     }
 
     override fun onStop() {
-        // Tell the WebView to persist the app-level lock before this Activity is
-        // fully backgrounded. This complements visibilitychange and covers OEMs
-        // where WebView visibility events are delayed or omitted on screen-off.
         try {
             bridge?.webView?.post {
                 bridge?.webView?.evaluateJavascript(
