@@ -122,17 +122,25 @@ export function FakeCalculator({
       return;
     }
 
-    // Hidden owner entry is exactly: %, +, =. It is tracked separately from
-    // calculator arithmetic so the trigger is not visible in the expression.
-    const nextCommand = key === "%" || key === "+" || key === "="
-      ? `${commandSequence}${key}`.slice(-3)
-      : "";
-    setCommandSequence(nextCommand);
-    if (nextCommand === "%+=") {
+    // Owner entry is exactly %, +, = from a clean calculator. The sequence is
+    // kept outside calculator state so it never appears on the calculator display.
+    if (expr === "" && commandSequence === "" && key === "%") {
+      setCommandSequence("%");
+      return;
+    }
+    if (commandSequence === "%" && key === "+") {
+      setCommandSequence("%+");
+      return;
+    }
+    if (commandSequence === "%+" && key === "=") {
       const handled = onSecretCommand?.("%+=") ?? false;
       if (handled) setSecretVisible(true);
       setCommandSequence("");
+      setExpr("");
+      setDisplay("0");
+      return;
     }
+    if (commandSequence) setCommandSequence("");
 
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
@@ -141,13 +149,7 @@ export function FakeCalculator({
       return;
     }
     if (key === "%") {
-      // A bare % is a normal calculator action; it also participates in the
-      // hidden three-key owner sequence above.
-      if (!expr) {
-        setExpr("%");
-        setDisplay("%");
-        return;
-      }
+      if (!expr) return;
       const next = `${expr}%`;
       const numeric = Number.parseFloat(expr);
       if (Number.isFinite(numeric)) {
@@ -161,11 +163,6 @@ export function FakeCalculator({
       return;
     }
     if (key === "=") {
-      if (nextCommand === "%+=") {
-        setExpr("");
-        setDisplay("0");
-        return;
-      }
       const result = evalExpr(expr || display);
       setDisplay(result);
       setExpr(result === "Error" ? "" : result);
