@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,6 @@ function evalExpr(raw: string): string {
   let pos = 0;
   const peek = () => tokens[pos];
   const take = () => tokens[pos++];
-
   const primary = (): number => {
     const token = take();
     if (token === "(") {
@@ -32,13 +31,11 @@ function evalExpr(raw: string): string {
     if (token !== undefined && /^(?:\d+\.?\d*|\.\d+)$/.test(token)) return Number(token);
     throw new Error("Expected number");
   };
-
   const unary = (): number => {
     if (peek() === "+") { take(); return unary(); }
     if (peek() === "-") { take(); return -unary(); }
     return primary();
   };
-
   const term = (): number => {
     let value = unary();
     while (peek() === "*" || peek() === "/") {
@@ -48,7 +45,6 @@ function evalExpr(raw: string): string {
     }
     return value;
   };
-
   const expression = (): number => {
     let value = term();
     while (peek() === "+" || peek() === "-") {
@@ -82,7 +78,7 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
       onClick={onClick}
       className={cn(
         "flex min-h-14 touch-manipulation items-center justify-center rounded-full text-[clamp(1.05rem,4.8vw,1.45rem)] font-medium transition-transform active:scale-[0.96] sm:min-h-16",
-        wide && "col-span-2 justify-start pl-7",
+        wide && "col-span-2 justify-center",
         tone === "number" && "bg-surface text-ink",
         tone === "utility" && "bg-surface-2 text-muted",
         tone === "operator" && "bg-surface-2 text-cyan",
@@ -94,50 +90,41 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   );
 }
 
-export function FakeCalculator({
-  onOpenOwner,
-  onSecretCommand,
-}: {
-  onOpenOwner: () => void;
-  onSecretCommand?: SecretCommandHandler;
-}) {
+export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCommandHandler }) {
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
-  const [secretVisible, setSecretVisible] = useState(false);
   const [commandSequence, setCommandSequence] = useState("");
-
-  useEffect(() => {
-    if (!secretVisible) return;
-    const id = window.setTimeout(() => setSecretVisible(false), 5000);
-    return () => window.clearTimeout(id);
-  }, [secretVisible]);
 
   function tap(key: string) {
     if (key === "AC") {
       setExpr("");
       setDisplay("0");
       setCommandSequence("");
-      setSecretVisible(false);
       return;
     }
 
-    // Owner entry is exactly %, +, = from a clean calculator. The sequence is
-    // kept outside calculator state so it never appears on the calculator display.
+    // Hidden owner entry: %, ×, %, = . It is completely separate from the
+    // calculator expression and immediately hands control to the security gate.
     if (expr === "" && commandSequence === "" && key === "%") {
       setCommandSequence("%");
       return;
     }
-    if (commandSequence === "%" && key === "+") {
-      setCommandSequence("%+");
+    if (commandSequence === "%" && key === "×") {
+      setCommandSequence("%×");
       return;
     }
-    if (commandSequence === "%+" && key === "=") {
-      const handled = onSecretCommand?.("%+=") ?? false;
-      if (handled) setSecretVisible(true);
+    if (commandSequence === "%×" && key === "%") {
+      setCommandSequence("%×%");
+      return;
+    }
+    if (commandSequence === "%×%" && key === "=") {
+      const handled = onSecretCommand?.("%×%=") ?? false;
       setCommandSequence("");
-      setExpr("");
-      setDisplay("0");
+      if (handled) {
+        setExpr("");
+        setDisplay("0");
+      }
       return;
     }
     if (commandSequence) setCommandSequence("");
@@ -195,40 +182,14 @@ export function FakeCalculator({
       <main className="mx-auto mt-auto w-full max-w-2xl">
         <section className="mb-3 min-h-[clamp(8rem,26vh,12rem)] rounded-[1.6rem] bg-surface px-5 py-5 text-end shadow-panel" aria-label={lang === "ar" ? "شاشة الحاسبة" : "Calculator display"}>
           <p className="min-h-6 truncate text-sm text-faint" dir="ltr">{expr || " "}</p>
-          <p className="mt-2 overflow-x-auto whitespace-nowrap text-[clamp(2.5rem,12vw,4rem)] font-light leading-none tracking-tight tabular-nums" dir="ltr">
-            {display}
-          </p>
+          <p className="mt-2 overflow-x-auto whitespace-nowrap text-[clamp(2.5rem,12vw,4rem)] font-light leading-none tracking-tight tabular-nums" dir="ltr">{display}</p>
         </section>
 
         <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
           {ROWS.flatMap((row, rowIndex) => row.map((key) => {
             const tone = key === "=" ? "equals" : ["÷", "×", "−", "+"].includes(key) ? "operator" : rowIndex === 0 ? "utility" : "number";
-            return (
-              <CalculatorButton
-                key={key}
-                label={key}
-                tone={tone as "number" | "utility" | "operator" | "equals"}
-                wide={key === "0"}
-                onClick={() => tap(key)}
-              />
-            );
+            return <CalculatorButton key={key} label={key} tone={tone as "number" | "utility" | "operator" | "equals"} wide={key === "0"} onClick={() => tap(key)} />;
           }))}
-        </div>
-
-        <div className="relative mt-4 flex min-h-10 items-center justify-center">
-          {secretVisible ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSecretVisible(false);
-                onOpenOwner();
-              }}
-              className="min-h-10 rounded-full bg-surface px-5 text-xs font-semibold text-cyan shadow-panel transition-transform active:scale-95"
-              aria-label={lang === "ar" ? "متابعة" : "Continue"}
-            >
-              {lang === "ar" ? "متابعة" : "Continue"}
-            </button>
-          ) : null}
         </div>
       </main>
     </div>
