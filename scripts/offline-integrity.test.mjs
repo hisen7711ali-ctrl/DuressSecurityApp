@@ -31,6 +31,8 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /org\.jetbrains\.kotlin\.android/);
   assert.match(source, /version \"2\.0\.21\" apply false/);
   assert.match(source, /MainActivity\.kt/);
+  assert.match(source, /JavaVersion\.VERSION_21/);
+  assert.match(source, /jvmToolchain\(21\)/);
 });
 
 test("Android build aligns Java and Kotlin to JVM 21 after every Capacitor sync", async () => {
@@ -47,8 +49,11 @@ test("Android build aligns Java and Kotlin to JVM 21 after every Capacitor sync"
   assert.match(align, /compilerOptions[\s\S]*JvmTarget\.JVM_21/);
   assert.match(align, /KotlinCompilationTask/);
   assert.match(align, /DURESS_JVM21_ALL_MODULES/);
+  assert.match(align, /jvmToolchain\(21\)/);
   assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
   assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
+  assert.doesNotMatch(align, /out \+= `\\n\$\{groovyAppTasks\}/);
+  assert.doesNotMatch(align, /out \+= `\\n\$\{ktsAppTasks\}/);
   assert.match(align, /Android manifest/);
   assert.match(align, /INTERNET/);
   assert.match(align, /ACCESS_NETWORK_STATE/);
