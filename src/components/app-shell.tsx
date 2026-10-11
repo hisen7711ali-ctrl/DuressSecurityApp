@@ -15,9 +15,7 @@ import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
-const SECRET_CALCULATOR_COMMANDS: Record<string, "security"> = {
-  "%+=": "security",
-};
+const SECRET_CALCULATOR_COMMANDS: Record<string, "security"> = { "%+=": "security" };
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -35,16 +33,19 @@ export function AppShell() {
   const toast = useAppStore((s) => s.toast);
   const setToast = useAppStore((s) => s.setToast);
   const lockSession = useAppStore((s) => s.lockSession);
+  const openOverlay = useAppStore((s) => s.openOverlay);
   const theme = useAppStore((s) => s.theme);
   const { lang, dir } = useCopy();
+
+  const openSecurityGate = () => {
+    setCalculatorFront(false);
+    openOverlay({ kind: "unlock" });
+  };
 
   const handleCalculatorCommand = (sequence: string): boolean => {
     const command = SECRET_CALCULATOR_COMMANDS[sequence];
     if (command !== "security") return false;
-    setCalculatorFront(false);
-    // The hidden command never bypasses authentication. It only switches from
-    // the calculator disguise to the normal security entry gate.
-    lockSession();
+    openSecurityGate();
     return true;
   };
 
@@ -53,20 +54,9 @@ export function AppShell() {
     const finish = () => { void hydrateSession(); };
     const unsub = useAppStore.persist.onFinishHydration(finish);
     if (useAppStore.persist.hasHydrated()) finish();
-    const refreshOnResume = () => {
-      if (document.visibilityState === "visible") {
-        void refreshNativePermissions();
-        refreshSecurity();
-      }
-    };
-    const lockWhenBackgrounded = () => {
-      if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") {
-        lockSession();
-      }
-    };
-    const lockFromNativeActivity = () => {
-      if (useAppStore.getState().session === "unlocked") lockSession();
-    };
+    const refreshOnResume = () => { if (document.visibilityState === "visible") { void refreshNativePermissions(); refreshSecurity(); } };
+    const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") lockSession(); };
+    const lockFromNativeActivity = () => { if (useAppStore.getState().session === "unlocked") lockSession(); };
     const onSecureStorageError = () => setStorageFailed(true);
     window.addEventListener("focus", refreshOnResume);
     window.addEventListener("duress-security-native-background", lockFromNativeActivity);
@@ -84,35 +74,19 @@ export function AppShell() {
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
   useEffect(() => {
-    if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") {
-      setCalculatorFront(true);
-    }
+    if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
     previousSession.current = session;
   }, [session]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    root.lang = lang;
-    root.dir = dir;
-    root.dataset.theme = theme;
-  }, [lang, dir, theme]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 2400);
-    return () => window.clearTimeout(id);
-  }, [toast, setToast]);
+  useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
+  useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  if (!ready) {
-    return <FakeCalculator onOpenOwner={() => undefined} onSecretCommand={handleCalculatorCommand} />;
-  }
+  if (!ready) return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
-  if (session === "duress") return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} onSecretCommand={handleCalculatorCommand} />;
-  if (calculatorFront && session === "locked" && overlay?.kind === "unlock") {
-    return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} onSecretCommand={handleCalculatorCommand} />;
-  }
+  if (session === "duress") return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
+  if (calculatorFront && session === "locked" && overlay?.kind === "unlock") return <FakeCalculator onOpenOwner={openSecurityGate} onSecretCommand={handleCalculatorCommand} />;
   if (session === "locked" && overlay?.kind === "unlock") return <LockGate />;
 
   return (
@@ -126,18 +100,10 @@ export function AppShell() {
           {panel === "none" && tab === "settings" ? <SettingsScreen /> : null}
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <BottomNav />
-      </div>
+      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>
       {openedApp ? <OpenedApp /> : null}
       {overlay ? <LockGate /> : null}
-      {toast ? (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4">
-          <div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">
-            {toast}
-          </div>
-        </div>
-      ) : null}
+      {toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}
     </div>
   );
 }
