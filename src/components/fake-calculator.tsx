@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Delete, Equal, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
 
@@ -104,13 +104,36 @@ export function FakeCalculator({
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
+  const [secretVisible, setSecretVisible] = useState(false);
+  const [commandSequence, setCommandSequence] = useState("");
+
+  useEffect(() => {
+    if (!secretVisible) return;
+    const id = window.setTimeout(() => setSecretVisible(false), 5000);
+    return () => window.clearTimeout(id);
+  }, [secretVisible]);
 
   function tap(key: string) {
     if (key === "AC") {
       setExpr("");
       setDisplay("0");
+      setCommandSequence("");
+      setSecretVisible(false);
       return;
     }
+
+    // Hidden owner entry is exactly: %, +, =. It is tracked separately from
+    // calculator arithmetic so the trigger is not visible in the expression.
+    const nextCommand = key === "%" || key === "+" || key === "="
+      ? `${commandSequence}${key}`.slice(-3)
+      : "";
+    setCommandSequence(nextCommand);
+    if (nextCommand === "%+=") {
+      const handled = onSecretCommand?.("%+=") ?? false;
+      if (handled) setSecretVisible(true);
+      setCommandSequence("");
+    }
+
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
       setExpr(next);
@@ -118,6 +141,8 @@ export function FakeCalculator({
       return;
     }
     if (key === "%") {
+      // A bare % is a normal calculator action; it also participates in the
+      // hidden three-key owner sequence above.
       if (!expr) {
         setExpr("%");
         setDisplay("%");
@@ -136,10 +161,9 @@ export function FakeCalculator({
       return;
     }
     if (key === "=") {
-      if (expr.startsWith("%")) {
-        const handled = onSecretCommand?.(expr) ?? false;
-        setExpr(handled ? "" : "Error");
-        setDisplay(handled ? "0" : "Error");
+      if (nextCommand === "%+=") {
+        setExpr("");
+        setDisplay("0");
         return;
       }
       const result = evalExpr(expr || display);
@@ -164,20 +188,11 @@ export function FakeCalculator({
 
   return (
     <div className="flex min-h-dvh w-full flex-col bg-navy px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
-      <header className="flex items-center justify-between px-2 py-2">
-        <div>
+      <header className="flex items-center justify-end px-2 py-2">
+        <div className="text-end">
           <h1 className="text-xl font-semibold tracking-tight text-ink">{lang === "ar" ? "الآلة الحاسبة" : "Calculator"}</h1>
           <p className="text-xs text-muted">{lang === "ar" ? "حاسبة بسيطة" : "Standard calculator"}</p>
         </div>
-        <button
-          type="button"
-          aria-label={lang === "ar" ? "فتح مساحة الحماية" : "Open security workspace"}
-          onClick={onOpenOwner}
-          className="flex min-h-11 items-center gap-2 rounded-full bg-surface px-4 text-sm font-semibold text-cyan shadow-panel hover:bg-surface-2"
-        >
-          <ShieldCheck className="size-5" aria-hidden="true" />
-          <span>{lang === "ar" ? "الحماية" : "Security"}</span>
-        </button>
       </header>
 
       <main className="mx-auto mt-auto w-full max-w-2xl">
@@ -203,18 +218,20 @@ export function FakeCalculator({
           }))}
         </div>
 
-        <div className="mt-4 flex items-center justify-center">
-          <button
-            type="button"
-            onClick={() => {
-              const next = expr.slice(0, -1);
-              setExpr(next);
-              setDisplay(next || "0");
-            }}
-            className="min-h-10 rounded-full px-4 text-xs text-muted hover:bg-surface hover:text-ink"
-          >
-            {lang === "ar" ? "حذف آخر رقم" : "Delete last digit"}
-          </button>
+        <div className="relative mt-4 flex min-h-10 items-center justify-center">
+          {secretVisible ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSecretVisible(false);
+                onOpenOwner();
+              }}
+              className="min-h-10 rounded-full bg-surface px-5 text-xs font-semibold text-cyan shadow-panel transition-transform active:scale-95"
+              aria-label={lang === "ar" ? "متابعة" : "Continue"}
+            >
+              {lang === "ar" ? "متابعة" : "Continue"}
+            </button>
+          ) : null}
         </div>
       </main>
     </div>
