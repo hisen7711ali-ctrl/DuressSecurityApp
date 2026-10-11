@@ -31,17 +31,17 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /org\.jetbrains\.kotlin\.android/);
   assert.match(source, /version \"2\.0\.21\" apply false/);
   assert.match(source, /jvmToolchain\(17\)/);
+  assert.match(source, /compileOptions \{ sourceCompatibility JavaVersion\.VERSION_17; targetCompatibility JavaVersion\.VERSION_17 \}/);
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android JVM alignment avoids a Java --release conflict", async () => {
-  const source = await read("scripts/align-android-jvm.mjs");
-  assert.match(source, /JavaVersion\.VERSION_17/);
-  assert.match(source, /kotlinOptions/);
-  assert.match(source, /jvmTarget/);
-  assert.match(source, /17/);
-  assert.match(source, /options\.release/);
-  assert.doesNotMatch(source, /jvmToolchain\(17\)/);
+test("Android build uses one JVM configuration source and does not apply a second alignment pass", async () => {
+  const setup = await read("scripts/android-setup.mjs");
+  const build = await read("scripts/build-apk.mjs");
+  assert.match(setup, /jvmToolchain\(17\)/);
+  assert.match(setup, /JavaVersion\.VERSION_17/);
+  assert.doesNotMatch(setup, /options\.release/);
+  assert.doesNotMatch(build, /align-android-jvm\.mjs/);
 });
 
 test("all native Kotlin security classes are copied into the Android app", async () => {
