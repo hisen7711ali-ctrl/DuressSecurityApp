@@ -100,10 +100,10 @@ if (await exists(gradlePath)) {
   if (!/compileSdk(?:Version)?\s+35/.test(gradle)) gradle = gradle.replace(/android\s*\{/, m => `${m}\n    compileSdk 35`);
   if (!gradle.includes("targetSdkVersion 35")) gradle = gradle.replace(/defaultConfig\s*\{/, m => `${m}\n        targetSdkVersion 35`);
   if (!gradle.includes("minSdkVersion 23")) gradle = gradle.replace(/defaultConfig\s*\{/, m => `${m}\n        minSdkVersion 23`);
-  if (!gradle.includes("compileOptions")) gradle = gradle.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }`);
+  if (!gradle.includes("compileOptions")) gradle = gradle.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }`);
   if (!gradle.includes("androidx.biometric:biometric")) gradle = gradle.replace(/dependencies\s*\{/, m => `${m}\n    implementation "androidx.biometric:biometric:1.1.0"`);
-  if (!gradle.includes("jvmToolchain")) gradle += `\n\nkotlin { jvmToolchain(17) }\n`;
+  if (!gradle.includes("jvmToolchain")) gradle += `\n\nkotlin { jvmToolchain(21) }\n`;
   await writeFile(gradlePath, gradle);
 }
 
-console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 17 targets, strict offline manifest, and calculator branding.");
+console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and calculator branding.");
