@@ -118,8 +118,6 @@ export function FakeCalculator({
       return;
     }
     if (key === "%") {
-      // A leading % starts the deliberately unobtrusive command grammar.
-      // Normal percentage calculations (for example 50%) remain unchanged.
       if (!expr) {
         setExpr("%");
         setDisplay("%");
@@ -138,10 +136,6 @@ export function FakeCalculator({
       return;
     }
     if (key === "=") {
-      // Secret commands are only recognized when the expression begins with
-      // %, so ordinary calculator arithmetic can never accidentally dispatch
-      // an action. Unknown command sequences deliberately look like a normal
-      // calculator error and never invoke a handler.
       if (expr.startsWith("%")) {
         const handled = onSecretCommand?.(expr) ?? false;
         setExpr(handled ? "" : "Error");
@@ -169,7 +163,7 @@ export function FakeCalculator({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-navy px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+    <div className="flex min-h-dvh w-full flex-col bg-navy px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
       <header className="flex items-center justify-between px-2 py-2">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">{lang === "ar" ? "الآلة الحاسبة" : "Calculator"}</h1>
@@ -179,13 +173,14 @@ export function FakeCalculator({
           type="button"
           aria-label={lang === "ar" ? "فتح مساحة الحماية" : "Open security workspace"}
           onClick={onOpenOwner}
-          className="rounded-full p-2 text-muted hover:bg-surface hover:text-ink"
+          className="flex min-h-11 items-center gap-2 rounded-full bg-surface px-4 text-sm font-semibold text-cyan shadow-panel hover:bg-surface-2"
         >
-          <ShieldCheck className="size-4" aria-hidden="true" />
+          <ShieldCheck className="size-5" aria-hidden="true" />
+          <span>{lang === "ar" ? "الحماية" : "Security"}</span>
         </button>
       </header>
 
-      <main className="mt-auto">
+      <main className="mx-auto mt-auto w-full max-w-2xl">
         <section className="mb-3 min-h-[clamp(8rem,26vh,12rem)] rounded-[1.6rem] bg-surface px-5 py-5 text-end shadow-panel" aria-label={lang === "ar" ? "شاشة الحاسبة" : "Calculator display"}>
           <p className="min-h-6 truncate text-sm text-faint" dir="ltr">{expr || " "}</p>
           <p className="mt-2 overflow-x-auto whitespace-nowrap text-[clamp(2.5rem,12vw,4rem)] font-light leading-none tracking-tight tabular-nums" dir="ltr">
