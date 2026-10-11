@@ -35,18 +35,18 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android build normalizes JVM targets after Capacitor sync", async () => {
-  const setup = await read("scripts/android-setup.mjs");
+test("Android build applies JVM and offline finalization after Capacitor sync", async () => {
   const build = await read("scripts/build-apk.mjs");
   const align = await read("scripts/align-android-jvm.mjs");
-  assert.match(setup, /jvmToolchain\(17\)/);
-  assert.match(setup, /JavaVersion\.VERSION_17/);
-  assert.match(build, /\[\"cap\", \"sync\", \"android\"\]/);
+  assert.match(build, /npx[\s\S]*\[\"cap\", \"sync\", \"android\"\]/);
   assert.match(build, /align-android-jvm\.mjs/);
   assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /jvmTarget = \"17\"/);
   assert.match(align, /options\.release/);
+  assert.match(align, /Android manifest/);
+  assert.match(align, /INTERNET/);
+  assert.match(align, /ACCESS_NETWORK_STATE/);
 });
 
 test("all native Kotlin security classes are copied into the Android app", async () => {
