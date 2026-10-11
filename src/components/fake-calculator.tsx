@@ -11,6 +11,7 @@ const ROWS = [
   ["0", ".", "="],
 ] as const;
 
+const OWNER_TRIGGER = "0×0×0×9";
 type SecretCommandHandler = (sequence: string) => boolean;
 
 function evalExpr(raw: string): string {
@@ -94,40 +95,35 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
-  const [commandSequence, setCommandSequence] = useState("");
 
   function tap(key: string) {
     if (key === "AC") {
       setExpr("");
       setDisplay("0");
-      setCommandSequence("");
       return;
     }
 
-    // Hidden owner entry: %, ×, %, = . It is completely separate from the
-    // calculator expression and immediately hands control to the security gate.
-    if (expr === "" && commandSequence === "" && key === "%") {
-      setCommandSequence("%");
-      return;
-    }
-    if (commandSequence === "%" && key === "×") {
-      setCommandSequence("%×");
-      return;
-    }
-    if (commandSequence === "%×" && key === "%") {
-      setCommandSequence("%×%");
-      return;
-    }
-    if (commandSequence === "%×%" && key === "=") {
-      const handled = onSecretCommand?.("%×%=") ?? false;
-      setCommandSequence("");
-      if (handled) {
-        setExpr("");
-        setDisplay("0");
+    // Owner entry is the exact visible calculator sequence 0 × 0 × 0 × 9 =.
+    // While the expression is a prefix of that sequence, keep it as a normal-looking
+    // calculator expression. On the exact final '=' we consume it and open the gate.
+    const candidate = key === "=" ? expr : `${expr}${key}`;
+    const triggerPrefix = candidate === "" || OWNER_TRIGGER.startsWith(candidate);
+    if (triggerPrefix && candidate.length > 0) {
+      if (key === "=") {
+        if (expr === OWNER_TRIGGER) {
+          const handled = onSecretCommand?.(`${OWNER_TRIGGER}=`) ?? false;
+          if (handled) {
+            setExpr("");
+            setDisplay("0");
+            return;
+          }
+        }
+      } else {
+        setExpr(candidate);
+        setDisplay(candidate);
+        return;
       }
-      return;
     }
-    if (commandSequence) setCommandSequence("");
 
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
@@ -137,13 +133,13 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
     }
     if (key === "%") {
       if (!expr) return;
-      const next = `${expr}%`;
       const numeric = Number.parseFloat(expr);
       if (Number.isFinite(numeric)) {
         const result = String(numeric / 100);
         setExpr(result);
         setDisplay(result);
       } else {
+        const next = `${expr}%`;
         setExpr(next);
         setDisplay(next);
       }
