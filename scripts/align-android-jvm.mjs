@@ -1,7 +1,7 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const root = path.resolve(new URL("..", import.meta.url).pathname, "..");
+const root = path.resolve(new URL(".", import.meta.url).pathname, "..");
 const gradlePath = path.join(root, "android", "app", "build.gradle");
 const ktsPath = path.join(root, "android", "app", "build.gradle.kts");
 
@@ -19,8 +19,7 @@ const patchGroovy = (source) => {
 };
 
 const patchKts = (source) => {
-  let out = source;
-  out = out.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_17");
+  let out = source.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_17");
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, (m) => `${m}\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }`);
   }
@@ -33,7 +32,7 @@ if (await exists(gradlePath)) {
 } else if (await exists(ktsPath)) {
   await writeFile(ktsPath, patchKts(await readFile(ktsPath, "utf8")));
 } else {
-  throw new Error("Android app Gradle file was not generated");
+  throw new Error(`Android app Gradle file was not generated under ${path.join(root, "android", "app")}`);
 }
 
 console.log("Android Java/Kotlin JVM targets aligned at 17.");
