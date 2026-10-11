@@ -9,6 +9,9 @@ const exists = (file) => access(file).then(() => true).catch(() => false);
 
 const patchGroovy = (source) => {
   let out = source;
+  // Capacitor's generated project may already contain compileOptions with the
+  // host JDK target (currently 21). Replace the existing values, not only the
+  // whole block when it is absent, so Kotlin/Javac cannot disagree.
   out = out.replace(/sourceCompatibility\s+JavaVersion\.VERSION_\d+/g, "sourceCompatibility JavaVersion.VERSION_17");
   out = out.replace(/targetCompatibility\s+JavaVersion\.VERSION_\d+/g, "targetCompatibility JavaVersion.VERSION_17");
   if (!out.includes("compileOptions")) {
@@ -19,7 +22,10 @@ const patchGroovy = (source) => {
 };
 
 const patchKts = (source) => {
-  let out = source.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_17");
+  let out = source;
+  out = out.replace(/sourceCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "sourceCompatibility = JavaVersion.VERSION_17");
+  out = out.replace(/targetCompatibility\s*=\s*JavaVersion\.VERSION_\d+/g, "targetCompatibility = JavaVersion.VERSION_17");
+  out = out.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_17");
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, (m) => `${m}\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }`);
   }
