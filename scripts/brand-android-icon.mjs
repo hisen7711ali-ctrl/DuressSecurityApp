@@ -8,8 +8,6 @@ const manifestPath = path.join(androidDir, "app/src/main/AndroidManifest.xml");
 
 await mkdir(drawableDir, { recursive: true });
 
-// Security-first launcher mark: shield + keyhole, deliberately different from
-// the calculator disguise shown inside the app.
 const iconXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <path android:fillColor="#0B132B" android:pathData="M54,5C54,5 94,17 94,17V48C94,74 78,92 54,102C30,92 14,74 14,48V17Z"/>
     <path android:fillColor="#18C7D9" android:pathData="M54,13C54,13 86,23 86,23V48C86,68 72,83 54,92C36,83 22,68 22,48V23Z"/>
@@ -20,10 +18,10 @@ await writeFile(path.join(drawableDir, "ic_launcher.xml"), iconXml, "utf8");
 await writeFile(path.join(drawableDir, "ic_launcher_round.xml"), iconXml, "utf8");
 
 let manifest = await readFile(manifestPath, "utf8");
-manifest = manifest.replace(/<application\\b([^>]*)>/, (_, attrs0) => {
+manifest = manifest.replace(/<application\b([^>]*)>/, (_, attrs0) => {
     let attrs = attrs0;
     const set = (name, value) => {
-        const re = new RegExp(`android:${name}\\\\s*=\\\\s*"[^"]*"`);
+        const re = new RegExp(`android:${name}\\s*=\\s*"[^"]*"`);
         attrs = re.test(attrs) ? attrs.replace(re, `android:${name}="${value}"`) : `${attrs} android:${name}="${value}"`;
     };
     set("icon", "@drawable/ic_launcher");
