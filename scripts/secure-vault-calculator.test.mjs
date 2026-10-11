@@ -13,10 +13,21 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /calculatorFront && session === "locked"/);
   assert.match(shell, /SECRET_CALCULATOR_COMMANDS.*%\+=.*security/s);
   assert.match(calculator, /onSecretCommand/);
-  assert.match(calculator, /nextCommand === "%\+="/);
+
+  // The hidden owner trigger is a small state machine:
+  // clean calculator -> % -> %+ -> = . Only that exact sequence succeeds.
+  assert.match(calculator, /expr === "" && commandSequence === "" && key === "%"/);
+  assert.match(calculator, /commandSequence === "%" && key === "\+"/);
+  assert.match(calculator, /commandSequence === "%\+" && key === "="/);
+  assert.match(calculator, /onSecretCommand\?\.\("%\+="\)/);
+
+  // The reveal is temporary and exposes only the neutral continuation control.
   assert.match(calculator, /secretVisible/);
-  assert.match(calculator, /5000/);
+  assert.match(calculator, /setSecretVisible\(true\)/);
+  assert.match(calculator, /setTimeout\(\(\) => setSecretVisible\(false\), 5000\)/);
   assert.match(calculator, /متابعة|Continue/);
+
+  // No legacy visible/alternate owner-entry path may survive.
   assert.doesNotMatch(calculator, /Open security workspace|فتح مساحة الحماية/);
   assert.doesNotMatch(calculator, /tryDuressEscape|expr\.length\s*===\s*4/);
 });
