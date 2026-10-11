@@ -16,8 +16,8 @@ test("offline guard allows no remote host", async () => {
 
 test("offline Android setup strips network permissions", async () => {
   const source = await read("scripts/android-setup.mjs");
-  assert.ok(source.includes('INTERNET'));
-  assert.ok(source.includes('ACCESS_NETWORK_STATE'));
+  assert.ok(source.includes("INTERNET"));
+  assert.ok(source.includes("ACCESS_NETWORK_STATE"));
 });
 
 test("offline manifest additions do not request internet access", async () => {
@@ -41,7 +41,7 @@ test("Android build normalizes JVM targets after Capacitor sync", async () => {
   const align = await read("scripts/align-android-jvm.mjs");
   assert.match(setup, /jvmToolchain\(17\)/);
   assert.match(setup, /JavaVersion\.VERSION_17/);
-  assert.match(build, /cap sync android/);
+  assert.match(build, /\[\"cap\", \"sync\", \"android\"\]/);
   assert.match(build, /align-android-jvm\.mjs/);
   assert.match(align, /sourceCompatibility[\s\S]*VERSION_17/);
   assert.match(align, /targetCompatibility[\s\S]*VERSION_17/);
@@ -62,8 +62,8 @@ test("calculator branding stays Android-safe and does not change the security pa
   assert.match(source, /calculator_app_name/);
   assert.match(source, /@drawable\/ic_launcher/);
   assert.match(source, /@drawable\/ic_launcher_round/);
-  assert.ok(source.includes('INTERNET'));
-  assert.ok(source.includes('ACCESS_NETWORK_STATE'));
+  assert.ok(source.includes("INTERNET"));
+  assert.ok(source.includes("ACCESS_NETWORK_STATE"));
 });
 
 test("calculator screen remains a calculator-only presentation layer", async () => {
