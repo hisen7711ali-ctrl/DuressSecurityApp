@@ -11,9 +11,12 @@ const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
 });
 
 try {
+  // android-setup.mjs is the single source of truth for Android Java/Kotlin
+  // compiler targets. Do not post-process its Gradle output with a second
+  // JVM-alignment pass, because that can reintroduce incompatible target or
+  // --release combinations after Capacitor sync.
   await run(process.execPath, ["scripts/android-setup.mjs"]);
   await run("npx", ["cap", "sync", "android"]);
-  await run(process.execPath, ["scripts/align-android-jvm.mjs"]);
   const androidDir = path.join(root, "android");
   const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
