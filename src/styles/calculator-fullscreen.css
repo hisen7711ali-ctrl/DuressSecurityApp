@@ -1,0 +1,21 @@
+.calculator-fullscreen-root,
+.calculator-fullscreen-root > div {
+  width: 100vw !important;
+  max-width: none !important;
+  min-width: 100vw !important;
+  min-height: 100vh !important;
+  height: 100vh !important;
+}
+
+.calculator-fullscreen-root main {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.calculator-fullscreen-root section {
+  width: 100% !important;
+}
+
+.calculator-fullscreen-root .grid {
+  width: 100% !important;
+}
