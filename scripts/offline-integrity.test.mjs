@@ -77,6 +77,8 @@ test("calculator branding stays Android-safe and does not change the security pa
   assert.match(source, /calculator_app_name/);
   assert.match(source, /@drawable\/ic_launcher/);
   assert.match(source, /@drawable\/ic_launcher_round/);
+  assert.doesNotMatch(source, /#E8EAED/);
+  assert.doesNotMatch(source, /#5F6368/);
   assert.ok(source.includes("INTERNET"));
   assert.ok(source.includes("ACCESS_NETWORK_STATE"));
 });
@@ -86,7 +88,9 @@ test("calculator screen remains a calculator-only presentation layer", async () 
   assert.match(source, /الآلة الحاسبة/);
   assert.match(source, /Calculator/);
   assert.match(source, /evalExpr/);
-  assert.match(source, /onOpenOwner/);
+  assert.match(source, /onSecretCommand/);
+  assert.match(source, /%×%=/);
+  assert.doesNotMatch(source, /onOpenOwner/);
   assert.doesNotMatch(source, /fetch\(/);
   assert.doesNotMatch(source, /XMLHttpRequest/);
 });
