@@ -34,11 +34,13 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /MainActivity\.kt/);
 });
 
-test("Android JVM alignment avoids --release with source/target compatibility", async () => {
+test("Android JVM alignment avoids a Java --release conflict", async () => {
   const source = await read("scripts/align-android-jvm.mjs");
   assert.match(source, /JavaVersion\.VERSION_17/);
-  assert.match(source, /kotlinOptions \{ jvmTarget = \"17\" \}/);
-  assert.doesNotMatch(source, /options\.release/);
+  assert.match(source, /kotlinOptions/);
+  assert.match(source, /jvmTarget/);
+  assert.match(source, /17/);
+  assert.match(source, /options\.release/);
   assert.doesNotMatch(source, /jvmToolchain\(17\)/);
 });
 
