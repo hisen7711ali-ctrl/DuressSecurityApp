@@ -11,21 +11,21 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   const calculator = await read('src/components/fake-calculator.tsx');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
   assert.match(shell, /calculatorFront && session === "locked"/);
-  assert.match(shell, /SECRET_CALCULATOR_COMMANDS.*%\+=.*security/s);
+  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*%×%=|%\\×%=/);
+  assert.match(shell, /session !== "locked"/);
   assert.match(calculator, /onSecretCommand/);
 
-  // The hidden owner trigger is a small state machine:
-  // clean calculator -> % -> %+ -> = . Only that exact sequence succeeds.
+  // Exact hidden owner trigger: clean calculator -> % -> × -> % -> =.
+  // It immediately calls the security gate; there is no visible reveal button.
   assert.match(calculator, /expr === "" && commandSequence === "" && key === "%"/);
-  assert.match(calculator, /commandSequence === "%" && key === "\+"/);
-  assert.match(calculator, /commandSequence === "%\+" && key === "="/);
-  assert.match(calculator, /onSecretCommand\?\.\("%\+="\)/);
+  assert.match(calculator, /commandSequence === "%" && key === "×"/);
+  assert.match(calculator, /commandSequence === "%×" && key === "%"/);
+  assert.match(calculator, /commandSequence === "%×%" && key === "="/);
+  assert.match(calculator, /onSecretCommand\?\.\("%×%="\)/);
+  assert.doesNotMatch(calculator, /secretVisible|setTimeout\(\(\) => setSecretVisible/);
 
-  // The reveal is temporary and exposes only the neutral continuation control.
-  assert.match(calculator, /secretVisible/);
-  assert.match(calculator, /setSecretVisible\(true\)/);
-  assert.match(calculator, /setTimeout\(\(\) => setSecretVisible\(false\), 5000\)/);
-  assert.match(calculator, /متابعة|Continue/);
+  // Zero is a normal centered wide calculator key, not a stretched/right-aligned label.
+  assert.match(calculator, /wide && "col-span-2 justify-center"/);
 
   // No legacy visible/alternate owner-entry path may survive.
   assert.doesNotMatch(calculator, /Open security workspace|فتح مساحة الحماية/);
