@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -34,6 +34,16 @@ jobs:
         run: npm test
       - name: TypeScript
         run: npm run typecheck
+      - name: Sync and inspect Gradle JVM configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run android:setup
+          npx cap sync android
+          node scripts/align-android-jvm.mjs
+          cd android
+          ./gradlew --version
+          ./gradlew :app:compileDebugJavaWithJavac :app:compileDebugKotlin --console=plain
       - name: Build APK with log capture
         shell: bash
         run: |
