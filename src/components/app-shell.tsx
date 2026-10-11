@@ -38,7 +38,9 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => { setCalculatorFront(false); openOverlay({ kind: "unlock" }); };
-  const handleCalculatorCommand = (sequence: string): boolean => { if (SECRET_CALCULATOR_COMMANDS[sequence] !== "security") return false; openSecurityGate(); return true; };
+  // The calculator itself owns the five-second reveal. This handler only validates
+  // the hidden sequence; it never exposes the protected workspace immediately.
+  const handleCalculatorCommand = (sequence: string): boolean => SECRET_CALCULATOR_COMMANDS[sequence] === "security";
 
   useEffect(() => {
     installNetworkGuard();
