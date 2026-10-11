@@ -15,6 +15,10 @@ import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
+const SECRET_CALCULATOR_COMMANDS: Record<string, "security"> = {
+  "%+=": "security",
+};
+
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
   const [calculatorFront, setCalculatorFront] = useState(true);
@@ -33,6 +37,16 @@ export function AppShell() {
   const lockSession = useAppStore((s) => s.lockSession);
   const theme = useAppStore((s) => s.theme);
   const { lang, dir } = useCopy();
+
+  const handleCalculatorCommand = (sequence: string): boolean => {
+    const command = SECRET_CALCULATOR_COMMANDS[sequence];
+    if (command !== "security") return false;
+    setCalculatorFront(false);
+    // The hidden command never bypasses authentication. It only switches from
+    // the calculator disguise to the normal security entry gate.
+    lockSession();
+    return true;
+  };
 
   useEffect(() => {
     installNetworkGuard();
@@ -91,16 +105,13 @@ export function AppShell() {
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
   if (!ready) {
-    // The calculator is the visible shell from the first frame. Security state is
-    // restored underneath it and immediately replaces it with the appropriate gate
-    // or lock screen once the encrypted state has been verified.
-    return <FakeCalculator onOpenOwner={() => undefined} />;
+    return <FakeCalculator onOpenOwner={() => undefined} onSecretCommand={handleCalculatorCommand} />;
   }
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
-  if (session === "duress") return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} />;
+  if (session === "duress") return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} onSecretCommand={handleCalculatorCommand} />;
   if (calculatorFront && session === "locked" && overlay?.kind === "unlock") {
-    return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} />;
+    return <FakeCalculator onOpenOwner={() => { setCalculatorFront(false); lockSession(); }} onSecretCommand={handleCalculatorCommand} />;
   }
   if (session === "locked" && overlay?.kind === "unlock") return <LockGate />;
 
