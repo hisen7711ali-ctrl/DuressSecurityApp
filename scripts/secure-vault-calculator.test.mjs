@@ -6,12 +6,18 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (p) => readFile(path.join(root, p), 'utf8');
 
-test('calculator is the first ordinary screen and owner entry is explicit', async () => {
+test('calculator is the first ordinary screen and owner entry is hidden behind the exact trigger', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
   assert.match(shell, /calculatorFront && session === "locked"/);
-  assert.match(calculator, /Open security workspace|فتح مساحة الحماية/);
+  assert.match(shell, /SECRET_CALCULATOR_COMMANDS.*%\+=.*security/s);
+  assert.match(calculator, /onSecretCommand/);
+  assert.match(calculator, /"%\+=");/);
+  assert.match(calculator, /secretVisible/);
+  assert.match(calculator, /5000/);
+  assert.match(calculator, /متابعة|Continue/);
+  assert.doesNotMatch(calculator, /Open security workspace|فتح مساحة الحماية/);
   assert.doesNotMatch(calculator, /tryDuressEscape|expr\.length\s*===\s*4/);
 });
 
