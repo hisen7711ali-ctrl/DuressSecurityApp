@@ -47,9 +47,6 @@ export function AppShell() {
     };
     const lockWhenBackgrounded = () => {
       if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") {
-        // Lock before the WebView becomes background-visible. This covers app
-        // switching, Home, Recents, and screen-off on Android WebView versions
-        // that emit visibilitychange.
         lockSession();
       }
     };
@@ -94,11 +91,10 @@ export function AppShell() {
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
   if (!ready) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-night px-6 text-center text-sm text-muted" role="status">
-        {lang === "ar" ? "جارٍ استعادة حالة الحماية الآمنة…" : "Restoring secure protection state…"}
-      </div>
-    );
+    // The calculator is the visible shell from the first frame. Security state is
+    // restored underneath it and immediately replaces it with the appropriate gate
+    // or lock screen once the encrypted state has been verified.
+    return <FakeCalculator onOpenOwner={() => undefined} />;
   }
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
