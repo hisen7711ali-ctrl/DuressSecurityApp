@@ -34,7 +34,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   const pendingGateIndex = shell.indexOf('if (pendingSecurityGate) return <LockGate />;');
   const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
   assert.ok(startupCalculatorIndex >= 0 && pendingGateIndex >= 0 && unlockOverlayIndex >= 0);
-  assert.ok(startupCalculatorIndex < pendingGateIndex, 'startup decoy must be the normal fallback until the secret command is entered');
+  assert.ok(pendingGateIndex < startupCalculatorIndex, 'pending security gate must override the startup calculator immediately after the secret command');
   assert.ok(pendingGateIndex < unlockOverlayIndex, 'pending security gate must have priority over the normal unlock overlay path');
 
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
@@ -43,7 +43,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.match(calculator, /if \(!sequenceMatches\) return false/);
-  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
+  assert.match(calculator, /if \(\/^\\d\$\/\.test\(key\)\)/);
   assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
   assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
