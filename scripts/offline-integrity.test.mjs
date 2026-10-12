@@ -35,32 +35,20 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /jvmToolchain\(21\)/);
 });
 
-test("Android build keeps its configured JVM alignment checks", async () => {
+test("APK build uses one setup pass and does not re-sync or re-align native Gradle", async () => {
   const build = await read("scripts/build-apk.mjs");
-  const align = await read("scripts/align-android-jvm.mjs");
+  assert.match(build, /scripts\/android-setup\.mjs/);
+  assert.doesNotMatch(build, /\[\"cap\", \"sync\", \"android\"\]/);
+  assert.doesNotMatch(build, /align-android-jvm\.mjs/);
+});
+
+test("Android debug workflow verifies the actual final APK", async () => {
   const debugWorkflow = await read(".github/workflows/android-debug.yml");
-  const diagnosticWorkflow = await read(".github/workflows/android-build-diagnostic.yml");
-  assert.match(build, /npx[\s\S]*\[\"cap\", \"sync\", \"android\"\]/);
-  assert.match(build, /align-android-jvm\.mjs/);
-  assert.match(align, /VERSION_21/);
-  assert.match(align, /sourceCompatibility[\s\S]*21/);
-  assert.match(align, /targetCompatibility[\s\S]*21/);
-  assert.match(align, /javaCompiler\s*=\s*javaToolchains\.compilerFor[\s\S]*JavaLanguageVersion\.of\(21\)/);
-  assert.match(align, /compilerOptions[\s\S]*JvmTarget\.JVM_21/);
-  assert.match(align, /KotlinCompilationTask/);
-  assert.match(align, /DURESS_JVM21_ALL_MODULES/);
-  assert.match(align, /jvmToolchain\(21\)/);
-  assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
-  assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
-  assert.match(debugWorkflow, /java-version: '21'/);
-  assert.match(debugWorkflow, /dump badging/);
+  assert.match(debugWorkflow, /dump permissions/);
   assert.match(debugWorkflow, /application-icon/);
   assert.match(debugWorkflow, /res\/drawable\/ic_launcher/);
   assert.match(debugWorkflow, /com\.duresssecurity\.app\.MainActivity/);
-  assert.match(diagnosticWorkflow, /java-version: '21'/);
-  assert.match(diagnosticWorkflow, /gradlew --version/);
-  assert.match(diagnosticWorkflow, /compileDebugJavaWithJavac/);
-  assert.match(diagnosticWorkflow, /compileDebugKotlin/);
+  assert.match(debugWorkflow, /name: duress-security-debug-apk/);
 });
 
 test("all native Kotlin security classes are copied into the Android app", async () => {
@@ -93,6 +81,8 @@ test("calculator screen remains a calculator-only presentation layer", async () 
   assert.ok(source.includes("onSecretCommand?.(OWNER_TRIGGER_FULL)"));
   assert.match(source, /const OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(source, /ownerSequenceRef = useRef\(\"\"\)/);
+  assert.match(source, /if \(key === "⌫"\)/);
+  assert.match(source, /if \(key === "±"\)/);
   assert.doesNotMatch(source, /onOpenOwner/);
   assert.doesNotMatch(source, /fetch\(/);
   assert.doesNotMatch(source, /XMLHttpRequest/);
