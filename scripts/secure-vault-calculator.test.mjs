@@ -36,6 +36,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.match(calculator, /if \(!sequenceMatches && !expressionMatches\) return false/);
+  assert.doesNotMatch(calculator, /ownerSequenceRef\.current !== OWNER_TRIGGER/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
   assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
