@@ -11,12 +11,10 @@ const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
 });
 
 try {
-  // Capacitor sync can regenerate app/build.gradle. Therefore the final JVM
-  // normalization and branding must run after sync and immediately before Gradle.
+  // android-setup.mjs performs the single Capacitor sync and all post-sync
+  // native patching/branding. Do not sync or JVM-align a second time here:
+  // Capacitor sync can overwrite the exact files we just hardened.
   await run(process.execPath, ["scripts/android-setup.mjs"]);
-  await run("npx", ["cap", "sync", "android"]);
-  await run(process.execPath, ["scripts/align-android-jvm.mjs"]);
-  await run(process.execPath, ["scripts/brand-android-icon.mjs"]);
   const androidDir = path.join(root, "android");
   const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
