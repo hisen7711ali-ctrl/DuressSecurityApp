@@ -10,6 +10,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
   const icon = await read('scripts/brand-android-icon.mjs');
+  const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
   assert.match(shell, /SECRET_CALCULATOR_COMMAND.*0×0×0×9=/);
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
@@ -21,15 +22,11 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
-  // The locked calculator must be rendered before the persisted unlock overlay.
   const lockedCalculatorIndex = shell.indexOf('if (session === "locked" && calculatorFront) return <FakeCalculator');
   const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
   assert.ok(lockedCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
   assert.ok(lockedCalculatorIndex < unlockOverlayIndex, 'calculator decoy must precede unlock overlay');
 
-  // Exact hidden owner trigger: clean calculator -> 0 -> × -> 0 -> × -> 0 -> × -> 9 -> =.
-  // The trigger is a synchronous ref-based state machine so rapid Android taps cannot
-  // be lost because React batches renders between physical key presses.
   assert.match(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(calculator, /ownerSequenceRef = useRef\(\"\"\)/);
@@ -39,15 +36,19 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /if \(!sequenceMatches && !expressionMatches\) return false/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
-  // The calculator must have a real delete/backspace key, not only digits/operators.
+  // Calculator controls: delete/backspace and a real +/- sign toggle must both be present.
   assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
+  assert.match(calculator, /\["±", "\.", "0", "="\]/);
   assert.match(calculator, /if \(key === "⌫"\)/);
+  assert.match(calculator, /if \(key === "±"\)/);
   assert.match(calculator, /setDisplay\(next \|\| "0"\)/);
-
-  // Zero is a normal centered wide calculator key, not a stretched/right-aligned label.
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
 
-  // Launcher branding must visibly be a calculator, not a shield, robot, or generic mark.
+  // Native Android security: protected app window cannot be captured by screenshots/recording.
+  assert.match(activity, /FLAG_SECURE/);
+  assert.match(activity, /window\.addFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
+  assert.doesNotMatch(activity, /clearFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
+
   assert.match(icon, /calculator-shaped|calculator/);
   assert.match(icon, /<!-- calculator keys -->/);
   assert.match(icon, /<!-- display -->/);
