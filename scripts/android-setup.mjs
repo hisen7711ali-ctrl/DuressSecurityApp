@@ -39,8 +39,8 @@ await writeFile(path.join(valuesDest, "calculator_branding.xml"), `<resources>\n
 // Single-source professional calculator launcher icon. The visible identity is deliberately
 // a calculator: display panel + four keypad buttons, with no Android robot or security shield.
 const iconXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-<path android:fillColor="#071426" android:pathData="M20,3h68c10.5,0 17,6.5 17,17v68c0,10.5 -6.5,17 -17,17H20C9.5,105 3,98.5 3,88V20C3,9.5 9.5,3 20,3Z"/>
-<path android:fillColor="#F8FAFC" android:pathData="M28,19h52c4.4,0 8,3.6 8,8v54c0,4.4 -3.6,8 -8,8H28c-4.4,0 -8,-3.6 -8,-8V27c0,-4.4 3.6,-8 8,-8Z"/>
+<path android:fillColor="#071426" android:pathData="M20,3h68c10.5 0 17,6.5 17,17v68c0,10.5 -6.5,17 -17,17H20C9.5,105 3,98.5 3,88V20C3,9.5 9.5,3 20,3Z"/>
+<path android:fillColor="#F8FAFC" android:pathData="M28,19h52c4.4 0 8,3.6 8,8v54c0,4.4 -3.6 8 -8,8H28c-4.4 0 -8,-3.6 -8,-8V27c0,-4.4 3.6,-8 8,-8Z"/>
 <path android:fillColor="#0B1B31" android:pathData="M28,27h52c0,0 0,0 0,0v17c0,2.2 -1.8,4 -4,4H32c-2.2,0 -4,-1.8 -4,-4V27Z"/>
 <path android:fillColor="#23C7D9" android:pathData="M34,32h40v7H34z"/>
 <path android:fillColor="#0B1B31" android:pathData="M31,54h12v10H31zM48,54h12v10H48zM65,54h12v10H65zM31,69h12v10H31zM48,69h12v10H48zM65,69h12v10H65z"/>
@@ -63,7 +63,53 @@ manifest = manifest.replace(/<application\b([^>]*)>/, (_, attrs0) => {
   return `<application${attrs}>`;
 });
 manifest = manifest.replace(/\s*<uses-permission\s+android:name="android\.permission\.(?:INTERNET|ACCESS_NETWORK_STATE)"\s*\/>/g, "");
+
+// Capacitor generates the base manifest for each build. The native security receiver,
+// accessibility service and special-permission declarations therefore have to be injected
+// here on every setup pass; keeping them only in android-native/manifest-additions.xml is
+// documentation and does not modify the generated manifest by itself.
+const nativePermissions = [
+  "android.permission.USE_BIOMETRIC",
+  "android.permission.RECEIVE_BOOT_COMPLETED",
+  "android.permission.POST_NOTIFICATIONS",
+  "android.permission.SYSTEM_ALERT_WINDOW",
+  "android.permission.PACKAGE_USAGE_STATS",
+];
+const permissionLines = nativePermissions
+  .filter(permission => !manifest.includes(`android:name="${permission}"`))
+  .map(permission => `    <uses-permission android:name="${permission}" />`)
+  .join("\n");
+if (permissionLines) manifest = manifest.replace(/<application\b/, `${permissionLines}\n\n<application`);
+
+const nativeApplicationEntries = `
+        <receiver
+            android:name="com.duresssecurity.admin.AdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.duresssecurity.admin.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
+        <service
+            android:name="com.duresssecurity.admin.AppLockAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="Duress Security App Lock">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/app_lock_accessibility_service" />
+        </service>`;
+if (!manifest.includes("com.duresssecurity.admin.AdminReceiver")) {
+  manifest = manifest.replace(/<application\b([^>]*)>/, match => `${match}${nativeApplicationEntries}`);
+}
+
 if (!manifest.includes("android.intent.category.LAUNCHER")) throw new Error("Generated Android manifest is missing the launcher category");
+if (!manifest.includes("com.duresssecurity.admin.AdminReceiver")) throw new Error("Generated Android manifest is missing AdminReceiver");
+if (!manifest.includes("com.duresssecurity.admin.BootCompletedReceiver")) throw new Error("Generated Android manifest is missing BootCompletedReceiver");
+if (!manifest.includes("com.duresssecurity.admin.AppLockAccessibilityService")) throw new Error("Generated Android manifest is missing AppLockAccessibilityService");
 await writeFile(manifestPath, manifest);
 
 const rootGradlePath = path.join(androidDir, "build.gradle");
@@ -101,4 +147,4 @@ if (await exists(gradlePath)) {
   await writeFile(gradlePath, gradle);
 }
 
-console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, strict offline manifest, and calculator launcher branding.");
+console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, required native manifest entries, strict offline manifest, and calculator launcher branding.");
