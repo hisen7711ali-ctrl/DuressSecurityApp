@@ -16,9 +16,17 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
   assert.match(shell, /if \(!ready && calculatorFront\) return <FakeCalculator/);
+  assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
   assert.match(shell, /if \(!ready\) return <LockGate \/>/);
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
+
+  // The locked calculator must be rendered before the persisted unlock overlay.
+  // Otherwise the hidden command can never be entered after a restart/background lock.
+  const lockedCalculatorIndex = shell.indexOf('if (session === "locked" && calculatorFront) return <FakeCalculator');
+  const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
+  assert.ok(lockedCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
+  assert.ok(lockedCalculatorIndex < unlockOverlayIndex, 'calculator decoy must precede unlock overlay');
 
   // Exact hidden owner trigger: clean calculator -> 0 -> × -> 0 -> × -> 0 -> × -> 9 -> =.
   // The trigger is a synchronous ref-based state machine so rapid Android taps cannot
