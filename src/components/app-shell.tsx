@@ -20,6 +20,7 @@ const SECRET_CALCULATOR_COMMAND = "0×0×0×9=";
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
   const [calculatorFront, setCalculatorFront] = useState(true);
+  const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
@@ -39,6 +40,13 @@ export function AppShell() {
 
   const openSecurityGate = () => {
     setCalculatorFront(false);
+    // Do not race the first PIN against Android Keystore hydration. The old flow
+    // could accept the hidden command and then have hydrateSession overwrite it.
+    if (!ready) {
+      setPendingSecurityGate(true);
+      return;
+    }
+    setPendingSecurityGate(false);
     openOverlay({ kind: "unlock" });
   };
 
@@ -71,6 +79,13 @@ export function AppShell() {
       document.removeEventListener("visibilitychange", lockWhenBackgrounded);
     };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
+
+  useEffect(() => {
+    if (ready && pendingSecurityGate) {
+      setPendingSecurityGate(false);
+      if (session === "locked") openOverlay({ kind: "unlock" });
+    }
+  }, [ready, pendingSecurityGate, session, openOverlay]);
 
   useEffect(() => {
     if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
