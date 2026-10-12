@@ -41,6 +41,10 @@ export function AppShell() {
 
   const openSecurityGate = () => {
     if (!ready) {
+      // A valid calculator command has already been entered. Move away from
+      // the decoy immediately and finish opening the protection gate after
+      // secure hydration completes instead of silently keeping the calculator.
+      setCalculatorFront(false);
       setPendingSecurityGate(true);
       return;
     }
