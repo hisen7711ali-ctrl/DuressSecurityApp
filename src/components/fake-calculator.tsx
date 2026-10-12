@@ -4,7 +4,7 @@ import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
 
 const ROWS = [
-  ["AC", "±", "%", "÷"],
+  ["AC", "⌫", "%", "÷"],
   ["7", "8", "9", "×"],
   ["4", "5", "6", "−"],
   ["1", "2", "3", "+"],
@@ -76,7 +76,7 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   return (
     <button
       type="button"
-      aria-label={label}
+      aria-label={label === "⌫" ? "Delete" : label}
       onClick={onClick}
       className={cn(
         "flex min-h-14 touch-manipulation items-center justify-center rounded-full text-[clamp(1.05rem,4.8vw,1.45rem)] font-medium transition-transform active:scale-[0.96] sm:min-h-16",
@@ -132,6 +132,16 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
       resetOwnerSequence();
       setExpr("");
       setDisplay("0");
+      return;
+    }
+
+    if (key === "⌫") {
+      resetOwnerSequence();
+      setExpr((current) => {
+        const next = current.slice(0, -1);
+        setDisplay(next || "0");
+        return next;
+      });
       return;
     }
 
