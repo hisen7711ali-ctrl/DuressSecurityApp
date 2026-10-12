@@ -53,6 +53,10 @@ test("Android build keeps its configured JVM alignment checks", async () => {
   assert.doesNotMatch(align, /kotlin\s*\{\s*kotlinOptions\s*\{/);
   assert.doesNotMatch(align, /options\.release\s*(?:=|\.set\s*\()/);
   assert.match(debugWorkflow, /java-version: '21'/);
+  assert.match(debugWorkflow, /dump badging/);
+  assert.match(debugWorkflow, /application-icon/);
+  assert.match(debugWorkflow, /res\/drawable\/ic_launcher/);
+  assert.match(debugWorkflow, /com\.duresssecurity\.app\.MainActivity/);
   assert.match(diagnosticWorkflow, /java-version: '21'/);
   assert.match(diagnosticWorkflow, /gradlew --version/);
   assert.match(diagnosticWorkflow, /compileDebugJavaWithJavac/);
