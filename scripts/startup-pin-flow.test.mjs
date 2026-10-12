@@ -28,6 +28,9 @@ test("calculator trigger is the exact 20272006= sequence and opens the security 
   assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /openSecurityGate\(\)/);
+  assert.match(shell, /setPendingSecurityGate\(true\)/);
+  assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
+  assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
