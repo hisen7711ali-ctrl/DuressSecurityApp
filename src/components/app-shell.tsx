@@ -41,10 +41,9 @@ export function AppShell() {
 
   const openSecurityGate = () => {
     if (!ready) {
-      // A valid calculator command has already been entered. Move away from
-      // the decoy immediately and finish opening the protection gate after
-      // secure hydration completes instead of silently keeping the calculator.
-      setCalculatorFront(false);
+      // A valid calculator command has already been entered. Keep the decoy
+      // visible while secure hydration finishes, then open the gate below.
+      setCalculatorFront(true);
       setPendingSecurityGate(true);
       return;
     }
@@ -104,21 +103,11 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  if (!ready && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
   if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (overlay?.kind === "unlock") return <LockGate />;
-  if (!ready) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-navy px-6 text-center">
-        <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-panel">
-          <p className="text-base font-semibold text-ink">{lang === "ar" ? "جاري تهيئة الحماية…" : "Initializing security…"}</p>
-          <p className="mt-2 text-xs text-muted">{lang === "ar" ? "لا تدخل الرمز حتى يكتمل التحقق." : "Wait for secure state verification before entering a PIN."}</p>
-        </div>
-      </div>
-    );
-  }
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
 
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
