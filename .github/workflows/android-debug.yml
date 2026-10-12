@@ -49,7 +49,7 @@ jobs:
         run: npm run typecheck
       - name: Build debug APK
         run: npm run apk:debug
-      - name: Verify final APK is offline and calculator-branded
+      - name: Verify final APK is offline, calculator-branded, and structurally complete
         shell: bash
         run: |
           set -euo pipefail
@@ -58,14 +58,53 @@ jobs:
           test -f "$APK"
           test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee apk-permissions.txt
-          if grep -Fq 'android.permission.INTERNET' apk-permissions.txt; then
-            echo 'ERROR: final APK still declares INTERNET permission.' >&2
+
+          for permission in \
+            'android.permission.USE_BIOMETRIC' \
+            'android.permission.RECEIVE_BOOT_COMPLETED' \
+            'android.permission.POST_NOTIFICATIONS' \
+            'android.permission.SYSTEM_ALERT_WINDOW' \
+            'android.permission.PACKAGE_USAGE_STATS'; do
+            if ! grep -Fq "$permission" apk-permissions.txt; then
+              echo "ERROR: final APK is missing required permission $permission" >&2
+              exit 1
+            fi
+          done
+
+          for forbidden in \
+            'android.permission.INTERNET' \
+            'android.permission.ACCESS_NETWORK_STATE' \
+            'android.permission.QUERY_ALL_PACKAGES'; do
+            if grep -Fq "$forbidden" apk-permissions.txt; then
+              echo "ERROR: final APK declares forbidden broad/network permission $forbidden" >&2
+              exit 1
+            fi
+          done
+
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee apk-manifest.txt
+          for component in \
+            'com.duresssecurity.admin.AdminReceiver' \
+            'com.duresssecurity.admin.BootCompletedReceiver' \
+            'com.duresssecurity.admin.AppLockAccessibilityService' \
+            'com.duresssecurity.app.MainActivity'; do
+            if ! grep -Fq "$component" apk-manifest.txt; then
+              echo "ERROR: final APK manifest is missing required component $component" >&2
+              exit 1
+            fi
+          done
+          if ! grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt; then
+            echo 'ERROR: Device Admin receiver binding permission is missing.' >&2
             exit 1
           fi
-          if grep -Fq 'android.permission.ACCESS_NETWORK_STATE' apk-permissions.txt; then
-            echo 'ERROR: final APK still declares ACCESS_NETWORK_STATE permission.' >&2
+          if ! grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt; then
+            echo 'ERROR: Accessibility service binding permission is missing.' >&2
             exit 1
           fi
+          if ! grep -Fq 'android:allowBackup' apk-manifest.txt; then
+            echo 'ERROR: final APK manifest does not expose the expected allowBackup attribute.' >&2
+            exit 1
+          fi
+
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           if ! grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt; then
             echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2
@@ -75,7 +114,7 @@ jobs:
             echo 'ERROR: final APK launcher activity is not MainActivity.' >&2
             exit 1
           fi
-          echo 'OK: final APK is offline, calculator-branded, and launches MainActivity.'
+          echo 'OK: final APK is offline, has only the required declared security permissions, contains all native security components, and launches the calculator-branded MainActivity.'
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
