@@ -94,7 +94,6 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
-  // Synchronous state machine: Android WebView can batch rapid touch events.
   const ownerSequenceRef = useRef("");
 
   function resetOwnerSequence() {
@@ -103,8 +102,6 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
 
   function trackOwnerKey(key: string, renderedExpr: string): boolean {
     if (key === "=") {
-      // Primary source is the synchronous sequence. The expression check is a
-      // fallback for builds/devices that restore the calculator state between taps.
       const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
       const expressionMatches = renderedExpr.replace(/\s+/g, "") === OWNER_TRIGGER;
       if (!sequenceMatches && !expressionMatches) return false;
@@ -211,7 +208,7 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
         <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
           {ROWS.flatMap((row, rowIndex) => row.map((key) => {
             const tone = key === "=" ? "equals" : ["÷", "×", "−", "+"].includes(key) ? "operator" : rowIndex === 0 ? "utility" : "number";
-            return <CalculatorButton key={key} label={key} tone={tone as "number" | "utility" | "operator" | "equals"} wide={false} onClick={() => tap(key)} />;
+            return <CalculatorButton key={key} label={key} tone={tone as "number" | "utility" | "operator" | "equals"} wide={key === "0"} onClick={() => tap(key)} />;
           }))}
         </div>
       </main>
