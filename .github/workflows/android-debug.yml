@@ -49,7 +49,7 @@ jobs:
         run: npm run typecheck
       - name: Build debug APK
         run: npm run apk:debug
-      - name: Verify final APK is offline
+      - name: Verify final APK is offline and calculator-branded
         shell: bash
         run: |
           set -euo pipefail
@@ -66,7 +66,16 @@ jobs:
             echo 'ERROR: final APK still declares ACCESS_NETWORK_STATE permission.' >&2
             exit 1
           fi
-          echo 'OK: final APK declares neither INTERNET nor ACCESS_NETWORK_STATE.'
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          if ! grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt; then
+            echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2
+            exit 1
+          fi
+          if ! grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt; then
+            echo 'ERROR: final APK launcher activity is not MainActivity.' >&2
+            exit 1
+          fi
+          echo 'OK: final APK is offline, calculator-branded, and launches MainActivity.'
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
