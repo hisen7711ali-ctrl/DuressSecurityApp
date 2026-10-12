@@ -35,6 +35,24 @@ test("Android setup explicitly compiles Kotlin native classes", async () => {
   assert.match(source, /jvmToolchain\(21\)/);
 });
 
+test("Android setup injects all required native manifest permissions and components", async () => {
+  const source = await read("scripts/android-setup.mjs");
+  for (const permission of [
+    "USE_BIOMETRIC",
+    "RECEIVE_BOOT_COMPLETED",
+    "POST_NOTIFICATIONS",
+    "SYSTEM_ALERT_WINDOW",
+    "PACKAGE_USAGE_STATS",
+  ]) assert.match(source, new RegExp(`android\\.permission\\.${permission}`));
+  for (const component of ["AdminReceiver", "BootCompletedReceiver", "AppLockAccessibilityService"]) {
+    assert.match(source, new RegExp(`com\\.duresssecurity\\.admin\\.${component}`));
+  }
+  assert.match(source, /BIND_DEVICE_ADMIN/);
+  assert.match(source, /BIND_ACCESSIBILITY_SERVICE/);
+  assert.match(source, /@xml\/device_admin/);
+  assert.match(source, /@xml\/app_lock_accessibility_service/);
+});
+
 test("APK build uses one setup pass and does not re-sync or re-align native Gradle", async () => {
   const build = await read("scripts/build-apk.mjs");
   assert.match(build, /scripts\/android-setup\.mjs/);
@@ -45,6 +63,11 @@ test("APK build uses one setup pass and does not re-sync or re-align native Grad
 test("Android debug workflow verifies the actual final APK", async () => {
   const debugWorkflow = await read(".github/workflows/android-debug.yml");
   assert.match(debugWorkflow, /dump permissions/);
+  assert.match(debugWorkflow, /dump xmltree/);
+  assert.match(debugWorkflow, /USE_BIOMETRIC/);
+  assert.match(debugWorkflow, /QUERY_ALL_PACKAGES/);
+  assert.match(debugWorkflow, /AdminReceiver/);
+  assert.match(debugWorkflow, /AppLockAccessibilityService/);
   assert.match(debugWorkflow, /application-icon/);
   assert.match(debugWorkflow, /res\/drawable\/ic_launcher/);
   assert.match(debugWorkflow, /com\.duresssecurity\.app\.MainActivity/);
