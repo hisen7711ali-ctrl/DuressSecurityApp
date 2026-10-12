@@ -19,7 +19,6 @@ function evalExpr(raw: string): string {
   const normalized = raw.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
   const tokens = normalized.match(/(?:\d+\.?\d*|\.\d+)|[()+\-*/%]/g) ?? [];
   if (tokens.join("") !== normalized.replace(/\s+/g, "")) return "Error";
-
   let pos = 0;
   const peek = () => tokens[pos];
   const take = () => tokens[pos++];
@@ -56,7 +55,6 @@ function evalExpr(raw: string): string {
     }
     return value;
   };
-
   try {
     if (!tokens.length) return "0";
     const result = expression();
@@ -96,17 +94,20 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
-  // Keep the hidden trigger in a synchronous ref. Android WebView can batch rapid
-  // touch events, so the security command must not depend on React rendering between taps.
+  // Synchronous state machine: Android WebView can batch rapid touch events.
   const ownerSequenceRef = useRef("");
 
   function resetOwnerSequence() {
     ownerSequenceRef.current = "";
   }
 
-  function trackOwnerKey(key: string): boolean {
+  function trackOwnerKey(key: string, renderedExpr: string): boolean {
     if (key === "=") {
-      if (ownerSequenceRef.current !== OWNER_TRIGGER) return false;
+      // Primary source is the synchronous sequence. The expression check is a
+      // fallback for builds/devices that restore the calculator state between taps.
+      const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
+      const expressionMatches = renderedExpr.replace(/\s+/g, "") === OWNER_TRIGGER;
+      if (!sequenceMatches && !expressionMatches) return false;
       const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
       if (handled) resetOwnerSequence();
       return handled;
@@ -145,10 +146,7 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
       return;
     }
 
-    // Exact owner entry: 0 × 0 × 0 × 9 =.
-    // This state machine is independent of the calculator expression and therefore
-    // cannot be broken by React state batching or fast physical taps.
-    if (trackOwnerKey(key)) {
+    if (trackOwnerKey(key, expr)) {
       setExpr("");
       setDisplay("0");
       return;
@@ -205,13 +203,11 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
           <p className="text-xs text-muted">{lang === "ar" ? "حاسبة بسيطة" : "Standard calculator"}</p>
         </div>
       </header>
-
       <main className="mx-auto mt-auto w-full max-w-2xl">
         <section className="mb-3 min-h-[clamp(8rem,26vh,12rem)] rounded-[1.6rem] bg-surface px-5 py-5 text-end shadow-panel" aria-label={lang === "ar" ? "شاشة الحاسبة" : "Calculator display"}>
           <p className="min-h-6 truncate text-sm text-faint" dir="ltr">{expr || " "}</p>
           <p className="mt-2 overflow-x-auto whitespace-nowrap text-[clamp(2.5rem,12vw,4rem)] font-light leading-none tracking-tight tabular-nums" dir="ltr">{display}</p>
         </section>
-
         <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
           {ROWS.flatMap((row, rowIndex) => row.map((key) => {
             const tone = key === "=" ? "equals" : ["÷", "×", "−", "+"].includes(key) ? "operator" : rowIndex === 0 ? "utility" : "number";
