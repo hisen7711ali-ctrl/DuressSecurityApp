@@ -48,8 +48,9 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
 
   assert.match(activity, /FLAG_SECURE/);
-  assert.match(activity, /window\.addFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
-  assert.doesNotMatch(activity, /clearFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
+  assert.match(activity, /setScreenCaptureAllowed\(true\)/);
+  assert.match(activity, /clearFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
+  assert.match(activity, /addFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
 
   assert.match(icon, /calculator-shaped|calculator/);
   assert.match(icon, /<!-- calculator keys -->/);
