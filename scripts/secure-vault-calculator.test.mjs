@@ -39,6 +39,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
   assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
+  assert.match(calculator, /\["1", "2", "3", "\+"\]/);
   assert.match(calculator, /\["±", "\.", "0", "="\]/);
   assert.match(calculator, /if \(key === "⌫"\)/);
   assert.match(calculator, /if \(key === "±"\)/);
