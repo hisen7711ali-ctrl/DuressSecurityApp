@@ -45,6 +45,27 @@ type CapacitorWindow = Window & {
   Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
 };
 
+const NATIVE_CALL_TIMEOUT_MS = 2500;
+
+function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: T) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(fallback), timeoutMs);
+    promise.then((value) => {
+      window.clearTimeout(timer);
+      finish(value);
+    }).catch(() => {
+      window.clearTimeout(timer);
+      finish(fallback);
+    });
+  });
+}
+
 function isNativeRuntime(): boolean {
   if (typeof window === "undefined") return false;
   const capacitor = (window as CapacitorWindow).Capacitor;
@@ -67,7 +88,7 @@ export async function setScreenCaptureAllowed(allowed: boolean): Promise<boolean
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.setScreenCaptureAllowed({ allowed })).ok;
+    return (await withNativeTimeout(plugin.setScreenCaptureAllowed({ allowed }), { ok: false })).ok;
   } catch {
     return false;
   }
@@ -127,7 +148,7 @@ export async function getPermissionStatus(): Promise<NativePermissionStatus | nu
   const plugin = await getNativePlugin();
   if (!plugin) return null;
   try {
-    return await plugin.getPermissionStatus();
+    return await withNativeTimeout(plugin.getPermissionStatus(), null);
   } catch {
     return null;
   }
@@ -157,7 +178,7 @@ export async function secureStorageGet(key: string): Promise<SecureRead> {
   const plugin = await getNativePlugin();
   if (!plugin) return { available: false, found: false, value: null };
   try {
-    return await plugin.secureGet({ key });
+    return await withNativeTimeout(plugin.secureGet({ key }), { available: false, found: false, value: null });
   } catch {
     return { available: false, found: false, value: null };
   }
@@ -167,7 +188,7 @@ export async function secureStorageSet(key: string, value: string): Promise<bool
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.secureSet({ key, value })).ok;
+    return (await withNativeTimeout(plugin.secureSet({ key, value }), { ok: false })).ok;
   } catch {
     return false;
   }
@@ -177,7 +198,7 @@ export async function secureStorageRemove(key: string): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.secureRemove({ key })).ok;
+    return (await withNativeTimeout(plugin.secureRemove({ key }), { ok: false })).ok;
   } catch {
     return false;
   }
@@ -187,7 +208,7 @@ export async function secureStorageClearOwned(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.secureClearOwned()).ok;
+    return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false })).ok;
   } catch {
     return false;
   }
