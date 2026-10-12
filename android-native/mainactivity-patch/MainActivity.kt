@@ -9,16 +9,17 @@ import com.getcapacitor.BridgeActivity
 /**
  * Capacitor MainActivity with the native security bridge.
  * The app-level PIN gate remains separate from Android's system Keyguard.
- * Screenshots are explicitly allowed in calculator and security/settings screens.
+ * FLAG_SECURE is always enabled on the native app window so protected UI/data
+ * cannot be captured by Android screenshots or normal screen-recording APIs.
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // Never apply FLAG_SECURE: the user must be able to capture screenshots
-        // of the calculator, security workspace and settings for documentation/testing.
-        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Security-first: the native app window is never capturable. The calculator
+        // remains a normal decoy UI, but its contents are not exported to screenshots.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
