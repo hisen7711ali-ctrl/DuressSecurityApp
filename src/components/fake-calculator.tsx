@@ -15,6 +15,17 @@ const OWNER_TRIGGER = "0×0×0×9";
 const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
 type SecretCommandHandler = (sequence: string) => boolean;
 
+function normalizeOwnerExpression(value: string): string {
+  return value
+    .replace(/\s+/g, "")
+    .replace(/[xX*]/g, "×")
+    .replace(/[−-]/g, "−");
+}
+
+function isOwnerTriggerExpression(value: string): boolean {
+  return normalizeOwnerExpression(value) === OWNER_TRIGGER;
+}
+
 function evalExpr(raw: string): string {
   const normalized = raw.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
   const tokens = normalized.match(/(?:\d+\.?\d*|\.\d+)|[()+\-*/%]/g) ?? [];
@@ -102,8 +113,11 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
 
   function trackOwnerKey(key: string, renderedExpr: string): boolean {
     if (key === "=") {
+      // Do not rely only on the event-by-event sequence tracker. The rendered
+      // calculator expression is the source of truth, so the trigger still
+      // works if React batches an input update or the component re-renders.
       const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
-      const expressionMatches = renderedExpr.replace(/\s+/g, "") === OWNER_TRIGGER;
+      const expressionMatches = isOwnerTriggerExpression(renderedExpr);
       if (!sequenceMatches && !expressionMatches) return false;
       const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
       if (handled) resetOwnerSequence();
