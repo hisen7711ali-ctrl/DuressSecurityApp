@@ -11,20 +11,9 @@ const ROWS = [
   ["±", ".", "0", "="],
 ] as const;
 
-const OWNER_TRIGGER = "0×0×0×9";
+const OWNER_TRIGGER = "20272006";
 const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
 type SecretCommandHandler = (sequence: string) => boolean;
-
-function normalizeOwnerExpression(value: string): string {
-  return value
-    .replace(/\s+/g, "")
-    .replace(/[xX*]/g, "×")
-    .replace(/[−-]/g, "−");
-}
-
-function isOwnerTriggerExpression(value: string): boolean {
-  return normalizeOwnerExpression(value) === OWNER_TRIGGER;
-}
 
 function evalExpr(raw: string): string {
   const normalized = raw.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
@@ -111,31 +100,25 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
     ownerSequenceRef.current = "";
   }
 
-  function trackOwnerKey(key: string, renderedExpr: string): boolean {
+  function trackOwnerKey(key: string): boolean {
     if (key === "=") {
-      // Do not rely only on the event-by-event sequence tracker. The rendered
-      // calculator expression is the source of truth, so the trigger still
-      // works if React batches an input update or the component re-renders.
+      // The trigger is tracked from the actual button taps, not from the
+      // calculator expression. This avoids React state batching/re-render
+      // timing from losing the final digit before '=' is pressed.
       const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
-      const expressionMatches = isOwnerTriggerExpression(renderedExpr);
-      if (!sequenceMatches && !expressionMatches) return false;
+      if (!sequenceMatches) return false;
       const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
       if (handled) resetOwnerSequence();
       return handled;
     }
 
-    if (key !== "0" && key !== "×" && key !== "9") {
-      resetOwnerSequence();
+    if (/^\d$/.test(key)) {
+      const next = `${ownerSequenceRef.current}${key}`;
+      ownerSequenceRef.current = OWNER_TRIGGER.startsWith(next) ? next : "";
       return false;
     }
 
-    const next = `${ownerSequenceRef.current}${key}`;
-    if (OWNER_TRIGGER.startsWith(next)) {
-      ownerSequenceRef.current = next;
-      return false;
-    }
-
-    ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
+    resetOwnerSequence();
     return false;
   }
 
@@ -157,13 +140,15 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
       return;
     }
 
-    if (trackOwnerKey(key, expr)) {
+    if (trackOwnerKey(key)) {
       setExpr("");
       setDisplay("0");
       return;
     }
 
-    if (key !== "0" && key !== "×" && key !== "9" && key !== "=") resetOwnerSequence();
+    if (key !== "0" && key !== "1" && key !== "2" && key !== "3" && key !== "4" && key !== "5" && key !== "6" && key !== "7" && key !== "8" && key !== "9") {
+      resetOwnerSequence();
+    }
 
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
