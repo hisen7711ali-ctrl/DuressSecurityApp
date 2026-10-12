@@ -48,7 +48,31 @@ jobs:
       - name: Check TypeScript
         run: npm run typecheck
       - name: Check authentication invariants
-        run: npm run check:auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > dev-server.log 2>&1 &
+          DEV_PID=$!
+          cleanup() {
+            kill "$DEV_PID" 2>/dev/null || true
+            wait "$DEV_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo 'ERROR: wrapped Vite dev server did not become ready.' >&2
+            cat dev-server.log >&2 || true
+            exit 1
+          fi
+          npm run check:auth
       - name: Lint source
         run: npm run lint
       - name: Build debug APK
