@@ -12,6 +12,7 @@ import { SettingsScreen } from "@/components/settings-screen";
 import { StorageRecoveryScreen } from "@/components/storage-recovery-screen";
 import { WipeScreen } from "@/components/wipe-screen";
 import { useAppStore } from "@/lib/store";
+import * as nativeBridge from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
@@ -39,13 +40,14 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => {
-    setCalculatorFront(false);
-    // Do not race the first PIN against Android Keystore hydration. The old flow
-    // could accept the hidden command and then have hydrateSession overwrite it.
+    // Keep the decoy calculator visible while hydration is pending. The previous
+    // implementation switched away immediately, which exposed the initialization
+    // screen indefinitely if a native promise was slow or unresolved.
     if (!ready) {
       setPendingSecurityGate(true);
       return;
     }
+    setCalculatorFront(false);
     setPendingSecurityGate(false);
     openOverlay({ kind: "unlock" });
   };
@@ -83,9 +85,17 @@ export function AppShell() {
   useEffect(() => {
     if (ready && pendingSecurityGate) {
       setPendingSecurityGate(false);
+      setCalculatorFront(false);
       if (session === "locked") openOverlay({ kind: "unlock" });
     }
   }, [ready, pendingSecurityGate, session, openOverlay]);
+
+  // Capture policy is stateful, not global: calculator/decoy = allowed; any
+  // protected security screen = blocked. Background always re-locks in MainActivity.
+  useEffect(() => {
+    const protectedUi = !calculatorFront && ready && session !== "duress";
+    void nativeBridge.setScreenCaptureAllowed(!protectedUi);
+  }, [calculatorFront, ready, session, overlay, panel, openedApp, tab]);
 
   useEffect(() => {
     if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
@@ -95,17 +105,11 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-
-  // Before the secure Android/Keystore state has been hydrated, the calculator remains
-  // the ordinary decoy. If an unlock was submitted too early, never render a null
-  // LockGate: show an explicit initialization state instead of the previous blank page.
   if (!ready && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
-
   if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (overlay?.kind === "unlock") return <LockGate />;
-
   if (!ready) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-navy px-6 text-center">
@@ -116,7 +120,6 @@ export function AppShell() {
       </div>
     );
   }
-
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
 
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
