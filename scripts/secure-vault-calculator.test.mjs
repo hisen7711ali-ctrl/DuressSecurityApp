@@ -6,13 +6,13 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (p) => readFile(path.join(root, p), 'utf8');
 
-test('calculator is the first ordinary screen and owner entry is hidden behind the exact trigger', async () => {
+test('calculator is the first ordinary screen and owner entry is hidden behind the exact numeric trigger', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
   const icon = await read('scripts/brand-android-icon.mjs');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*0×0×0×9=/);
+  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*20272006=/);
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
@@ -29,16 +29,15 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.ok(lockedCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
   assert.ok(lockedCalculatorIndex < unlockOverlayIndex, 'calculator decoy must precede unlock overlay');
 
-  assert.match(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
+  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /normalizeOwnerExpression/);
-  assert.match(calculator, /isOwnerTriggerExpression/);
-  assert.match(calculator, /\.replace\(\/\[xX\*\]\//);
-  assert.match(calculator, /const expressionMatches = isOwnerTriggerExpression\(renderedExpr\)/);
+  assert.match(calculator, /ownerSequenceRef/);
   assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
-  assert.match(calculator, /if \(!sequenceMatches && !expressionMatches\) return false/);
-  assert.doesNotMatch(calculator, /ownerSequenceRef\.current !== OWNER_TRIGGER/);
+  assert.match(calculator, /if \(!sequenceMatches\) return false/);
+  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
+  assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
+  assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
   assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
