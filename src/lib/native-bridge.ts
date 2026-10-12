@@ -124,6 +124,9 @@ export async function lockNow(): Promise<boolean> {
   }
 }
 
+/** Backward-compatible alias used by the store and older tests. */
+export const nativeLockNow = lockNow;
+
 export async function isBiometricAvailable(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
