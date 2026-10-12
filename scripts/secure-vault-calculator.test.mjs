@@ -16,20 +16,20 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
-  assert.match(shell, /if \(!ready && calculatorFront\) return <FakeCalculator/);
+  assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
   assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
-  assert.match(shell, /if \(!ready\) \{\s*\/\/ A valid calculator command has already been entered[\s\S]*setCalculatorFront\(false\);\s*setPendingSecurityGate\(true\);/);
+  assert.match(shell, /if \(!ready\) \{[\s\S]*setCalculatorFront\(true\);\s*setPendingSecurityGate\(true\);/);
   assert.match(shell, /if \(ready && pendingSecurityGate\) \{[\s\S]*if \(session === "locked"\) openOverlay\(\{ kind: "unlock" \}\);/);
-  assert.match(shell, /Initializing security|جاري تهيئة الحماية/);
+  assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
   assert.doesNotMatch(shell, /if \(!ready\) return <LockGate \/>/);
   assert.doesNotMatch(shell, /if \(!ready\)[\s\S]{0,120}return null/);
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
-  const lockedCalculatorIndex = shell.indexOf('if (session === "locked" && calculatorFront) return <FakeCalculator');
+  const startupCalculatorIndex = shell.indexOf('if (!ready) return <FakeCalculator');
   const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
-  assert.ok(lockedCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
-  assert.ok(lockedCalculatorIndex < unlockOverlayIndex, 'calculator decoy must precede unlock overlay');
+  assert.ok(startupCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
+  assert.ok(startupCalculatorIndex < unlockOverlayIndex, 'startup must remain on the decoy until secure state is ready');
 
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
@@ -37,7 +37,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.match(calculator, /if \(!sequenceMatches\) return false/);
-  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
+  assert.match(calculator, /if \(\/^\\d\$\/\.test\(key\)\)/);
   assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
   assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
