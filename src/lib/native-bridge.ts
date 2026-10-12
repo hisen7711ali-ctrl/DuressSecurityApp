@@ -1,10 +1,5 @@
-/**
- * Defensive bridge to the opt-in Android implementation in android-native/.
- * In a browser/PWA every native operation safely reports unavailable. On Android,
- * the plugin can provide Device Admin, biometric authentication, Keystore-backed
- * storage, real permission-status checks, a transparent app-lock accessibility
- * service and optional Device Owner kiosk controls.
- */
+import { registerPlugin } from "@capacitor/core";
+
 export type NativePermissionKey =
   | "overlayPermission"
   | "usagePermission"
@@ -43,6 +38,7 @@ type SecurityAdminNative = {
   secureClearOwned(): Promise<NativeResult>;
   setSelfUninstallBlocked(options: { blocked: boolean }): Promise<NativeResult>;
   setKioskMode(options: { enabled: boolean }): Promise<NativeResult>;
+  setScreenCaptureAllowed(options: { allowed: boolean }): Promise<NativeResult>;
 };
 
 type CapacitorWindow = Window & {
@@ -58,15 +54,23 @@ function isNativeRuntime(): boolean {
 let pluginPromise: Promise<SecurityAdminNative | null> | null = null;
 async function getNativePlugin(): Promise<SecurityAdminNative | null> {
   if (!isNativeRuntime()) return null;
-  pluginPromise ??= import("@capacitor/core")
-    .then(({ registerPlugin }) => registerPlugin<SecurityAdminNative>("SecurityAdmin"))
-    .catch(() => null);
+  pluginPromise ??= Promise.resolve(registerPlugin<SecurityAdminNative>("SecurityAdmin"));
   return pluginPromise;
 }
 
 export function isNativeAndroid(): boolean {
   if (!isNativeRuntime() || typeof window === "undefined") return false;
   return (window as CapacitorWindow).Capacitor?.getPlatform?.() === "android";
+}
+
+export async function setScreenCaptureAllowed(allowed: boolean): Promise<boolean> {
+  const plugin = await getNativePlugin();
+  if (!plugin) return false;
+  try {
+    return (await plugin.setScreenCaptureAllowed({ allowed })).ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function isDeviceAdminActive(): Promise<boolean> {
@@ -79,7 +83,6 @@ export async function isDeviceAdminActive(): Promise<boolean> {
   }
 }
 
-/** Opens Android's own Device Admin confirmation; the user chooses whether to grant it. */
 export async function requestDeviceAdmin(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
@@ -90,8 +93,7 @@ export async function requestDeviceAdmin(): Promise<boolean> {
   }
 }
 
-/** Immediately locks the Android system screen, which remains protected by its own credential. */
-export async function nativeLockNow(): Promise<boolean> {
+export async function lockNow(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
@@ -111,7 +113,6 @@ export async function isBiometricAvailable(): Promise<boolean> {
   }
 }
 
-/** Android reports success/failure only, not the identity of the enrolled finger. */
 export async function authenticateBiometric(reason: string): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
@@ -132,14 +133,23 @@ export async function getPermissionStatus(): Promise<NativePermissionStatus | nu
   }
 }
 
-export async function requestSystemPermission(permission: NativePermissionKey): Promise<boolean> {
+export async function requestSystemPermission(permission: NativePermissionKey): Promise<{ opened: boolean; supported: boolean }> {
   const plugin = await getNativePlugin();
-  if (!plugin) return false;
+  if (!plugin) return { opened: false, supported: false };
   try {
-    const result = await plugin.requestSystemPermission({ permission });
-    return result.opened && result.supported;
+    return await plugin.requestSystemPermission({ permission });
   } catch {
-    return false;
+    return { opened: false, supported: false };
+  }
+}
+
+export async function listLaunchableApps(): Promise<Array<{ packageName: string; label: string }> | null> {
+  const plugin = await getNativePlugin();
+  if (!plugin) return null;
+  try {
+    return (await plugin.listLaunchableApps()).apps.filter((app) => !!(app.packageName && app.label));
+  } catch {
+    return null;
   }
 }
 
@@ -173,29 +183,6 @@ export async function secureStorageRemove(key: string): Promise<boolean> {
   }
 }
 
-/** Available only after the owner has explicitly provisioned this as a managed device. */
-export async function setSelfUninstallBlocked(blocked: boolean): Promise<boolean> {
-  const plugin = await getNativePlugin();
-  if (!plugin) return false;
-  try {
-    return (await plugin.setSelfUninstallBlocked({ blocked })).ok;
-  } catch {
-    return false;
-  }
-}
-
-/** Starts/stops an owner-provisioned kiosk session. It is never enabled automatically by a PIN. */
-export async function setKioskMode(enabled: boolean): Promise<boolean> {
-  const plugin = await getNativePlugin();
-  if (!plugin) return false;
-  try {
-    return (await plugin.setKioskMode({ enabled })).ok;
-  } catch {
-    return false;
-  }
-}
-
-/** Clears the app's encrypted namespaced values in the Android Keystore-backed store. */
 export async function secureStorageClearOwned(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
@@ -206,14 +193,22 @@ export async function secureStorageClearOwned(): Promise<boolean> {
   }
 }
 
-/** Returns launcher-visible installed apps on Android, without broad package-list access. */
-export async function listLaunchableApps(): Promise<Array<{ packageName: string; label: string }> | null> {
+export async function setSelfUninstallBlocked(blocked: boolean): Promise<boolean> {
   const plugin = await getNativePlugin();
-  if (!plugin) return null;
+  if (!plugin) return false;
   try {
-    const response = await plugin.listLaunchableApps();
-    return response.apps.filter((app) => Boolean(app.packageName && app.label));
+    return (await plugin.setSelfUninstallBlocked({ blocked })).ok;
   } catch {
-    return null;
+    return false;
+  }
+}
+
+export async function setKioskMode(enabled: boolean): Promise<boolean> {
+  const plugin = await getNativePlugin();
+  if (!plugin) return false;
+  try {
+    return (await plugin.setKioskMode({ enabled })).ok;
+  } catch {
+    return false;
   }
 }
