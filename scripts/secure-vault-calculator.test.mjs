@@ -18,7 +18,9 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
   assert.match(shell, /if \(!ready && calculatorFront\) return <FakeCalculator/);
   assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
-  assert.match(shell, /if \(!ready\) return <LockGate \/>/);
+  assert.match(shell, /Initializing security|جاري تهيئة الحماية/);
+  assert.doesNotMatch(shell, /if \(!ready\) return <LockGate \/>/);
+  assert.doesNotMatch(shell, /if \(!ready\)[\s\S]{0,120}return null/);
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
@@ -36,7 +38,6 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /if \(!sequenceMatches && !expressionMatches\) return false/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
-  // Calculator controls: delete/backspace and a real +/- sign toggle must both be present.
   assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
   assert.match(calculator, /\["±", "\.", "0", "="\]/);
   assert.match(calculator, /if \(key === "⌫"\)/);
@@ -44,7 +45,6 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /setDisplay\(next \|\| "0"\)/);
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
 
-  // Native Android security: protected app window cannot be captured by screenshots/recording.
   assert.match(activity, /FLAG_SECURE/);
   assert.match(activity, /window\.addFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
   assert.doesNotMatch(activity, /clearFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
@@ -58,7 +58,7 @@ test('hidden trigger remains usable while duress mode is active', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const gateIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
   const duressIndex = shell.indexOf('if (session === "duress") return <FakeCalculator');
-  assert.ok(gateIndex >= 0, 'unlock overlay guard must exist');
+  assert.ok(gateIndex >= 0, 'unlock gate must exist');
   assert.ok(duressIndex >= 0, 'duress calculator guard must exist');
   assert.ok(gateIndex < duressIndex, 'unlock gate must have priority over duress calculator');
 });
