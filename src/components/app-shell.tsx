@@ -38,6 +38,8 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => {
+    // Move away from the decoy immediately. This also matters while Zustand/secure
+    // storage is still hydrating: the calculator must never swallow the owner command.
     setCalculatorFront(false);
     openOverlay({ kind: "unlock" });
   };
@@ -83,7 +85,10 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  // Before hydration the calculator remains the harmless first screen. Once the owner
+  // enters the exact command, calculatorFront becomes false and the PIN gate is allowed
+  // to render immediately instead of being trapped behind the !ready branch.
+  if (!ready && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
 
@@ -92,6 +97,7 @@ export function AppShell() {
   // from being swallowed by the persistent duress calculator screen.
   if (overlay?.kind === "unlock") return <LockGate />;
 
+  if (!ready) return <LockGate />;
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (calculatorFront && session === "locked") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
 
