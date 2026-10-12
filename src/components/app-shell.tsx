@@ -40,15 +40,11 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => {
-    if (!ready) {
-      // A valid calculator command has already been entered. Keep the decoy
-      // visible while secure hydration finishes, then open the gate below.
-      setCalculatorFront(true);
-      setPendingSecurityGate(true);
-      return;
-    }
+    // Once the exact calculator command is entered, leave the decoy immediately.
+    // The gate is rendered even while secure hydration is still finishing, so
+    // a slow native storage call can never trap the user inside the calculator.
     setCalculatorFront(false);
-    setPendingSecurityGate(false);
+    setPendingSecurityGate(true);
     openOverlay({ kind: "unlock" });
   };
 
@@ -83,10 +79,15 @@ export function AppShell() {
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
   useEffect(() => {
-    if (ready && pendingSecurityGate) {
+    if (!pendingSecurityGate) return;
+    if (session !== "locked") {
+      setPendingSecurityGate(false);
+      return;
+    }
+    if (ready) {
       setPendingSecurityGate(false);
       setCalculatorFront(false);
-      if (session === "locked") openOverlay({ kind: "unlock" });
+      openOverlay({ kind: "unlock" });
     }
   }, [ready, pendingSecurityGate, session, openOverlay]);
 
@@ -103,6 +104,7 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
+  if (pendingSecurityGate) return <LockGate />;
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
