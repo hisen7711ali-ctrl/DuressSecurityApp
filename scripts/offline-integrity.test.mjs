@@ -77,7 +77,7 @@ test("calculator screen remains a calculator-only presentation layer", async () 
   assert.match(source, /Calculator/);
   assert.match(source, /evalExpr/);
   assert.match(source, /onSecretCommand/);
-  assert.match(source, /OWNER_TRIGGER = \"0×0×0×9\"/);
+  assert.match(source, /OWNER_TRIGGER = \"20272006\"/);
   assert.ok(source.includes("onSecretCommand?.(OWNER_TRIGGER_FULL)"));
   assert.match(source, /const OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(source, /ownerSequenceRef = useRef\(\"\"\)/);
