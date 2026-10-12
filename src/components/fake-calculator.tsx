@@ -8,7 +8,7 @@ const ROWS = [
   ["7", "8", "9", "×"],
   ["4", "5", "6", "−"],
   ["1", "2", "3", "+"],
-  ["0", ".", "="],
+  ["±", ".", "0", "="],
 ] as const;
 
 const OWNER_TRIGGER = "0×0×0×9";
@@ -74,7 +74,7 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   return (
     <button
       type="button"
-      aria-label={label === "⌫" ? "Delete" : label}
+      aria-label={label === "⌫" ? "Delete" : label === "±" ? "Toggle sign" : label}
       onClick={onClick}
       className={cn(
         "flex min-h-14 touch-manipulation items-center justify-center rounded-full text-[clamp(1.05rem,4.8vw,1.45rem)] font-medium transition-transform active:scale-[0.96] sm:min-h-16",
@@ -211,7 +211,7 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
         <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
           {ROWS.flatMap((row, rowIndex) => row.map((key) => {
             const tone = key === "=" ? "equals" : ["÷", "×", "−", "+"].includes(key) ? "operator" : rowIndex === 0 ? "utility" : "number";
-            return <CalculatorButton key={key} label={key} tone={tone as "number" | "utility" | "operator" | "equals"} wide={key === "0"} onClick={() => tap(key)} />;
+            return <CalculatorButton key={key} label={key} tone={tone as "number" | "utility" | "operator" | "equals"} wide={false} onClick={() => tap(key)} />;
           }))}
         </div>
       </main>
