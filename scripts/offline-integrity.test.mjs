@@ -29,7 +29,7 @@ test("offline manifest additions do not request internet access", async () => {
 test("Android setup explicitly compiles Kotlin native classes", async () => {
   const source = await read("scripts/android-setup.mjs");
   assert.match(source, /org\.jetbrains\.kotlin\.android/);
-  assert.match(source, /version \"2\.0\.21\" apply false/);
+  assert.match(source, /version "2\.0\.21" apply false/);
   assert.match(source, /MainActivity\.kt/);
   assert.match(source, /JavaVersion\.VERSION_21/);
   assert.match(source, /jvmToolchain\(21\)/);
@@ -100,10 +100,10 @@ test("calculator screen remains a calculator-only presentation layer", async () 
   assert.match(source, /Calculator/);
   assert.match(source, /evalExpr/);
   assert.match(source, /onSecretCommand/);
-  assert.match(source, /OWNER_TRIGGER = \"20272006\"/);
+  assert.match(source, /OWNER_TRIGGER = "20272006"/);
   assert.ok(source.includes("onSecretCommand?.(OWNER_TRIGGER_FULL)"));
   assert.match(source, /const OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(source, /ownerSequenceRef = useRef\(\"\"\)/);
+  assert.match(source, /ownerSequenceRef = useRef\(""\)/);
   assert.match(source, /if \(key === "⌫"\)/);
   assert.match(source, /if \(key === "±"\)/);
   assert.doesNotMatch(source, /onOpenOwner/);
