@@ -43,7 +43,7 @@ const normalizeAppGroovy = source => {
   out = out.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_21");
   out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, "jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21");
   out = out.replace(/jvmToolchain\(\d+\)/g, "jvmToolchain(21)");
-  out = out.replace(/\boptions\.release(?:\.set)?\s*\([^\)]*\)|\boptions\.release\s*=\s*[^\n;]+;?/g, "");
+  out = out.replace(/\boptions\.release(?:\.set)?\s*\([^)]*\)|\boptions\.release\s*=\s*[^\n;]+;?/g, "");
 
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }`);
@@ -65,7 +65,7 @@ const normalizeAppKts = source => {
   out = out.replace(/JavaVersion\.VERSION_\d+/g, "JavaVersion.VERSION_21");
   out = out.replace(/jvmTarget\s*=\s*["']\d+["']/g, "jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21");
   out = out.replace(/jvmToolchain\(\d+\)/g, "jvmToolchain(21)");
-  out = out.replace(/\boptions\.release(?:\.set)?\s*\([^\)]*\)|\boptions\.release\s*=\s*[^\n;]+;?/g, "");
+  out = out.replace(/\boptions\.release(?:\.set)?\s*\([^)]*\)|\boptions\.release\s*=\s*[^\n;]+;?/g, "");
 
   if (!out.includes("compileOptions")) {
     out = out.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }`);
