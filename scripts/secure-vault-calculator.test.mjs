@@ -43,7 +43,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.match(calculator, /if \(!sequenceMatches\) return false/);
-  assert.match(calculator, /if \(\/^\\d\$\/\.test\(key\)\)/);
+  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
   assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
   assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
