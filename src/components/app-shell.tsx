@@ -16,7 +16,7 @@ import * as nativeBridge from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
-const SECRET_CALCULATOR_COMMAND = "0×0×0×9=";
+const SECRET_CALCULATOR_COMMAND = "20272006=";
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -40,9 +40,6 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => {
-    // Keep the decoy calculator visible while hydration is pending. The previous
-    // implementation switched away immediately, which exposed the initialization
-    // screen indefinitely if a native promise was slow or unresolved.
     if (!ready) {
       setPendingSecurityGate(true);
       return;
@@ -90,8 +87,6 @@ export function AppShell() {
     }
   }, [ready, pendingSecurityGate, session, openOverlay]);
 
-  // Capture policy is stateful, not global: calculator/decoy = allowed; any
-  // protected security screen = blocked. Background always re-locks in MainActivity.
   useEffect(() => {
     const protectedUi = !calculatorFront && ready && session !== "duress";
     void nativeBridge.setScreenCaptureAllowed(!protectedUi);
