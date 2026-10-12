@@ -98,7 +98,7 @@ export async function isDeviceAdminActive(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.isDeviceAdminActive()).active;
+    return await withNativeTimeout(plugin.isDeviceAdminActive(), { active: false }).then((result) => result.active);
   } catch {
     return false;
   }
@@ -108,7 +108,7 @@ export async function requestDeviceAdmin(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.requestDeviceAdmin()).granted;
+    return await withNativeTimeout(plugin.requestDeviceAdmin(), { granted: false }).then((result) => result.granted);
   } catch {
     return false;
   }
@@ -118,7 +118,7 @@ export async function lockNow(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.lockNow()).ok;
+    return (await withNativeTimeout(plugin.lockNow(), { ok: false })).ok;
   } catch {
     return false;
   }
@@ -128,7 +128,7 @@ export async function isBiometricAvailable(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.isBiometricAvailable()).available;
+    return await withNativeTimeout(plugin.isBiometricAvailable(), { available: false }).then((result) => result.available);
   } catch {
     return false;
   }
@@ -138,7 +138,7 @@ export async function authenticateBiometric(reason: string): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.authenticateBiometric({ reason })).success;
+    return await withNativeTimeout(plugin.authenticateBiometric({ reason }), { success: false }).then((result) => result.success);
   } catch {
     return false;
   }
@@ -158,7 +158,7 @@ export async function requestSystemPermission(permission: NativePermissionKey): 
   const plugin = await getNativePlugin();
   if (!plugin) return { opened: false, supported: false };
   try {
-    return await plugin.requestSystemPermission({ permission });
+    return await withNativeTimeout(plugin.requestSystemPermission({ permission }), { opened: false, supported: false });
   } catch {
     return { opened: false, supported: false };
   }
@@ -168,7 +168,9 @@ export async function listLaunchableApps(): Promise<Array<{ packageName: string;
   const plugin = await getNativePlugin();
   if (!plugin) return null;
   try {
-    return (await plugin.listLaunchableApps()).apps.filter((app) => !!(app.packageName && app.label));
+    return await withNativeTimeout(plugin.listLaunchableApps(), { apps: [] }).then((result) =>
+      result.apps.filter((app) => !!(app.packageName && app.label))
+    );
   } catch {
     return null;
   }
@@ -218,7 +220,7 @@ export async function setSelfUninstallBlocked(blocked: boolean): Promise<boolean
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.setSelfUninstallBlocked({ blocked })).ok;
+    return (await withNativeTimeout(plugin.setSelfUninstallBlocked({ blocked }), { ok: false })).ok;
   } catch {
     return false;
   }
@@ -228,7 +230,7 @@ export async function setKioskMode(enabled: boolean): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await plugin.setKioskMode({ enabled })).ok;
+    return (await withNativeTimeout(plugin.setKioskMode({ enabled }), { ok: false })).ok;
   } catch {
     return false;
   }
