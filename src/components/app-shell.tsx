@@ -38,15 +38,12 @@ export function AppShell() {
   const { lang, dir } = useCopy();
 
   const openSecurityGate = () => {
-    // Move away from the decoy immediately. This also matters while Zustand/secure
-    // storage is still hydrating: the calculator must never swallow the owner command.
     setCalculatorFront(false);
     openOverlay({ kind: "unlock" });
   };
 
-  // The exact calculator command is the deterministic owner-entry trigger.
-  // It must work regardless of the current decoy/duress display state; the PIN gate
-  // remains the authorization boundary for the protected workspace.
+  // Exact hidden owner entry. The calculator is only a decoy/entry surface;
+  // the existing PIN/security store remains the authorization boundary.
   const handleCalculatorCommand = (sequence: string): boolean => {
     if (sequence !== SECRET_CALCULATOR_COMMAND) return false;
     openSecurityGate();
@@ -85,21 +82,19 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  // Before hydration the calculator remains the harmless first screen. Once the owner
-  // enters the exact command, calculatorFront becomes false and the PIN gate is allowed
-  // to render immediately instead of being trapped behind the !ready branch.
   if (!ready && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
 
-  // The unlock overlay always has priority over the decoy calculator, including
-  // duress mode. This is the critical path that prevents the correct hidden trigger
-  // from being swallowed by the persistent duress calculator screen.
+  // IMPORTANT: while the protected session is locked, show the ordinary calculator
+  // before the unlock overlay. The overlay becomes visible only after the exact hidden
+  // command. The previous ordering made the persisted unlock overlay win immediately,
+  // so the user could never enter 0×0×0×9=.
+  if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (overlay?.kind === "unlock") return <LockGate />;
 
   if (!ready) return <LockGate />;
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
-  if (calculatorFront && session === "locked") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
 
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
 }
