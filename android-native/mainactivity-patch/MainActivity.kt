@@ -8,18 +8,16 @@ import com.getcapacitor.BridgeActivity
 
 /**
  * Capacitor MainActivity with the native security bridge.
- * The app-level PIN gate remains separate from Android's system Keyguard.
- * FLAG_SECURE is always enabled on the native app window so protected UI/data
- * cannot be captured by Android screenshots or normal screen-recording APIs.
+ * The decoy calculator is intentionally capturable; protected Duress Security UI is not.
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // Security-first: the native app window is never capturable. The calculator
-        // remains a normal decoy UI, but its contents are not exported to screenshots.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Start in decoy/calculator mode. AppShell switches FLAG_SECURE on as soon as
+        // the protected UI is shown, and switches it back off when the decoy returns.
+        setScreenCaptureAllowed(true)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -33,7 +31,18 @@ class MainActivity : BridgeActivity() {
         }
     }
 
+    /** true = normal calculator/decoy may be captured; false = protected UI is secure. */
+    fun setScreenCaptureAllowed(allowed: Boolean) {
+        if (allowed) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     override fun onStop() {
+        // Never leave a protected window capturable while the app is backgrounded.
+        setScreenCaptureAllowed(false)
         try {
             bridge?.webView?.post {
                 bridge?.webView?.evaluateJavascript(
@@ -42,7 +51,7 @@ class MainActivity : BridgeActivity() {
                 )
             }
         } catch (_: Exception) {
-            // The next process start restores the persisted locked session.
+            // The next process start restores the locked session.
         }
         super.onStop()
     }
