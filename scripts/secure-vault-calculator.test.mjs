@@ -15,6 +15,8 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
+  assert.match(shell, /if \(!ready && calculatorFront\) return <FakeCalculator/);
+  assert.match(shell, /if \(!ready\) return <LockGate \/>/);
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
@@ -28,6 +30,11 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /ownerSequenceRef\.current !== OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
+
+  // The calculator must have a real delete/backspace key, not only digits/operators.
+  assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
+  assert.match(calculator, /if \(key === "⌫"\)/);
+  assert.match(calculator, /setDisplay\(next \|\| "0"\)/);
 
   // Zero is a normal centered wide calculator key, not a stretched/right-aligned label.
   assert.match(calculator, /wide && "col-span-2 justify-center"/);
