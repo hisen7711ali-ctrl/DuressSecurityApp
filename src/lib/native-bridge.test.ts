@@ -4,7 +4,7 @@ import {
   isNativeAndroid,
   isDeviceAdminActive,
   requestDeviceAdmin,
-  nativeLockNow,
+  lockNow,
   isBiometricAvailable,
   authenticateBiometric,
   getPermissionStatus,
@@ -15,6 +15,7 @@ import {
   secureStorageClearOwned,
   setSelfUninstallBlocked,
   setKioskMode,
+  setScreenCaptureAllowed,
   listLaunchableApps,
 } from "./native-bridge.ts";
 
@@ -35,10 +36,9 @@ test("requestDeviceAdmin() resolves false, never throws", async () => {
   assert.equal(await requestDeviceAdmin(), false);
 });
 
-test("nativeLockNow() resolves false, never throws", async () => {
-  assert.equal(await nativeLockNow(), false);
+test("lockNow() resolves false, never throws", async () => {
+  assert.equal(await lockNow(), false);
 });
-
 
 test("isBiometricAvailable() resolves false, never throws", async () => {
   assert.equal(await isBiometricAvailable(), false);
@@ -48,10 +48,9 @@ test("authenticateBiometric() resolves false, never throws", async () => {
   assert.equal(await authenticateBiometric("test"), false);
 });
 
-
 test("permission status is unavailable outside Android", async () => {
   assert.equal(await getPermissionStatus(), null);
-  assert.equal(await requestSystemPermission("overlayPermission"), false);
+  assert.deepEqual(await requestSystemPermission("overlayPermission"), { opened: false, supported: false });
 });
 
 test("Keystore storage methods fail closed outside Android", async () => {
@@ -59,6 +58,11 @@ test("Keystore storage methods fail closed outside Android", async () => {
   assert.equal(await secureStorageSet("duress-security-app", "{}"), false);
   assert.equal(await secureStorageRemove("duress-security-app"), false);
   assert.equal(await secureStorageClearOwned(), false);
+});
+
+test("conditional screen capture control is unavailable on web", async () => {
+  assert.equal(await setScreenCaptureAllowed(false), false);
+  assert.equal(await setScreenCaptureAllowed(true), false);
 });
 
 test("Device Owner policies and installed-app discovery are unavailable on web", async () => {
