@@ -22,7 +22,6 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /onSecretCommand/);
 
   // The locked calculator must be rendered before the persisted unlock overlay.
-  // Otherwise the hidden command can never be entered after a restart/background lock.
   const lockedCalculatorIndex = shell.indexOf('if (session === "locked" && calculatorFront) return <FakeCalculator');
   const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
   assert.ok(lockedCalculatorIndex >= 0 && unlockOverlayIndex >= 0);
@@ -35,8 +34,9 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(calculator, /ownerSequenceRef = useRef\(\"\"\)/);
   assert.match(calculator, /OWNER_TRIGGER\.startsWith\(next\)/);
-  assert.match(calculator, /ownerSequenceRef\.current !== OWNER_TRIGGER/);
+  assert.match(calculator, /ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.match(calculator, /if \(!sequenceMatches && !expressionMatches\) return false/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
 
   // The calculator must have a real delete/backspace key, not only digits/operators.
