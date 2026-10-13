@@ -39,6 +39,7 @@ export function AppShell() {
   const openOverlay = useAppStore((s) => s.openOverlay);
   const theme = useAppStore((s) => s.theme);
   const { lang, dir } = useCopy();
+  const protectedUi = !calculatorFront && ready && session !== "duress";
 
   const openSecurityGate = () => {
     // Once the exact calculator command is entered, leave the decoy immediately.
@@ -112,7 +113,18 @@ export function AppShell() {
     if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
     previousSession.current = session;
   }, [session]);
-  useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.lang = lang;
+    root.dir = dir;
+    root.dataset.theme = theme;
+  }, [lang, dir, theme]);
+
+  useEffect(() => {
+    void nativeBridge.setScreenCaptureAllowed(!protectedUi);
+  }, [protectedUi]);
+
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
