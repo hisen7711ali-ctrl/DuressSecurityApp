@@ -71,7 +71,8 @@ test('native activity uses conditional screen capture protection and keeps the a
   assert.match(plugin, /fun setScreenCaptureAllowed\(call: PluginCall\)/);
   assert.match(plugin, /FLAG_SECURE/);
   assert.match(bridge, /setScreenCaptureAllowed/);
-  assert.match(shell, /protectedUi = !calculatorFront && ready && session !== "duress"/);
+  assert.match(shell, /const protectedUi = !calculatorFront && ready && session !== "duress"/);
+  assert.match(shell, /nativeBridge\.setScreenCaptureAllowed\(!protectedUi\)/);
 });
 
 test('native startup calls are bounded so a broken Android bridge cannot leave initialization spinning forever', async () => {
