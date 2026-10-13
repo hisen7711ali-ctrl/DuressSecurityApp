@@ -23,6 +23,7 @@ export function AppShell() {
   const [calculatorFront, setCalculatorFront] = useState(true);
   const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
   const securityGateFlow = useRef(false);
+  const calculatorRestoreArmed = useRef(true);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
@@ -42,10 +43,8 @@ export function AppShell() {
   const protectedUi = !calculatorFront && ready && session !== "duress";
 
   const openSecurityGate = () => {
-    // Once the exact calculator command is entered, leave the decoy immediately.
-    // Keep a dedicated flow marker so a successful master PIN can never be
-    // mistaken for a normal lock transition and sent back to the calculator.
     securityGateFlow.current = true;
+    calculatorRestoreArmed.current = false;
     setCalculatorFront(false);
     setPendingSecurityGate(true);
     openOverlay({ kind: "unlock" });
@@ -84,7 +83,9 @@ export function AppShell() {
   useEffect(() => {
     if (!pendingSecurityGate) return;
     if (session === "unlocked") {
-      securityGateFlow.current = false;
+      // Keep the hidden-flow marker until the session transition effect below
+      // consumes it. Clearing it here created a race where the normal lock->unlock
+      // transition could be mistaken for a real unlock->lock transition later.
       setPendingSecurityGate(false);
       setCalculatorFront(false);
       return;
@@ -102,15 +103,18 @@ export function AppShell() {
   }, [ready, pendingSecurityGate, session, openOverlay]);
 
   useEffect(() => {
-    // A master-PIN success that belongs to the hidden calculator flow must
-    // always finish inside the protected app UI, never restore the calculator.
     if (securityGateFlow.current && session === "unlocked") {
       securityGateFlow.current = false;
+      calculatorRestoreArmed.current = true;
       setPendingSecurityGate(false);
       setCalculatorFront(false);
+      previousSession.current = "unlocked";
       return;
     }
-    if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
+    if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") {
+      calculatorRestoreArmed.current = false;
+      setCalculatorFront(true);
+    }
     previousSession.current = session;
   }, [session]);
 
