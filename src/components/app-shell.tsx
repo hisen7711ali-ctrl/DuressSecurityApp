@@ -17,6 +17,7 @@ import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
 const SECRET_CALCULATOR_COMMAND = "20272006=";
+const CALCULATOR_GATE_TRANSITION_MS = 2000;
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -24,6 +25,7 @@ export function AppShell() {
   const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
   const securityGateFlow = useRef(false);
   const calculatorRestoreArmed = useRef(true);
+  const suppressAutoLockUntil = useRef(0);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
@@ -45,6 +47,7 @@ export function AppShell() {
   const openSecurityGate = () => {
     securityGateFlow.current = true;
     calculatorRestoreArmed.current = false;
+    suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS;
     setCalculatorFront(false);
     setPendingSecurityGate(true);
     openOverlay({ kind: "unlock" });
@@ -62,8 +65,12 @@ export function AppShell() {
     const unsub = useAppStore.persist.onFinishHydration(finish);
     if (useAppStore.persist.hasHydrated()) finish();
     const refreshOnResume = () => { if (document.visibilityState === "visible") { void refreshNativePermissions(); refreshSecurity(); } };
-    const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked") lockSession(); };
-    const lockFromNativeActivity = () => { if (useAppStore.getState().session === "unlocked") lockSession(); };
+    const lockWhenBackgrounded = () => {
+      if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
+    };
+    const lockFromNativeActivity = () => {
+      if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
+    };
     const onSecureStorageError = () => setStorageFailed(true);
     window.addEventListener("focus", refreshOnResume);
     window.addEventListener("duress-security-native-background", lockFromNativeActivity);
@@ -83,9 +90,6 @@ export function AppShell() {
   useEffect(() => {
     if (!pendingSecurityGate) return;
     if (session === "unlocked") {
-      // Keep the hidden-flow marker until the session transition effect below
-      // consumes it. Clearing it here created a race where the normal lock->unlock
-      // transition could be mistaken for a real unlock->lock transition later.
       setPendingSecurityGate(false);
       setCalculatorFront(false);
       return;
