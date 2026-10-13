@@ -17,6 +17,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /securityGateFlow/);
   assert.match(shell, /securityGateFlow\.current = true/);
+  assert.match(shell, /calculatorRestoreArmed\.current = false/);
   assert.match(shell, /setCalculatorFront\(false\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
@@ -25,6 +26,8 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
   assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
   assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\) \{/);
+  assert.match(shell, /calculatorRestoreArmed\.current = true/);
+  assert.match(shell, /if \(calculatorRestoreArmed\.current && \(previousSession\.current === "unlocked"/);
   assert.doesNotMatch(shell, /if \(!ready\) \{[\s\S]*setCalculatorFront\(true\);\s*setPendingSecurityGate\(true\);/);
   assert.doesNotMatch(shell, /if \(ready && pendingSecurityGate\) \{[\s\S]*if \(session === "locked"\) openOverlay\(\{ kind: "unlock" \}\);/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
@@ -115,6 +118,7 @@ test('master PIN is the normal unlock and the hidden flow must not restore the c
   assert.match(service, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
   assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\)/);
   assert.match(shell, /securityGateFlow\.current = false/);
+  assert.match(shell, /calculatorRestoreArmed\.current = true/);
   assert.match(shell, /setPendingSecurityGate\(false\)/);
   assert.match(shell, /setCalculatorFront\(false\)/);
 });
