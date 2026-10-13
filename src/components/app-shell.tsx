@@ -22,6 +22,7 @@ export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
   const [calculatorFront, setCalculatorFront] = useState(true);
   const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
+  const securityGateFlow = useRef(false);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
@@ -41,8 +42,9 @@ export function AppShell() {
 
   const openSecurityGate = () => {
     // Once the exact calculator command is entered, leave the decoy immediately.
-    // The gate is rendered even while secure hydration is still finishing, so
-    // a slow native storage call can never trap the user inside the calculator.
+    // Keep a dedicated flow marker so a successful master PIN can never be
+    // mistaken for a normal lock transition and sent back to the calculator.
+    securityGateFlow.current = true;
     setCalculatorFront(false);
     setPendingSecurityGate(true);
     openOverlay({ kind: "unlock" });
@@ -80,7 +82,14 @@ export function AppShell() {
 
   useEffect(() => {
     if (!pendingSecurityGate) return;
+    if (session === "unlocked") {
+      securityGateFlow.current = false;
+      setPendingSecurityGate(false);
+      setCalculatorFront(false);
+      return;
+    }
     if (session !== "locked") {
+      securityGateFlow.current = false;
       setPendingSecurityGate(false);
       return;
     }
@@ -92,11 +101,14 @@ export function AppShell() {
   }, [ready, pendingSecurityGate, session, openOverlay]);
 
   useEffect(() => {
-    const protectedUi = !calculatorFront && ready && session !== "duress";
-    void nativeBridge.setScreenCaptureAllowed(!protectedUi);
-  }, [calculatorFront, ready, session, overlay, panel, openedApp, tab]);
-
-  useEffect(() => {
+    // A master-PIN success that belongs to the hidden calculator flow must
+    // always finish inside the protected app UI, never restore the calculator.
+    if (securityGateFlow.current && session === "unlocked") {
+      securityGateFlow.current = false;
+      setPendingSecurityGate(false);
+      setCalculatorFront(false);
+      return;
+    }
     if ((previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") setCalculatorFront(true);
     previousSession.current = session;
   }, [session]);
