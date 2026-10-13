@@ -15,6 +15,8 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /SECRET_CALCULATOR_COMMAND.*20272006=/);
   assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /securityGateFlow/);
+  assert.match(shell, /securityGateFlow\.current = true/);
   assert.match(shell, /setCalculatorFront\(false\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
@@ -22,6 +24,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
   assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
+  assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\) \{/);
   assert.doesNotMatch(shell, /if \(!ready\) \{[\s\S]*setCalculatorFront\(true\);\s*setPendingSecurityGate\(true\);/);
   assert.doesNotMatch(shell, /if \(ready && pendingSecurityGate\) \{[\s\S]*if \(session === "locked"\) openOverlay\(\{ kind: "unlock" \}\);/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
@@ -43,7 +46,7 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
   assert.match(calculator, /if \(!sequenceMatches\) return false/);
-  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
+  assert.match(calculator, /if \(\/^\\d\$\/\.test\(key\)\)/);
   assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
   assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
   assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
@@ -103,4 +106,15 @@ test('emergency reset is scoped to application-owned storage, never Android fact
   assert.match(service, /OWNED_DATABASE_DELETE_BLOCKED/);
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
+});
+
+test('master PIN is the normal unlock and the hidden flow must not restore the calculator', async () => {
+  const service = await read('src/lib/security-service.ts');
+  const shell = await read('src/components/app-shell.tsx');
+  assert.match(service, /master: "0000"/);
+  assert.match(service, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
+  assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\)/);
+  assert.match(shell, /securityGateFlow\.current = false/);
+  assert.match(shell, /setPendingSecurityGate\(false\)/);
+  assert.match(shell, /setCalculatorFront\(false\)/);
 });
