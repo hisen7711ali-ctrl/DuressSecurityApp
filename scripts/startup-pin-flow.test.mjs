@@ -20,7 +20,7 @@ test("fresh startup initializes automatically and has no blocking initialization
   assert.match(shell, /hydrateSession\(\)\.catch\(failHydrationClosed\)/);
   assert.match(shell, /if \(useAppStore\.persist\.hasHydrated\(\)\) finish\(\);/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
-  assert.match(shell, /}, 12000\)/);
+  assert.match(shell, /}, 35000\)/);
   assert.match(shell, /session: "storage-error"/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
 });
