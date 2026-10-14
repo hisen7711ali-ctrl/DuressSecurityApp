@@ -17,7 +17,7 @@ import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
 const SECRET_CALCULATOR_COMMAND = "20272006=";
-const CALCULATOR_GATE_TRANSITION_MS = 2000;
+const CALCULATOR_GATE_TRANSITION_MS = 5000;
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -109,6 +109,7 @@ export function AppShell() {
   useEffect(() => {
     if (securityGateFlow.current && session === "unlocked") {
       securityGateFlow.current = false;
+      suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS;
       calculatorRestoreArmed.current = true;
       setPendingSecurityGate(false);
       setCalculatorFront(false);
