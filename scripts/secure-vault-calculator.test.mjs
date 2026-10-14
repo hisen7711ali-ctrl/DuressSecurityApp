@@ -87,6 +87,10 @@ test('hidden trigger remains usable while duress mode is active', async () => {
 test('vault encrypts data with PBKDF2 and AES-GCM and has no plaintext fallback', async () => {
   const vault = await read('src/lib/vault-crypto.ts');
   const store = await read('src/lib/store.ts');
+  const nativeStorage = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt');
+  assert.match(nativeStorage, /val key = getExistingKey\(\)/);
+  assert.match(nativeStorage, /SECURE_STORAGE_KEY_MISSING/);
+  assert.doesNotMatch(nativeStorage, /cipher\.init\(Cipher\.DECRYPT_MODE, getOrCreateKey\(\)/);
   assert.match(vault, /PBKDF2-SHA256/);
   assert.match(vault, /310_000/);
   assert.match(vault, /AES-GCM/);
