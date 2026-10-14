@@ -54,7 +54,7 @@ test("permission status is unavailable outside Android", async () => {
 });
 
 test("Keystore storage methods fail closed outside Android", async () => {
-  assert.deepEqual(await secureStorageGet("duress-security-app"), { available: false, found: false, value: null });
+  assert.deepEqual(await secureStorageGet("duress-security-app"), { available: false, found: false, value: null, reason: "NATIVE_PLUGIN_UNAVAILABLE" });
   assert.equal(await secureStorageSet("duress-security-app", "{}"), false);
   assert.equal(await secureStorageRemove("duress-security-app"), false);
   assert.equal(await secureStorageClearOwned(), false);
