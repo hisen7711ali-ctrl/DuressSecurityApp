@@ -23,3 +23,14 @@ test("storage failures are fail-closed and recovery cannot erase data", async ()
   assert.doesNotMatch(recovery, /secureStorageClearOwned/);
   assert.match(recovery, /لم يتم حذف أي سجل تلقائيًا/);
 });
+ 
+test("startup hydration is bounded and native Keystore access stays off the UI thread", async () => {
+  const store = await read("src/lib/store.ts");
+  const shell = await read("src/components/app-shell.tsx");
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  assert.match(store, /void get\(\)\.refreshNativePermissions\(\)\.catch/);
+  assert.doesNotMatch(store, /Promise\.all\(\[nativeBridge\.secureStorageGet/);
+  assert.match(shell, /}, 35000\);/);
+  assert.match(plugin, /private val secureStorageExecutor = Executors\.newSingleThreadExecutor/);
+  assert.match(plugin, /secureStorageExecutor\.execute/);
+});
