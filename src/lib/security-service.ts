@@ -53,7 +53,7 @@ export function normalizePin(pin: string): string {
 export function classifyPin(pin: string, pins: PinMap): PinAction {
   const typed = normalizePin(pin);
   if (typed.length === 0) return "reject";
-  if (pins.master && typed === normalizePin(pins.master)) return "unlock";
+  if (typed === normalizePin(pins.master)) return "unlock";
   if (pins.format && typed === normalizePin(pins.format)) return "wipe";
   if (pins.lock && typed === normalizePin(pins.lock)) return "extended-lock";
   if (pins.duress && typed === normalizePin(pins.duress)) return "duress";
@@ -139,7 +139,7 @@ export async function wipeAppData(opts: { preserveKeys?: string[] } = {}): Promi
         const req = indexedDB.deleteDatabase(db.name!);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error ?? new Error("IndexedDB deletion failed"));
-        req.onblocked = () => reject(new Error("IndexedDB deletion blocked"));
+        req.onblocked = () => reject(new Error("OWNED_DATABASE_DELETE_BLOCKED"));
       });
     }
   }
