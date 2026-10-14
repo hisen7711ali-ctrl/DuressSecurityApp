@@ -153,8 +153,22 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
-  if (pendingSecurityGate) return <LockGate />;
+  // Do not accept the master PIN until persisted settings/session hydration has
+  // completed. Otherwise a fast 0000 entry can unlock the temporary default
+  // store, then hydrateSession can overwrite it with the saved locked state and
+  // the session effect will restore the calculator.
+  if (pendingSecurityGate && !ready) {
+    return (
+      <div className="bg-mountains flex min-h-svh items-center justify-center px-6 text-center" role="status" aria-live="polite">
+        <div className="rounded-2xl border border-line bg-navy/95 px-6 py-5 shadow-[var(--shadow-lift)]">
+          <p className="text-base font-semibold text-paper">{lang === "ar" ? "جارٍ تجهيز بوابة الحماية…" : "Preparing the security gate…"}</p>
+          <p className="mt-2 text-sm text-muted">{lang === "ar" ? "لن يظهر إدخال الرمز حتى تكتمل قراءة الإعدادات المحفوظة." : "PIN entry will appear after saved settings finish loading."}</p>
+        </div>
+      </div>
+    );
+  }
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  if (pendingSecurityGate) return <LockGate />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
   if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
