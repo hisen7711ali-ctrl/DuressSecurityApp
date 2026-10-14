@@ -113,8 +113,9 @@ export function AppShell() {
     };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
-  // Never leave the PIN gate on an endless loading screen. If secure storage
-  // or persisted-state hydration does not finish, fail closed and show recovery.
+  // Native persistence can require a bounded encrypted read and (for legacy migration)
+  // a bounded write before the independent lock-record read. Keep the watchdog above
+  // that sequence, while still failing closed if any operation never settles.
   useEffect(() => {
     if (ready) return;
     const timeout = window.setTimeout(() => {
@@ -122,7 +123,7 @@ export function AppShell() {
       console.error("[DuressSecurity] Startup hydration timed out; protected access remains closed.");
       setStorageFailed(true);
       useAppStore.setState({ ready: true, session: "storage-error", storageErrorCode: "STARTUP_HYDRATION_TIMEOUT", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
-    }, 12000);
+    }, 35000);
     return () => window.clearTimeout(timeout);
   }, [ready]);
 
