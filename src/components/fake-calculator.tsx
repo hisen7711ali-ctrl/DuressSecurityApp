@@ -114,7 +114,10 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
 
     if (/^\d$/.test(key)) {
       const next = `${ownerSequenceRef.current}${key}`;
-      ownerSequenceRef.current = OWNER_TRIGGER.startsWith(next) ? next : "";
+      if (OWNER_TRIGGER.startsWith(next)) ownerSequenceRef.current = next;
+      // On a mismatch the wrong digit may itself be the first digit of a new attempt
+      // (e.g. "2" then "20272006"); never drop it, or the trigger needs repeated retries.
+      else ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
       return false;
     }
 
