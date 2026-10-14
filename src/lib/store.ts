@@ -89,7 +89,7 @@ type PersistedSlice = {
   installedApps: DeviceApp[]; lockedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; failedAttempts: number;
   lockoutUntil: number; lockoutLevel: number; lastCheckAt: string; maxAttempts: number; lockTimeoutSec: number; biometricEnabled: boolean;
 };
-type TransientSlice = { ready: boolean; session: SessionMode; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
+type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: string | null; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
 type Actions = {
   hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void;
   setTab: (tab: TabId) => void; setPanel: (panel: PanelId) => void; lockSession: () => void; setToast: (msg: string | null) => void;
@@ -114,7 +114,7 @@ export const useAppStore = create<AppStore>()(
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
       deviceAdmin: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], vault: STARTER_FILES, vaultEncrypted: false, lastCheckAt: nowIso(), maxAttempts: 3,
-      lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", tab: "home", panel: "none", overlay: { kind: "unlock" },
+      lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", storageErrorCode: null, tab: "home", panel: "none", overlay: { kind: "unlock" },
       openedApp: null, vaultOpen: false, vaultCryptoReady: false, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: null,
       security: { ...INITIAL_SECURITY_STATE },
 
@@ -123,7 +123,8 @@ export const useAppStore = create<AppStore>()(
         if (nativeBridge.isNativeAndroid()) {
           const [appStore, lockStore] = await Promise.all([nativeBridge.secureStorageGet("duress-security-app"), nativeBridge.secureStorageGet(SECURITY_STORAGE_KEY)]);
           if (!appStore.available || !lockStore.available) {
-            set({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false,
+            const failedRead = !appStore.available ? appStore : lockStore;
+            set({ ready: true, session: "storage-error", storageErrorCode: failedRead.reason ?? "SECURE_STORAGE_UNAVAILABLE", overlay: null, openedApp: null, vaultOpen: false,
               toast: get().lang === "ar" ? "تعذّر التحقق من التخزين المشفّر؛ تم إيقاف الدخول لحماية الحالة المحفوظة." : "Secure storage could not be verified. Access is paused to protect saved state." });
             return;
           }
@@ -132,11 +133,11 @@ export const useAppStore = create<AppStore>()(
         const installed = get().installedApps ?? [];
         const allowed = new Set(installed.map((a) => a.packageName));
         const loadedSecurity = await loadSecurity();
-        if (loadedSecurity === null) { set({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false }); return; }
+        if (loadedSecurity === null) { set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false }); return; }
         const security = reconcile(loadedSecurity);
         const securitySaved = await saveSecurity(security);
         if (!securitySaved && nativeBridge.isNativeAndroid()) {
-          set({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false,
+          set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_SAVE_FAILED", overlay: null, openedApp: null, vaultOpen: false,
             toast: get().lang === "ar" ? "تعذّر حفظ سجل الحماية الآمن؛ تم إيقاف الدخول." : "The encrypted security record could not be saved. Access is paused." });
           return;
         }
@@ -145,7 +146,7 @@ export const useAppStore = create<AppStore>()(
             session: "extlocked", overlay: null, openedApp: null, vaultOpen: false, panel: "none" });
           return;
         }
-        set({ security, ready: true, pins: withPins(get().pins), installedApps: installed, lockedPackages: (get().lockedPackages ?? []).filter((p) => allowed.has(p)),
+        set({ security, ready: true, storageErrorCode: null, pins: withPins(get().pins), installedApps: installed, lockedPackages: (get().lockedPackages ?? []).filter((p) => allowed.has(p)),
           session: homeLock ? "locked" : "unlocked", overlay: homeLock ? { kind: "unlock" } : null,
           failedAttempts: get().lockoutUntil > Date.now() ? get().failedAttempts : 0, lockoutUntil: get().lockoutUntil > Date.now() ? get().lockoutUntil : 0,
           openedApp: null, vaultOpen: false, vaultCryptoReady: false, panel: "none" });
