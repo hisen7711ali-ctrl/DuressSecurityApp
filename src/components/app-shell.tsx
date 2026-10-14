@@ -17,7 +17,7 @@ import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 
 const SECRET_CALCULATOR_COMMAND = "20272006=";
-const CALCULATOR_GATE_TRANSITION_MS = 5000;
+const CALCULATOR_GATE_TRANSITION_MS = 10000;
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -26,6 +26,7 @@ export function AppShell() {
   const securityGateFlow = useRef(false);
   const calculatorRestoreArmed = useRef(true);
   const suppressAutoLockUntil = useRef(0);
+  const unlockTransitionTimer = useRef<number | null>(null);
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
@@ -45,6 +46,10 @@ export function AppShell() {
   const protectedUi = !calculatorFront && ready && session !== "duress";
 
   const openSecurityGate = () => {
+    if (unlockTransitionTimer.current !== null) {
+      window.clearTimeout(unlockTransitionTimer.current);
+      unlockTransitionTimer.current = null;
+    }
     securityGateFlow.current = true;
     calculatorRestoreArmed.current = false;
     suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS;
@@ -69,10 +74,8 @@ export function AppShell() {
       if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
     };
     const lockFromNativeActivity = () => {
-      // MainActivity dispatches this event from onStop(). onStop can also happen
-      // during transient Android/WebView lifecycle changes while the activity is
-      // already visible again. Only treat it as a real background lock when the
-      // document is actually hidden.
+      // MainActivity can dispatch this during transient Android/WebView lifecycle
+      // changes. Only a genuinely hidden document may trigger an auto-lock.
       if (document.visibilityState !== "hidden") return;
       if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
     };
@@ -89,6 +92,7 @@ export function AppShell() {
       window.removeEventListener("duress-security-storage-error", onSecureStorageError);
       document.removeEventListener("visibilitychange", refreshOnResume);
       document.removeEventListener("visibilitychange", lockWhenBackgrounded);
+      if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current);
     };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
@@ -113,12 +117,19 @@ export function AppShell() {
 
   useEffect(() => {
     if (securityGateFlow.current && session === "unlocked") {
-      securityGateFlow.current = false;
+      // Keep the transition guard active briefly after the master PIN succeeds.
+      // Android/WebView may emit visibility/onStop events while the main screen is
+      // being restored; those events must never bounce the user back to the decoy.
       suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS;
       calculatorRestoreArmed.current = true;
       setPendingSecurityGate(false);
       setCalculatorFront(false);
       previousSession.current = "unlocked";
+      if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current);
+      unlockTransitionTimer.current = window.setTimeout(() => {
+        securityGateFlow.current = false;
+        unlockTransitionTimer.current = null;
+      }, CALCULATOR_GATE_TRANSITION_MS);
       return;
     }
     if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") {
