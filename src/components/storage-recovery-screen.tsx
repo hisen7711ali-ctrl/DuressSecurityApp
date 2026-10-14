@@ -5,7 +5,7 @@ import { wipeAppData } from "@/lib/security-service";
 import { useCopy } from "@/lib/use-copy";
 
 /** Fail-closed recovery when an Android Keystore record cannot be decrypted. */
-export function StorageRecoveryScreen() {
+export function StorageRecoveryScreen({ errorCode }: { errorCode?: string | null }) {
   const { lang } = useCopy();
   const [confirm, setConfirm] = useState(false);
   const [working, setWorking] = useState(false);
@@ -67,8 +67,16 @@ export function StorageRecoveryScreen() {
             : (ar ? "تم مسح سجل التخزين الآمن، لكن حذف بيانات الواجهة استغرق وقتًا أطول من المتوقع. أغلق التطبيق وافتحه مجددًا؛ لا تكرر عملية المسح." : "The secure-store records were cleared, but clearing the WebView-owned data timed out. Close and reopen the app; do not repeat the erase action.")}
         </p>
       ) : null}
+      {errorCode ? (
+        <p className="mt-3 max-w-md rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted">
+          {ar ? "رمز التشخيص:" : "Diagnostic code:"} <code>{errorCode}</code>
+        </p>
+      ) : null}
+      <button type="button" onClick={() => window.location.reload()} className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night">
+        {ar ? "إعادة المحاولة دون مسح البيانات" : "Retry without erasing data"}
+      </button>
       {!confirm ? (
-        <button type="button" onClick={() => setConfirm(true)} className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg border border-line bg-surface text-sm font-semibold text-ink">
+        <button type="button" onClick={() => setConfirm(true)} className="mt-3 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg border border-line bg-surface text-sm font-semibold text-ink">
           <ShieldCheck className="size-4" />
           {ar ? "إعادة تهيئة بيانات التطبيق" : "Reset this app's data"}
         </button>
