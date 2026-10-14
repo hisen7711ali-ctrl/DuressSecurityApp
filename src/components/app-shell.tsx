@@ -35,6 +35,11 @@ export function AppShell() {
   const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
   const tab = useAppStore((s) => s.tab);
+  const vaultOpen = useAppStore((s) => s.vaultOpen);
+  const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired);
+  const vault = useAppStore((s) => s.vault);
+  const setTab = useAppStore((s) => s.setTab);
+  const setVaultOpen = useAppStore((s) => s.setVaultOpen);
   const panel = useAppStore((s) => s.panel);
   const overlay = useAppStore((s) => s.overlay);
   const openedApp = useAppStore((s) => s.openedApp);
@@ -163,6 +168,14 @@ export function AppShell() {
     }
     previousSession.current = session;
   }, [session]);
+
+  // A legacy unencrypted vault must be encrypted before the user continues.
+  // The legacy contents are kept in memory for this one-time migration only.
+  useEffect(() => {
+    if (session !== "unlocked" || !vaultMigrationRequired || vault.length === 0) return;
+    if (tab !== "files") setTab("files");
+    if (!vaultOpen) setVaultOpen(true);
+  }, [session, vaultMigrationRequired, vault.length, tab, vaultOpen, setTab, setVaultOpen]);
 
   useEffect(() => {
     const root = document.documentElement;
