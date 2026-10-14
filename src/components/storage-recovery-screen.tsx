@@ -1,47 +1,26 @@
 import { useState } from "react";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
-import { secureStorageClearOwned } from "@/lib/native-bridge";
-import { wipeAppData } from "@/lib/security-service";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { secureStorageGet } from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 
 /** Fail-closed recovery when an Android Keystore record cannot be decrypted. */
 export function StorageRecoveryScreen({ errorCode }: { errorCode?: string | null }) {
   const { lang } = useCopy();
-  const [confirm, setConfirm] = useState(false);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState<"secure-store" | "web-storage" | null>(null);
+  const [retryFailed, setRetryFailed] = useState(false);
   const ar = lang === "ar";
 
-  async function resetOwnedData() {
+  async function retry() {
     if (working) return;
     setWorking(true);
-    setError(null);
-    let clearedSecureStore = false;
+    setRetryFailed(false);
     try {
-      const cleared = await secureStorageClearOwned();
-      if (!cleared) {
-        setError("secure-store");
+      const result = await secureStorageGet("duress-security-state");
+      if (result.available) {
+        window.location.reload();
         return;
       }
-      clearedSecureStore = true;
-
-      // IndexedDB/cache deletion can be blocked by a stale WebView connection.
-      // Bound the wait so this recovery screen never spins forever.
-      let timeoutId = 0;
-      try {
-        await Promise.race([
-          wipeAppData(),
-          new Promise<never>((_, reject) => {
-            timeoutId = window.setTimeout(() => reject(new Error("APP_DATA_RESET_TIMEOUT")), 8000);
-          }),
-        ]);
-      } finally {
-        if (timeoutId) window.clearTimeout(timeoutId);
-      }
-      window.location.reload();
-    } catch (caught) {
-      console.error("[DuressSecurity] Recovery reset failed", caught);
-      setError(clearedSecureStore ? "web-storage" : "secure-store");
+      setRetryFailed(true);
     } finally {
       setWorking(false);
     }
@@ -57,47 +36,33 @@ export function StorageRecoveryScreen({ errorCode }: { errorCode?: string | null
       </h1>
       <p className="mt-3 max-w-md text-sm leading-7 text-muted">
         {ar
-          ? "لم يتم فتح التطبيق لأن سجل الحماية المشفّر لم يمكن التحقق منه. لم يتم اعتبار القفل منتهيًا ولم نفتح الخزنة. يمكنك إعادة المحاولة لاحقًا، أو مسح بيانات هذا التطبيق فقط والبدء من جديد."
-          : "The app is paused because its encrypted security record could not be verified. The lock was not treated as expired and the vault was not opened. Retry later, or erase only this app's data and start again."}
+          ? "تم إيقاف الدخول لحماية البيانات. لم يتم إنشاء مفتاح بديل ولم يتم حذف أي سجل تلقائيًا."
+          : "Access is paused to protect your data. No replacement key was created and no stored record was erased automatically."}
       </p>
-      {error ? (
-        <p className="mt-4 max-w-md rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm text-danger">
-          {error === "secure-store"
-            ? (ar ? "تعذّر مسح التخزين الآمن. لم تتم إعادة التهيئة. لا تكرر الضغط؛ أغلق جلسة المحاكي وافتح جهازًا جديدًا، أو افحص سجل Android Keystore." : "The secure store could not be cleared. Reinitialization was not completed. Do not keep retrying; restart the emulator session or inspect Android Keystore logs.")
-            : (ar ? "تم مسح سجل التخزين الآمن، لكن حذف بيانات الواجهة استغرق وقتًا أطول من المتوقع. أغلق التطبيق وافتحه مجددًا؛ لا تكرر عملية المسح." : "The secure-store records were cleared, but clearing the WebView-owned data timed out. Close and reopen the app; do not repeat the erase action.")}
-        </p>
-      ) : null}
       {errorCode ? (
-        <p className="mt-3 max-w-md rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted">
+        <p className="mt-4 max-w-md rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted">
           {ar ? "رمز التشخيص:" : "Diagnostic code:"} <code>{errorCode}</code>
         </p>
       ) : null}
-      <button type="button" onClick={() => window.location.reload()} className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night">
-        {ar ? "إعادة المحاولة دون مسح البيانات" : "Retry without erasing data"}
-      </button>
-      {!confirm ? (
-        <button type="button" onClick={() => setConfirm(true)} className="mt-3 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg border border-line bg-surface text-sm font-semibold text-ink">
-          <ShieldCheck className="size-4" />
-          {ar ? "إعادة تهيئة بيانات التطبيق" : "Reset this app's data"}
-        </button>
-      ) : (
-        <section className="mt-6 w-full max-w-sm rounded-xl border border-danger/50 bg-surface p-4">
-          <p className="text-sm font-semibold text-ink">
-            {ar ? "تأكيد نهائي: ستحذف الرموز والخزنة والإعدادات المحلية لهذا التطبيق فقط." : "Final confirmation: this deletes only this app's PINs, vault and local settings."}
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button type="button" disabled={working || error !== null} onClick={() => { void resetOwnedData(); }} className="h-11 flex-1 rounded-lg bg-danger px-3 text-sm font-semibold text-white disabled:opacity-50">
-              {working ? (ar ? "جارٍ المسح…" : "Resetting…") : (ar ? "مسح وإعادة البدء" : "Erase and restart")}
-            </button>
-            <button type="button" disabled={working} onClick={() => setConfirm(false)} className="h-11 flex-1 rounded-lg border border-line px-3 text-sm text-ink disabled:opacity-50">
-              {ar ? "إلغاء" : "Cancel"}
-            </button>
-          </div>
-        </section>
-      )}
-      <p className="mt-8 max-w-sm text-xs leading-6 text-faint">
-        {ar ? "لن يتم مسح الهاتف أو تطبيقات أخرى. هذا الإجراء يمسح بيانات Duress Security فقط." : "This does not factory-reset the phone or erase other apps. Only Duress Security's own data is reset."}
+      <p className="mt-4 max-w-md rounded-lg border border-line bg-surface p-3 text-xs leading-6 text-muted">
+        {ar
+          ? "إذا كان السبب بطء المحاكي أو بدء تشغيل Android، أعد الفحص. إذا كان المفتاح مفقودًا أو البيانات تالفة فلن يقوم التطبيق بالكتابة فوقها."
+          : "If this is a slow emulator or startup delay, retry. If the key is missing or the data is corrupted, the app will not overwrite it."}
       </p>
+      {retryFailed ? (
+        <p className="mt-4 max-w-md rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm text-danger">
+          {ar ? "ما زال التخزين الآمن غير متاح. لم يتم حذف أي بيانات." : "Secure storage is still unavailable. No data was deleted."}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        disabled={working}
+        onClick={() => { void retry(); }}
+        className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night disabled:opacity-50"
+      >
+        <RefreshCw className={working ? "size-4 animate-spin" : "size-4"} />
+        {working ? (ar ? "جارٍ الفحص…" : "Checking…") : (ar ? "إعادة الفحص والمحاولة" : "Retry secure storage")}
+      </button>
     </main>
   );
 }
