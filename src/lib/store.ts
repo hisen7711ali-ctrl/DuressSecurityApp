@@ -130,27 +130,26 @@ export const useAppStore = create<AppStore>()(
       security: { ...INITIAL_SECURITY_STATE },
 
       hydrateSession: async () => {
-        await get().refreshNativePermissions();
-        if (nativeBridge.isNativeAndroid()) {
-          const [appStore, lockStore] = await Promise.all([nativeBridge.secureStorageGet("duress-security-app"), nativeBridge.secureStorageGet(SECURITY_STORAGE_KEY)]);
-          if (!appStore.available || !lockStore.available) {
-            const failedRead = !appStore.available ? appStore : lockStore;
-            set({ ready: true, session: "storage-error", storageErrorCode: failedRead.reason ?? "SECURE_STORAGE_UNAVAILABLE", overlay: null, openedApp: null, vaultOpen: false,
-              toast: get().lang === "ar" ? "تعذّر التحقق من التخزين المشفّر؛ تم إيقاف الدخول لحماية الحالة المحفوظة." : "Secure storage could not be verified. Access is paused to protect saved state." });
-            return;
-          }
-        }
+        // Permission probing is useful UI metadata, not a prerequisite for secure startup.
+        // Keep slow DevicePolicyManager calls from serializing session hydration.
+        void get().refreshNativePermissions().catch(() => undefined);
+        // Zustand persistence already verifies "duress-security-app". Read the separate
+        // security record exactly once below instead of probing and immediately re-reading it.
         const homeLock = get().homeLockEnabled;
         const installed = get().installedApps ?? [];
         const allowed = new Set(installed.map((a) => a.packageName));
         const loadedSecurity = await loadSecurity();
         if (loadedSecurity === null) { set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false }); return; }
         const security = reconcile(loadedSecurity);
-        const securitySaved = await saveSecurity(security);
-        if (!securitySaved && nativeBridge.isNativeAndroid()) {
-          set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_SAVE_FAILED", overlay: null, openedApp: null, vaultOpen: false,
-            toast: get().lang === "ar" ? "تعذّر حفظ سجل الحماية الآمن؛ تم إيقاف الدخول." : "The encrypted security record could not be saved. Access is paused." });
-          return;
+        // A normal startup must not perform an unnecessary Keystore write. Persist only
+        // when reconciliation actually changes an expired/invalidated lock record.
+        if (security !== loadedSecurity) {
+          const securitySaved = await saveSecurity(security);
+          if (!securitySaved && nativeBridge.isNativeAndroid()) {
+            set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_SAVE_FAILED", overlay: null, openedApp: null, vaultOpen: false,
+              toast: get().lang === "ar" ? "تعذّر حفظ سجل الحماية الآمن؛ تم إيقاف الدخول." : "The encrypted security record could not be saved. Access is paused." });
+            return;
+          }
         }
         if (isExtendedLockActive(security)) {
           set({ ready: true, pins: withPins(get().pins), installedApps: installed, lockedPackages: (get().lockedPackages ?? []).filter((p) => allowed.has(p)), security,
