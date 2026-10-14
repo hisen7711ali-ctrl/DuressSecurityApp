@@ -78,7 +78,9 @@ test('native activity uses conditional screen capture protection and keeps the a
 test('native startup calls are bounded so a broken Android bridge cannot leave initialization spinning forever', async () => {
   const bridge = await read('src/lib/native-bridge.ts');
   assert.match(bridge, /NATIVE_CALL_TIMEOUT_MS\s*=\s*2500/);
+  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS\s*=\s*10000/);
   assert.match(bridge, /withNativeTimeout\(plugin\.getPermissionStatus\(\)/);
-  assert.match(bridge, /withNativeTimeout\(plugin\.secureGet/);
+  assert.match(bridge, /plugin\.secureGet\(\{ key \}\)/);
+  assert.match(bridge, /NATIVE_TIMEOUT/);
   assert.match(bridge, /withNativeTimeout\(plugin\.secureSet/);
 });
