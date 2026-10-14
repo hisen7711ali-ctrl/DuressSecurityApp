@@ -9,22 +9,39 @@ export function StorageRecoveryScreen() {
   const { lang } = useCopy();
   const [confirm, setConfirm] = useState(false);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<"secure-store" | "web-storage" | null>(null);
   const ar = lang === "ar";
 
   async function resetOwnedData() {
+    if (working) return;
     setWorking(true);
-    setError(false);
+    setError(null);
+    let clearedSecureStore = false;
     try {
       const cleared = await secureStorageClearOwned();
       if (!cleared) {
-        setError(true);
+        setError("secure-store");
         return;
       }
-      await wipeAppData();
+      clearedSecureStore = true;
+
+      // IndexedDB/cache deletion can be blocked by a stale WebView connection.
+      // Bound the wait so this recovery screen never spins forever.
+      let timeoutId = 0;
+      try {
+        await Promise.race([
+          wipeAppData(),
+          new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => reject(new Error("APP_DATA_RESET_TIMEOUT")), 8000);
+          }),
+        ]);
+      } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
+      }
       window.location.reload();
-    } catch {
-      setError(true);
+    } catch (caught) {
+      console.error("[DuressSecurity] Recovery reset failed", caught);
+      setError(clearedSecureStore ? "web-storage" : "secure-store");
     } finally {
       setWorking(false);
     }
@@ -45,7 +62,9 @@ export function StorageRecoveryScreen() {
       </p>
       {error ? (
         <p className="mt-4 max-w-md rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm text-danger">
-          {ar ? "فشل مسح المخزن الآمن. لم تتم إعادة التهيئة. أعد المحاولة أو افحص حالة Android Keystore." : "The secure store could not be reset. No reinitialization was performed. Retry or check the Android Keystore state."}
+          {error === "secure-store"
+            ? (ar ? "تعذّر مسح التخزين الآمن. لم تتم إعادة التهيئة. لا تكرر الضغط؛ أغلق جلسة المحاكي وافتح جهازًا جديدًا، أو افحص سجل Android Keystore." : "The secure store could not be cleared. Reinitialization was not completed. Do not keep retrying; restart the emulator session or inspect Android Keystore logs.")
+            : (ar ? "تم مسح سجل التخزين الآمن، لكن حذف بيانات الواجهة استغرق وقتًا أطول من المتوقع. أغلق التطبيق وافتحه مجددًا؛ لا تكرر عملية المسح." : "The secure-store records were cleared, but clearing the WebView-owned data timed out. Close and reopen the app; do not repeat the erase action.")}
         </p>
       ) : null}
       {!confirm ? (
@@ -59,7 +78,7 @@ export function StorageRecoveryScreen() {
             {ar ? "تأكيد نهائي: ستحذف الرموز والخزنة والإعدادات المحلية لهذا التطبيق فقط." : "Final confirmation: this deletes only this app's PINs, vault and local settings."}
           </p>
           <div className="mt-4 flex gap-3">
-            <button type="button" disabled={working} onClick={() => { void resetOwnedData(); }} className="h-11 flex-1 rounded-lg bg-danger px-3 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="button" disabled={working || error !== null} onClick={() => { void resetOwnedData(); }} className="h-11 flex-1 rounded-lg bg-danger px-3 text-sm font-semibold text-white disabled:opacity-50">
               {working ? (ar ? "جارٍ المسح…" : "Resetting…") : (ar ? "مسح وإعادة البدء" : "Erase and restart")}
             </button>
             <button type="button" disabled={working} onClick={() => setConfirm(false)} className="h-11 flex-1 rounded-lg border border-line px-3 text-sm text-ink disabled:opacity-50">
