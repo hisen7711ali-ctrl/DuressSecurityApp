@@ -66,7 +66,14 @@ export function AppShell() {
 
   useEffect(() => {
     installNetworkGuard();
-    const finish = () => { void hydrateSession(); };
+    const failHydrationClosed = () => {
+      console.error("[DuressSecurity] Session hydration failed; keeping protected access closed.");
+      setStorageFailed(true);
+      useAppStore.setState({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
+    };
+    const finish = () => {
+      void hydrateSession().catch(failHydrationClosed);
+    };
     const unsub = useAppStore.persist.onFinishHydration(finish);
     if (useAppStore.persist.hasHydrated()) finish();
     const refreshOnResume = () => { if (document.visibilityState === "visible") { void refreshNativePermissions(); refreshSecurity(); } };
@@ -95,6 +102,19 @@ export function AppShell() {
       if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current);
     };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
+
+  // Never leave the PIN gate on an endless loading screen. If secure storage
+  // or persisted-state hydration does not finish, fail closed and show recovery.
+  useEffect(() => {
+    if (ready) return;
+    const timeout = window.setTimeout(() => {
+      if (useAppStore.getState().ready) return;
+      console.error("[DuressSecurity] Startup hydration timed out; protected access remains closed.");
+      setStorageFailed(true);
+      useAppStore.setState({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
+    }, 12000);
+    return () => window.clearTimeout(timeout);
+  }, [ready]);
 
   useEffect(() => {
     if (!pendingSecurityGate) return;
