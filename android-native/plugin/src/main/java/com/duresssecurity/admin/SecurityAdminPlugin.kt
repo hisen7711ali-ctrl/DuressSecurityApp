@@ -23,9 +23,14 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.Executors
 
 @CapacitorPlugin(name = "SecurityAdmin")
 class SecurityAdminPlugin : Plugin() {
+    // Keystore operations may be slow on a cold emulator; never run them on the UI thread.
+    private val secureStorageExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "DuressSecureStorage").apply { isDaemon = true }
+    }
     private fun adminComponent(): ComponentName = ComponentName(context, AdminReceiver::class.java)
     private fun dpm(): DevicePolicyManager = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private fun secureStore() = SecureStorage(context)
@@ -144,33 +149,62 @@ class SecurityAdminPlugin : Plugin() {
     @PluginMethod
     fun secureGet(call: PluginCall) {
         val key = call.getString("key")
-        if (key.isNullOrBlank()) { call.resolve(JSObject().putCompat("available", true).putCompat("found", false).putCompat("value", null)); return }
-        try {
-            val value = secureStore().get(key)
-            call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value).putCompat("reason", null))
-        } catch (error: Exception) {
-            // Return a safe error code only; never expose stored values or PINs in logs/UI.
-            val chain = generateSequence(error as Throwable?) { it.cause }.toList()
-            val reason = when {
-                chain.any { it.message == "SECURE_STORAGE_KEY_MISSING" } -> "KEY_MISSING"
-                chain.any { it is javax.crypto.AEADBadTagException } -> "DECRYPTION_FAILED"
-                chain.any { it is java.security.KeyStoreException || it is java.security.UnrecoverableKeyException } -> "KEYSTORE_ERROR"
-                else -> "READ_FAILED"
+        if (key.isNullOrBlank()) {
+            call.resolve(JSObject().putCompat("available", true).putCompat("found", false).putCompat("value", null))
+            return
+        }
+        secureStorageExecutor.execute {
+            try {
+                val value = secureStore().get(key)
+                call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value).putCompat("reason", null))
+            } catch (error: Exception) {
+                // Return only diagnostic categories; never expose stored values or PINs.
+                val chain = generateSequence(error as Throwable?) { it.cause }.toList()
+                val reason = when {
+                    chain.any { it.message == "SECURE_STORAGE_KEY_MISSING" } -> "KEY_MISSING"
+                    chain.any { it is javax.crypto.AEADBadTagException } -> "DECRYPTION_FAILED"
+                    chain.any { it is java.security.KeyStoreException || it is java.security.UnrecoverableKeyException } -> "KEYSTORE_ERROR"
+                    else -> "READ_FAILED"
+                }
+                call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null).putCompat("reason", reason))
             }
-            call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null).putCompat("reason", reason))
         }
     }
 
     @PluginMethod
     fun secureSet(call: PluginCall) {
-        val key = call.getString("key"); val value = call.getString("value")
-        if (key.isNullOrBlank() || value == null) { call.resolve(JSObject().putCompat("ok", false)); return }
-        call.resolve(JSObject().putCompat("ok", secureStore().put(key, value)))
+        val key = call.getString("key")
+        val value = call.getString("value")
+        if (key.isNullOrBlank() || value == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        secureStorageExecutor.execute {
+            val ok = try { secureStore().put(key, value) } catch (_: Exception) { false }
+            call.resolve(JSObject().putCompat("ok", ok))
+        }
     }
+
     @PluginMethod
-    fun secureRemove(call: PluginCall) { val key = call.getString("key"); if (key.isNullOrBlank()) { call.resolve(JSObject().putCompat("ok", false)); return }; call.resolve(JSObject().putCompat("ok", secureStore().remove(key))) }
+    fun secureRemove(call: PluginCall) {
+        val key = call.getString("key")
+        if (key.isNullOrBlank()) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        secureStorageExecutor.execute {
+            val ok = try { secureStore().remove(key) } catch (_: Exception) { false }
+            call.resolve(JSObject().putCompat("ok", ok))
+        }
+    }
+
     @PluginMethod
-    fun secureClearOwned(call: PluginCall) { call.resolve(JSObject().putCompat("ok", secureStore().removeOwned())) }
+    fun secureClearOwned(call: PluginCall) {
+        secureStorageExecutor.execute {
+            val ok = try { secureStore().removeOwned() } catch (_: Exception) { false }
+            call.resolve(JSObject().putCompat("ok", ok))
+        }
+    }
 
     @PluginMethod
     fun setSelfUninstallBlocked(call: PluginCall) {
