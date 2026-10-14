@@ -30,6 +30,7 @@ export function AppShell() {
   const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession);
   const session = useAppStore((s) => s.session);
+  const storageErrorCode = useAppStore((s) => s.storageErrorCode);
   const ready = useAppStore((s) => s.ready);
   const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
@@ -69,7 +70,7 @@ export function AppShell() {
     const failHydrationClosed = () => {
       console.error("[DuressSecurity] Session hydration failed; keeping protected access closed.");
       setStorageFailed(true);
-      useAppStore.setState({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
+      useAppStore.setState({ ready: true, session: "storage-error", storageErrorCode: "SESSION_HYDRATION_FAILED", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
     };
     const finish = () => {
       void hydrateSession().catch(failHydrationClosed);
@@ -86,7 +87,11 @@ export function AppShell() {
       if (document.visibilityState !== "hidden") return;
       if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
     };
-    const onSecureStorageError = () => setStorageFailed(true);
+    const onSecureStorageError = (event: Event) => {
+      setStorageFailed(true);
+      const detail = (event as CustomEvent<{ reason?: string }>).detail;
+      useAppStore.setState({ storageErrorCode: detail?.reason ?? "SECURE_STORAGE_UNAVAILABLE" });
+    };
     window.addEventListener("focus", refreshOnResume);
     window.addEventListener("duress-security-native-background", lockFromNativeActivity);
     window.addEventListener("duress-security-storage-error", onSecureStorageError);
@@ -111,7 +116,7 @@ export function AppShell() {
       if (useAppStore.getState().ready) return;
       console.error("[DuressSecurity] Startup hydration timed out; protected access remains closed.");
       setStorageFailed(true);
-      useAppStore.setState({ ready: true, session: "storage-error", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
+      useAppStore.setState({ ready: true, session: "storage-error", storageErrorCode: "STARTUP_HYDRATION_TIMEOUT", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false });
     }, 12000);
     return () => window.clearTimeout(timeout);
   }, [ready]);
@@ -172,7 +177,7 @@ export function AppShell() {
 
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
-  if (storageFailed || session === "storage-error") return <StorageRecoveryScreen />;
+  if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
   // Do not accept the master PIN until persisted settings/session hydration has
   // completed. Otherwise a fast 0000 entry can unlock the temporary default
   // store, then hydrateSession can overwrite it with the saved locked state and
