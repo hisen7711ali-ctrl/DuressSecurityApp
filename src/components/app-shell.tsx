@@ -69,6 +69,11 @@ export function AppShell() {
       if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
     };
     const lockFromNativeActivity = () => {
+      // MainActivity dispatches this event from onStop(). onStop can also happen
+      // during transient Android/WebView lifecycle changes while the activity is
+      // already visible again. Only treat it as a real background lock when the
+      // document is actually hidden.
+      if (document.visibilityState !== "hidden") return;
       if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
     };
     const onSecureStorageError = () => setStorageFailed(true);
