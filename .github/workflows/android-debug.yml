@@ -58,7 +58,6 @@ jobs:
             wait "$DEV_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
-
           ready=0
           for _ in $(seq 1 60); do
             if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then
@@ -74,7 +73,20 @@ jobs:
           fi
           npm run check:auth
       - name: Lint source
-        run: npm run lint
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee lint.log
+          code=${PIPESTATUS[0]}
+          exit "$code"
+      - name: Upload lint log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-lint-log
+          path: lint.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Build debug APK
         run: npm run apk:debug
       - name: Verify final APK is offline, calculator-branded, and structurally complete
@@ -86,7 +98,6 @@ jobs:
           test -f "$APK"
           test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee apk-permissions.txt
-
           for permission in \
             'android.permission.USE_BIOMETRIC' \
             'android.permission.RECEIVE_BOOT_COMPLETED' \
@@ -98,7 +109,6 @@ jobs:
               exit 1
             fi
           done
-
           for forbidden in \
             'android.permission.INTERNET' \
             'android.permission.ACCESS_NETWORK_STATE' \
@@ -108,7 +118,6 @@ jobs:
               exit 1
             fi
           done
-
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee apk-manifest.txt
           for component in \
             'com.duresssecurity.admin.AdminReceiver' \
@@ -132,7 +141,6 @@ jobs:
             echo 'ERROR: final APK manifest does not expose the expected allowBackup attribute.' >&2
             exit 1
           fi
-
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           if ! grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt; then
             echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2
