@@ -18,38 +18,33 @@ import javax.crypto.spec.GCMParameterSpec
 internal class SecureStorage(context: Context) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    @Synchronized
-    fun get(key: String): String? {
+    fun get(key: String): String? = synchronized(STORAGE_LOCK) {
         validateKey(key)
-        val encoded = preferences.getString(key, null) ?: return null
-        // Propagate corruption/Keystore invalidation to the Capacitor plugin, which
-        // reports `available=false`. Do not misclassify damaged ciphertext as an empty
-        // record and accidentally migrate plaintext legacy data over it.
-        return decrypt(encoded)
+        val encoded = preferences.getString(key, null) ?: return@synchronized null
+        // Never treat damaged ciphertext as an empty record. Existing ciphertext
+        // must always be decrypted with the original Keystore key.
+        decrypt(encoded)
     }
 
-    @Synchronized
-    fun put(key: String, value: String): Boolean {
+    fun put(key: String, value: String): Boolean = synchronized(STORAGE_LOCK) {
         validateKey(key)
-        return try {
-            preferences.edit().putString(key, encrypt(value)).commit()
-        } catch (_: Exception) {
-            false
+        val encrypted = encrypt(value)
+        if (!preferences.edit().putString(key, encrypted).commit()) {
+            throw IllegalStateException("SECURE_STORAGE_WRITE_FAILED")
         }
+        true
     }
 
-    @Synchronized
-    fun remove(key: String): Boolean {
+    fun remove(key: String): Boolean = synchronized(STORAGE_LOCK) {
         validateKey(key)
-        return preferences.edit().remove(key).commit()
+        preferences.edit().remove(key).commit()
     }
 
-    @Synchronized
-    fun removeOwned(): Boolean {
+    fun removeOwned(): Boolean = synchronized(STORAGE_LOCK) {
         // This preferences file is dedicated to Duress Security's encrypted data.
         // Clear its records, then rotate the local Keystore key (cryptographic erasure).
-        if (!preferences.edit().clear().commit()) return false
-        return try {
+        if (!preferences.edit().clear().commit()) return@synchronized false
+        try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             keyStore.deleteEntry(KEY_ALIAS)
             true
@@ -79,10 +74,9 @@ internal class SecureStorage(context: Context) {
         val iv = combined.copyOfRange(0, GCM_IV_LENGTH_BYTES)
         val ciphertext = combined.copyOfRange(GCM_IV_LENGTH_BYTES, combined.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        // Never create a replacement key while reading existing ciphertext. A new
-        // key cannot decrypt old data and would hide a real Keystore recovery issue.
-        val key = getExistingKey()
-            ?: throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
+        // A missing key with existing ciphertext is a recovery error. Never create
+        // a replacement key here because it cannot decrypt the old records.
+        val key = getExistingKey() ?: throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
@@ -94,6 +88,11 @@ internal class SecureStorage(context: Context) {
 
     private fun getOrCreateKey(): SecretKey {
         getExistingKey()?.let { return it }
+        // Never replace a key when encrypted records already exist. Doing so would
+        // overwrite the only path to the original ciphertext with undecryptable data.
+        if (hasExistingEncryptedRecords()) {
+            throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
+        }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -108,7 +107,10 @@ internal class SecureStorage(context: Context) {
         return generator.generateKey()
     }
 
+    private fun hasExistingEncryptedRecords(): Boolean = preferences.all.keys.isNotEmpty()
+
     companion object {
+        private val STORAGE_LOCK = Any()
         private const val PREFS_NAME = "duress_security_encrypted_store"
         private const val KEY_ALIAS = "duress_security_aes_gcm_key_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
