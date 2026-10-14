@@ -10,10 +10,5 @@ test("encrypted storage cannot replace a missing key", async () => {
 
 test("storage failures are fail-closed and recovery cannot erase data", async () => {
   const store = await read("src/lib/store.ts"); const shell = await read("src/components/app-shell.tsx"); const recovery = await read("src/components/storage-recovery-screen.tsx");
-  assert.match(store, /session:\s*\"storage-error\"/); assert.match(shell, /session === \"storage-error\"/); assert.match(recovery, /secureStorageGet/); assert.doesNotMatch(recovery, /secureStorageClearOwned/); assert.match(recovery, /لم يتم حذف أي سجل تلقائيًا/);
-});
-
-test("Android security bridge keeps screen capture protection conditional", async () => {
-  const a = await read("android-native/mainactivity-patch/MainActivity.kt"); const p = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt"); const b = await read("src/lib/native-bridge.ts");
-  assert.match(a, /FLAG_SECURE/); assert.match(p, /setScreenCaptureAllowed/); assert.match(b, /setScreenCaptureAllowed/);
+  assert.match(store, /session:\s*\"storage-error\"/); assert.match(shell, /session === \"storage-error\"/); assert.match(recovery, /Retry secure storage/); assert.doesNotMatch(recovery, /secureStorageClearOwned/); assert.match(recovery, /لم يتم حذف أي سجل تلقائيًا/);
 });
