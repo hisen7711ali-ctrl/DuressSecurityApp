@@ -10,10 +10,10 @@ import * as nativeBridge from "@/lib/native-bridge";
 
 export type AppStorageValue = string | null | Promise<string | null>;
 
-function reportSecureStorageError(): void {
+function reportSecureStorageError(reason = "SECURE_STORAGE_UNAVAILABLE"): void {
   if (typeof window === "undefined") return;
   try {
-    window.dispatchEvent(new Event("duress-security-storage-error"));
+    window.dispatchEvent(new CustomEvent("duress-security-storage-error", { detail: { reason } }));
   } catch {
     // Event reporting must never crash persistence.
   }
@@ -50,7 +50,7 @@ export const appStorage = {
       const stored = await nativeBridge.secureStorageGet(key);
       if (!stored.available) {
         console.error(`[DuressSecurity] Secure storage unavailable; refusing plaintext fallback for ${key}.`);
-        reportSecureStorageError();
+        reportSecureStorageError(stored.reason ?? "SECURE_STORAGE_UNAVAILABLE");
         return null;
       }
       if (stored.found) return stored.value;
@@ -62,7 +62,7 @@ export const appStorage = {
         const migrated = await nativeBridge.secureStorageSet(key, legacy);
         if (!migrated) {
           console.error(`[DuressSecurity] Could not migrate ${key} to secure storage.`);
-          reportSecureStorageError();
+          reportSecureStorageError("LEGACY_MIGRATION_FAILED");
           return null;
         }
         webRemove(key);
@@ -80,7 +80,7 @@ export const appStorage = {
       const saved = await nativeBridge.secureStorageSet(key, value);
       if (!saved) {
         console.error(`[DuressSecurity] Secure storage write failed for ${key}; no plaintext fallback was used.`);
-        reportSecureStorageError();
+        reportSecureStorageError("SECURE_STORAGE_WRITE_FAILED");
         return;
       }
       webRemove(key);
@@ -93,7 +93,7 @@ export const appStorage = {
     }
     return (async () => {
       const removed = await nativeBridge.secureStorageRemove(key);
-      if (!removed) reportSecureStorageError();
+      if (!removed) reportSecureStorageError("SECURE_STORAGE_REMOVE_FAILED");
       webRemove(key);
     })();
   },
