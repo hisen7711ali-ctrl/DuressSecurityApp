@@ -94,7 +94,7 @@ export function AppShell() {
       setCalculatorFront(false);
       return;
     }
-    if (session !== "locked") {
+    if (session !== "locked" && session !== "duress") {
       securityGateFlow.current = false;
       setPendingSecurityGate(false);
       return;
