@@ -145,8 +145,20 @@ class SecurityAdminPlugin : Plugin() {
     fun secureGet(call: PluginCall) {
         val key = call.getString("key")
         if (key.isNullOrBlank()) { call.resolve(JSObject().putCompat("available", true).putCompat("found", false).putCompat("value", null)); return }
-        try { val value = secureStore().get(key); call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value)) }
-        catch (_: Exception) { call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null)) }
+        try {
+            val value = secureStore().get(key)
+            call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value).putCompat("reason", null))
+        } catch (error: Exception) {
+            // Return a safe error code only; never expose stored values or PINs in logs/UI.
+            val chain = generateSequence(error as Throwable?) { it.cause }.toList()
+            val reason = when {
+                chain.any { it.message == "SECURE_STORAGE_KEY_MISSING" } -> "KEY_MISSING"
+                chain.any { it is javax.crypto.AEADBadTagException } -> "DECRYPTION_FAILED"
+                chain.any { it is java.security.KeyStoreException || it is java.security.UnrecoverableKeyException } -> "KEYSTORE_ERROR"
+                else -> "READ_FAILED"
+            }
+            call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null).putCompat("reason", reason))
+        }
     }
 
     @PluginMethod
