@@ -16,9 +16,12 @@ test("default 0000 PIN auto-submits immediately after the fourth digit", async (
 
 test("fresh startup initializes automatically and has no blocking initialization screen", async () => {
   const shell = await read("src/components/app-shell.tsx");
-  assert.match(shell, /const finish = \(\) => \{ void hydrateSession\(\); \};/);
+  assert.match(shell, /const finish = \(\) => \{/);
+  assert.match(shell, /hydrateSession\(\)\.catch\(failHydrationClosed\)/);
   assert.match(shell, /if \(useAppStore\.persist\.hasHydrated\(\)\) finish\(\);/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
+  assert.match(shell, /}, 12000\)/);
+  assert.match(shell, /session: "storage-error"/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
 });
 
