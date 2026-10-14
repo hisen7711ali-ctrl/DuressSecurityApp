@@ -21,7 +21,15 @@ export type NativePermissionStatus = {
 };
 
 type NativeResult = { ok: boolean };
-type SecureRead = { available: boolean; found: boolean; value: string | null };
+export type SecureStorageReason =
+  | "NATIVE_PLUGIN_UNAVAILABLE"
+  | "NATIVE_TIMEOUT"
+  | "NATIVE_CALL_FAILED"
+  | "KEY_MISSING"
+  | "DECRYPTION_FAILED"
+  | "KEYSTORE_ERROR"
+  | "READ_FAILED";
+type SecureRead = { available: boolean; found: boolean; value: string | null; reason?: SecureStorageReason | null };
 
 type SecurityAdminNative = {
   isDeviceAdminActive(): Promise<{ active: boolean }>;
@@ -46,6 +54,7 @@ type CapacitorWindow = Window & {
 };
 
 const NATIVE_CALL_TIMEOUT_MS = 2500;
+const NATIVE_STORAGE_TIMEOUT_MS = 10000;
 
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> {
   return new Promise((resolve) => {
@@ -180,12 +189,38 @@ export async function listLaunchableApps(): Promise<Array<{ packageName: string;
 }
 
 export async function secureStorageGet(key: string): Promise<SecureRead> {
+  const unavailable = (reason: SecureStorageReason): SecureRead => ({
+    available: false, found: false, value: null, reason,
+  });
   const plugin = await getNativePlugin();
-  if (!plugin) return { available: false, found: false, value: null };
+  if (!plugin) {
+    console.error("[DuressSecurity] Secure storage read unavailable: NATIVE_PLUGIN_UNAVAILABLE.");
+    return unavailable("NATIVE_PLUGIN_UNAVAILABLE");
+  }
   try {
-    return await withNativeTimeout(plugin.secureGet({ key }), { available: false, found: false, value: null });
+    // Keystore initialization can be slower on first boot or hosted devices.
+    // Keep a distinct timeout reason instead of misreporting it as corrupt data.
+    const result = await new Promise<SecureRead>((resolve) => {
+      let settled = false;
+      const finish = (value: SecureRead) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = window.setTimeout(
+        () => finish(unavailable("NATIVE_TIMEOUT")),
+        NATIVE_STORAGE_TIMEOUT_MS,
+      );
+      plugin.secureGet({ key }).then(finish).catch(() => finish(unavailable("NATIVE_CALL_FAILED")));
+    });
+    if (!result.available) {
+      console.error("[DuressSecurity] Secure storage read failed:", result.reason ?? "READ_FAILED");
+    }
+    return result;
   } catch {
-    return { available: false, found: false, value: null };
+    console.error("[DuressSecurity] Secure storage bridge call failed: NATIVE_CALL_FAILED.");
+    return unavailable("NATIVE_CALL_FAILED");
   }
 }
 
@@ -193,7 +228,7 @@ export async function secureStorageSet(key: string, value: string): Promise<bool
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await withNativeTimeout(plugin.secureSet({ key, value }), { ok: false })).ok;
+    return (await withNativeTimeout(plugin.secureSet({ key, value }), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok;
   } catch {
     return false;
   }
@@ -203,7 +238,7 @@ export async function secureStorageRemove(key: string): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await withNativeTimeout(plugin.secureRemove({ key }), { ok: false })).ok;
+    return (await withNativeTimeout(plugin.secureRemove({ key }), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok;
   } catch {
     return false;
   }
@@ -213,7 +248,7 @@ export async function secureStorageClearOwned(): Promise<boolean> {
   const plugin = await getNativePlugin();
   if (!plugin) return false;
   try {
-    return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false })).ok;
+    return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok;
   } catch {
     return false;
   }
