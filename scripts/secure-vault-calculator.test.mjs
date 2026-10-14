@@ -36,12 +36,15 @@ test('calculator is the first ordinary screen and owner entry is hidden behind t
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
   assert.match(calculator, /onSecretCommand/);
 
+  const waitingGateIndex = shell.indexOf('if (pendingSecurityGate && !ready) {');
   const startupCalculatorIndex = shell.indexOf('if (!ready) return <FakeCalculator');
   const pendingGateIndex = shell.indexOf('if (pendingSecurityGate) return <LockGate />;');
   const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
-  assert.ok(startupCalculatorIndex >= 0 && pendingGateIndex >= 0 && unlockOverlayIndex >= 0);
-  assert.ok(pendingGateIndex < startupCalculatorIndex, 'pending security gate must override the startup calculator immediately after the secret command');
+  assert.ok(waitingGateIndex >= 0 && startupCalculatorIndex >= 0 && pendingGateIndex >= 0 && unlockOverlayIndex >= 0);
+  assert.ok(waitingGateIndex < startupCalculatorIndex, 'PIN entry must wait for session hydration instead of using temporary defaults');
+  assert.ok(startupCalculatorIndex < pendingGateIndex, 'the normal PIN gate must only render after ready becomes true');
   assert.ok(pendingGateIndex < unlockOverlayIndex, 'pending security gate must have priority over the normal unlock overlay path');
+  assert.match(shell, /PIN entry will appear after saved settings finish loading/);
 
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
