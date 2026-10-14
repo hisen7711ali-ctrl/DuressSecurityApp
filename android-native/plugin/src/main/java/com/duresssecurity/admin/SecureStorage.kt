@@ -79,13 +79,21 @@ internal class SecureStorage(context: Context) {
         val iv = combined.copyOfRange(0, GCM_IV_LENGTH_BYTES)
         val ciphertext = combined.copyOfRange(GCM_IV_LENGTH_BYTES, combined.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+        // Never create a replacement key while reading existing ciphertext. A new
+        // key cannot decrypt old data and would hide a real Keystore recovery issue.
+        val key = getExistingKey()
+            ?: throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 
-    private fun getOrCreateKey(): SecretKey {
+    private fun getExistingKey(): SecretKey? {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+    }
+
+    private fun getOrCreateKey(): SecretKey {
+        getExistingKey()?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
