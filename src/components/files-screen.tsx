@@ -8,6 +8,7 @@ export function FilesScreen() {
   const vault = useAppStore((s) => s.vault);
   const vaultOpen = useAppStore((s) => s.vaultOpen);
   const vaultEncrypted = useAppStore((s) => s.vaultEncrypted);
+  const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired);
   const vaultCryptoReady = useAppStore((s) => s.vaultCryptoReady);
   const unlockEncryptedVault = useAppStore((s) => s.unlockEncryptedVault);
   const setVaultOpen = useAppStore((s) => s.setVaultOpen);
@@ -88,6 +89,16 @@ export function FilesScreen() {
             ? (lang === "ar" ? "ستُشفّر الملفات محليًا باستخدام AES-GCM ومفتاح مشتق من كلمة مرور قوية. لا يمكن استعادة الملفات إذا نسيت كلمة المرور." : "Files are encrypted locally with AES-GCM and a key derived from a strong passphrase. Files cannot be recovered if you forget it.")
             : (lang === "ar" ? "أدخل كلمة مرور الخزنة. لا تُحفظ كلمة المرور نفسها ولا يوجد رجوع إلى تخزين نصي غير مشفّر." : "Enter the vault passphrase. The passphrase itself is not stored, and plaintext fallback is disabled.")}</p>
         </div>
+        {creating && vaultMigrationRequired && vault.length > 0 ? (
+          <p role="alert" className="w-full rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm leading-6 text-danger">
+            {lang === "ar" ? "وجدنا ملفات قديمة لم تكن مشفّرة. يتم الاحتفاظ بها في الذاكرة لهذه الجلسة فقط؛ اختر كلمة مرور وأكمل التشفير قبل إغلاق التطبيق حتى لا تفقدها." : "Legacy files were found without vault encryption. They are kept in memory for this session only; choose a passphrase and finish encryption before closing the app."}
+          </p>
+        ) : null}
+        {creating && vaultMigrationRequired && vault.length === 0 ? (
+          <p role="alert" className="w-full rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm leading-6 text-danger">
+            {lang === "ar" ? "علامة الترحيل القديمة موجودة، لكن محتوى الملفات القديمة غير متاح في هذه الجلسة. لن نخترع بيانات بديلة؛ يمكنك إنشاء خزنة مشفّرة جديدة." : "A legacy migration marker exists, but the old file contents are not available in this session. No replacement data will be invented; you can create a new encrypted vault."}
+          </p>
+        ) : null}
         <form onSubmit={(event) => void submitVaultPassphrase(event)} className="w-full rounded-xl border border-line bg-surface p-4">
           <label className="mb-2 block text-sm text-muted">{lang === "ar" ? "كلمة مرور الخزنة" : "Vault passphrase"}</label>
           <input type="password" autoComplete={creating ? "new-password" : "current-password"} value={passphrase} onChange={(e) => setPassphrase(e.target.value)} minLength={creating ? 12 : 1} required className="h-12 w-full rounded-lg bg-navy px-3 text-sm outline-none ring-cyan/40 focus:ring-2" />
