@@ -20,9 +20,9 @@ import { installNetworkGuard } from "@/lib/network-guard";
 const SECRET_CALCULATOR_COMMAND = "20272006=";
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
 const STARTUP_RETRY_DELAY_MS = 3000;
-const STARTUP_MAX_RETRIES = 12;
-const STARTUP_HYDRATION_WATCHDOG_MS = 120000;
-const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
+const STARTUP_MAX_RETRIES = 6;
+const STARTUP_HYDRATION_WATCHDOG_MS = 50000;
+const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "DEVICE_SECRET_INVALID", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
@@ -75,8 +75,10 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
-  if (!permissionsReady) return <PermissionsOnboardingScreen onComplete={() => setPermissionsReady(true)} />;
+  // The calculator decoy must remain the first visible surface while secure storage warms,
+  // even when the first-install permission flow has not been completed yet.
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  if (!permissionsReady) return <PermissionsOnboardingScreen onComplete={() => setPermissionsReady(true)} />;
   if (pendingSecurityGate) return <LockGate />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
