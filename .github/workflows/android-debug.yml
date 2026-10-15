@@ -46,7 +46,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Check TypeScript
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck 2>&1 | tee typecheck.log
+          code=${PIPESTATUS[0]}
+          exit "$code"
+      - name: Upload TypeScript log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-typecheck-log
+          path: typecheck.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Check authentication invariants
         shell: bash
         run: |
@@ -85,7 +98,7 @@ jobs:
         with:
           name: duress-security-lint-log
           path: lint.log
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
       - name: Build debug APK
         run: npm run apk:debug
