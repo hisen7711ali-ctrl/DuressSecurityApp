@@ -7,6 +7,7 @@ import { FilesScreen } from "@/components/files-screen";
 import { HomeScreen } from "@/components/home-screen";
 import { LockGate } from "@/components/lock-gate";
 import { OpenedApp } from "@/components/opened-app";
+import { PermissionsOnboardingScreen, hasCompletedInitialPermissions } from "@/components/permissions-onboarding-screen";
 import { PinsPanel } from "@/components/pins-panel";
 import { SettingsScreen } from "@/components/settings-screen";
 import { StorageRecoveryScreen } from "@/components/storage-recovery-screen";
@@ -18,12 +19,16 @@ import { installNetworkGuard } from "@/lib/network-guard";
 
 const SECRET_CALCULATOR_COMMAND = "20272006=";
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
-const STARTUP_HYDRATION_WATCHDOG_MS = 330000;
+const STARTUP_RETRY_DELAY_MS = 3000;
+const STARTUP_MAX_RETRIES = 12;
+const STARTUP_HYDRATION_WATCHDOG_MS = 120000;
+const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
 
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
   const [calculatorFront, setCalculatorFront] = useState(true);
   const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
+  const [permissionsReady, setPermissionsReady] = useState(() => hasCompletedInitialPermissions() || !nativeBridge.isNativeAndroid());
   const securityGateFlow = useRef(false); const calculatorRestoreArmed = useRef(true); const suppressAutoLockUntil = useRef(0); const unlockTransitionTimer = useRef<number | null>(null); const previousSession = useRef(useAppStore.getState().session);
   const hydrateSession = useAppStore((s) => s.hydrateSession); const session = useAppStore((s) => s.session); const storageErrorCode = useAppStore((s) => s.storageErrorCode); const ready = useAppStore((s) => s.ready); const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions); const refreshSecurity = useAppStore((s) => s.refreshSecurity); const tab = useAppStore((s) => s.tab); const vaultOpen = useAppStore((s) => s.vaultOpen); const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired); const vault = useAppStore((s) => s.vault); const setTab = useAppStore((s) => s.setTab); const setVaultOpen = useAppStore((s) => s.setVaultOpen); const panel = useAppStore((s) => s.panel); const overlay = useAppStore((s) => s.overlay); const openedApp = useAppStore((s) => s.openedApp); const toast = useAppStore((s) => s.toast); const setToast = useAppStore((s) => s.setToast); const lockSession = useAppStore((s) => s.lockSession); const openOverlay = useAppStore((s) => s.openOverlay); const theme = useAppStore((s) => s.theme); const { lang, dir } = useCopy(); const protectedUi = !calculatorFront && ready && session !== "duress";
   const openSecurityGate = () => { if (unlockTransitionTimer.current !== null) { window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = null; } securityGateFlow.current = true; calculatorRestoreArmed.current = false; suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; setCalculatorFront(false); setPendingSecurityGate(true); openOverlay({ kind: "unlock" }); };
@@ -31,15 +36,30 @@ export function AppShell() {
 
   useEffect(() => {
     installNetworkGuard();
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
     const failHydrationClosed = () => { console.error("[DuressSecurity] Session hydration failed; keeping protected access closed."); setStorageFailed(true); useAppStore.setState({ ready: true, session: "storage-error", storageErrorCode: "SESSION_HYDRATION_FAILED", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false }); };
-    const finish = () => { void hydrateSession().catch(failHydrationClosed); };
+    const hydrateWithRetry = async () => {
+      for (let attempt = 1; attempt <= STARTUP_MAX_RETRIES && !cancelled; attempt += 1) {
+        useAppStore.setState({ ready: false, storageErrorCode: null });
+        try { await hydrateSession(); } catch { failHydrationClosed(); return; }
+        if (cancelled) return;
+        const state = useAppStore.getState();
+        if (state.session !== "storage-error") return;
+        const reason = state.storageErrorCode ?? "SECURITY_RECORD_UNREADABLE";
+        if (TERMINAL_STORAGE_ERRORS.has(reason)) { setStorageFailed(true); return; }
+        if (attempt === STARTUP_MAX_RETRIES) { setStorageFailed(true); useAppStore.setState({ ready: true, session: "storage-error", storageErrorCode: "STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED" }); return; }
+        await sleep(STARTUP_RETRY_DELAY_MS);
+      }
+    };
+    const finish = () => { void hydrateWithRetry(); };
     const unsub = useAppStore.persist.onFinishHydration(finish); if (useAppStore.persist.hasHydrated()) finish();
     const refreshOnResume = () => { if (document.visibilityState === "visible") { void refreshNativePermissions(); refreshSecurity(); } };
     const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession(); };
     const lockFromNativeActivity = () => { if (document.visibilityState !== "hidden") return; if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession(); };
-    const onSecureStorageError = (event: Event) => { const detail = (event as CustomEvent<{ reason?: string }>).detail; const reason = detail?.reason ?? "SECURE_STORAGE_UNAVAILABLE"; if (reason === "STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED" || reason === "KEY_MISSING" || reason === "DECRYPTION_FAILED" || reason === "READ_FAILED" || reason === "KEYSTORE_ERROR" || reason === "SECURE_STORAGE_WRITE_FAILED" || reason === "LEGACY_MIGRATION_FAILED") { setStorageFailed(true); } useAppStore.setState({ storageErrorCode: reason }); };
+    const onSecureStorageError = (event: Event) => { const detail = (event as CustomEvent<{ reason?: string }>).detail; const reason = detail?.reason ?? "SECURE_STORAGE_UNAVAILABLE"; if (TERMINAL_STORAGE_ERRORS.has(reason) || reason === "STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED" || reason === "SECURE_STORAGE_WRITE_FAILED" || reason === "LEGACY_MIGRATION_FAILED") setStorageFailed(true); useAppStore.setState({ storageErrorCode: reason }); };
     window.addEventListener("focus", refreshOnResume); window.addEventListener("duress-security-native-background", lockFromNativeActivity); window.addEventListener("duress-security-storage-error", onSecureStorageError); document.addEventListener("visibilitychange", refreshOnResume); document.addEventListener("visibilitychange", lockWhenBackgrounded);
-    return () => { unsub(); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); };
+    return () => { cancelled = true; unsub(); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
   useEffect(() => {
@@ -48,7 +68,6 @@ export function AppShell() {
     return () => window.clearTimeout(timeout);
   }, [ready]);
 
-  useEffect(() => { if (!pendingSecurityGate) return; if (session === "unlocked") { setPendingSecurityGate(false); setCalculatorFront(false); return; } if (session !== "locked" && session !== "duress") { securityGateFlow.current = false; setPendingSecurityGate(false); return; } if (ready) { setPendingSecurityGate(false); setCalculatorFront(false); openOverlay({ kind: "unlock" }); } }, [ready, pendingSecurityGate, session, openOverlay]);
   useEffect(() => { if (securityGateFlow.current && session === "unlocked") { suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; calculatorRestoreArmed.current = true; setPendingSecurityGate(false); setCalculatorFront(false); previousSession.current = "unlocked"; if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = window.setTimeout(() => { securityGateFlow.current = false; unlockTransitionTimer.current = null; }, CALCULATOR_GATE_TRANSITION_MS); return; } if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") { calculatorRestoreArmed.current = false; setCalculatorFront(true); } previousSession.current = session; }, [session]);
   useEffect(() => { if (session !== "unlocked" || !vaultMigrationRequired || vault.length === 0) return; if (tab !== "files") setTab("files"); if (!vaultOpen) setVaultOpen(true); }, [session, vaultMigrationRequired, vault.length, tab, vaultOpen, setTab, setVaultOpen]);
   useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
@@ -56,8 +75,7 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
-  // Even while the protected state is being hydrated, keep the decoy calculator visible.
-  // A secret command is held as a pending request until secure startup completes.
+  if (!permissionsReady) return <PermissionsOnboardingScreen onComplete={() => setPermissionsReady(true)} />;
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (pendingSecurityGate) return <LockGate />;
   if (session === "wiping") return <WipeScreen />;
