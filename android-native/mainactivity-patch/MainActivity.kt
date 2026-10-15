@@ -6,6 +6,7 @@ import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
 import com.getcapacitor.BridgeActivity
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Capacitor MainActivity with native security bridge and non-blocking secure-store warmup. */
 class MainActivity : BridgeActivity() {
@@ -14,9 +15,14 @@ class MainActivity : BridgeActivity() {
         super.onCreate(savedInstanceState)
 
         // Warm the Keystore and device-bound vault secret before JavaScript asks for them.
-        // This is deliberately detached from the UI thread; slow OEM Keystore initialization
-        // must never replace the calculator decoy with a startup wait screen.
-        Thread({ runCatching { SecureStorage(applicationContext).initializeForApp() } }, "DuressSecureWarmup").apply { isDaemon = true }.start()
+        // This is deliberately detached from the UI thread and deduplicated across activity
+        // recreation; slow OEM Keystore initialization must never replace the calculator decoy.
+        if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
+            Thread({
+                try { SecureStorage(applicationContext).initializeForApp() }
+                catch (_: Exception) { SECURE_WARMUP_STARTED.set(false) }
+            }, "DuressSecureWarmup").apply { isDaemon = true }.start()
+        }
 
         setScreenCaptureAllowed(true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -34,5 +40,9 @@ class MainActivity : BridgeActivity() {
         setScreenCaptureAllowed(false)
         try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-background'))", null) } } catch (_: Exception) { }
         super.onStop()
+    }
+
+    companion object {
+        private val SECURE_WARMUP_STARTED = AtomicBoolean(false)
     }
 }
