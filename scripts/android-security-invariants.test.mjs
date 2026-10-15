@@ -18,7 +18,7 @@ test("encrypted storage cannot replace a missing key", async () => {
 test("secure reads fail closed instead of becoming a missing/default record", async () => {
   const storage = await read("src/lib/app-storage.ts");
   const store = await read("src/lib/store.ts");
-  assert.match(storage, /throw new Error\(reason\)/);
+  assert.match(storage, /throw new Error\(lastReason\)/);
   assert.match(storage, /Never turn a failed secure read into a missing record/);
   assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
   assert.match(storage, /STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED/);
