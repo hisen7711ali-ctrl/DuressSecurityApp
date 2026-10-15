@@ -81,9 +81,16 @@ class SecurityAdminPlugin : Plugin() {
         try { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(intent); result.putCompat("opened", true).putCompat("supported", true) } catch (_: Exception) { result.putCompat("opened", false).putCompat("supported", false) }; call.resolve(result)
     }
     @PluginMethod
+    fun initializeSecureStorage(call: PluginCall) {
+        secureStorageExecutor.execute {
+            val ok = try { secureStore().initializeForApp() } catch (_: Exception) { false }
+            call.resolve(JSObject().putCompat("ok", ok))
+        }
+    }
+    @PluginMethod
     fun secureGet(call: PluginCall) {
         val key = call.getString("key"); if (key.isNullOrBlank()) { call.resolve(JSObject().putCompat("available", true).putCompat("found", false).putCompat("value", null)); return }
-        secureStorageExecutor.execute { try { val value = secureStore().get(key); call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value).putCompat("reason", null)) } catch (error: Exception) { val chain = generateSequence(error as Throwable?) { it.cause }.toList(); val reason = when { chain.any { it.message == "SECURE_STORAGE_KEY_MISSING" } -> "KEY_MISSING"; chain.any { it is javax.crypto.AEADBadTagException } -> "DECRYPTION_FAILED"; chain.any { it is java.security.KeyStoreException || it is java.security.UnrecoverableKeyException } -> "KEYSTORE_ERROR"; else -> "READ_FAILED" }; call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null).putCompat("reason", reason)) } }
+        secureStorageExecutor.execute { try { val value = secureStore().get(key); call.resolve(JSObject().putCompat("available", true).putCompat("found", value != null).putCompat("value", value).putCompat("reason", null)) } catch (error: Exception) { val chain = generateSequence(error as Throwable?) { it.cause }.toList(); val reason = when { chain.any { it.message == "SECURE_STORAGE_KEY_MISSING" } -> "KEY_MISSING"; chain.any { it.message == "SECURE_STORAGE_DEVICE_SECRET_INVALID" } -> "DEVICE_SECRET_INVALID"; chain.any { it is javax.crypto.AEADBadTagException } -> "DECRYPTION_FAILED"; chain.any { it is java.security.KeyStoreException || it is java.security.UnrecoverableKeyException } -> "KEYSTORE_ERROR"; else -> "READ_FAILED" }; call.resolve(JSObject().putCompat("available", false).putCompat("found", false).putCompat("value", null).putCompat("reason", reason)) } }
     }
     @PluginMethod
     fun secureSet(call: PluginCall) { val key = call.getString("key"); val value = call.getString("value"); if (key.isNullOrBlank() || value == null) { call.resolve(JSObject().putCompat("ok", false)); return }; secureStorageExecutor.execute { val ok = try { secureStore().put(key, value) } catch (_: Exception) { false }; call.resolve(JSObject().putCompat("ok", ok)) } }
