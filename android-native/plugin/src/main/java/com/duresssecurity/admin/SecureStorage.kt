@@ -13,7 +13,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** AES-GCM encrypted app-owned storage backed by an Android Keystore key. */
-internal class SecureStorage(context: Context) {
+internal class SecureStorage(private val context: Context) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun initializeForApp(): Boolean = synchronized(STORAGE_LOCK) {
@@ -90,12 +90,10 @@ internal class SecureStorage(context: Context) {
             val builder = KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setRandomizedEncryptionRequired(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && contextHasStrongBox()) builder.setIsStrongBoxBacked(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && context.packageManager.hasSystemFeature("android.hardware.strongbox_keystore")) builder.setIsStrongBoxBacked(true)
             generator.init(builder.build())
             return generator.generateKey()
         } catch (error: Exception) {
-            // StrongBox is a preference, not a hard requirement. If it is unavailable,
-            // retry once with the normal Android Keystore backed implementation.
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || error !is android.security.keystore.StrongBoxUnavailableException) throw error
             val fallback = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
             fallback.init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -104,8 +102,6 @@ internal class SecureStorage(context: Context) {
             return fallback.generateKey()
         }
     }
-
-    private fun contextHasStrongBox(): Boolean = context.packageManager.hasSystemFeature("android.hardware.strongbox_keystore")
 
     private fun hasExistingEncryptedRecords(): Boolean = preferences.all.keys.isNotEmpty()
 
