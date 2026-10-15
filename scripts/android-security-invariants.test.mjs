@@ -20,6 +20,9 @@ test("secure reads fail closed instead of becoming a missing/default record", as
   const store = await read("src/lib/store.ts");
   assert.match(storage, /throw new Error\(reason\)/);
   assert.match(storage, /Never turn a failed secure read into a missing record/);
+  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
+  assert.match(storage, /STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED/);
+  assert.match(storage, /initializeSecureStorage\(\)/);
   assert.match(store, /if \(!raw\) return \{\s*\.\.\.INITIAL_SECURITY_STATE\s*\}/);
   assert.match(store, /nativeBridge\.isNativeAndroid\(\) \? null/);
 });
@@ -38,14 +41,17 @@ test("storage failures are fail-closed and recovery cannot erase data", async ()
 test("startup hydration is bounded, retried serially, and native Keystore access stays off the UI thread", async () => {
   const store = await read("src/lib/store.ts");
   const shell = await read("src/components/app-shell.tsx");
+  const storage = await read("src/lib/app-storage.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
   const bridge = await read("src/lib/native-bridge.ts");
   assert.doesNotMatch(store, /Promise\.all\(\[nativeBridge\.secureStorageGet/);
+  assert.match(storage, /STARTUP_RETRY_DELAY_MS = 3000/);
+  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 6/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 2/);
   assert.match(shell, /await hydrateSession\(\)/);
   assert.match(shell, /await sleep\(STARTUP_RETRY_DELAY_MS\)/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 50000/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 80000/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator/);
   assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 5000/);
   assert.match(bridge, /NATIVE_INITIALIZE_TIMEOUT_MS = 10000/);
