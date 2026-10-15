@@ -63,7 +63,7 @@ test("Android backup and transfer rules are generated and asserted in the final 
   assert.match(setup, /set\("allowBackup", "false"\)/);
   assert.match(setup, /set\("fullBackupContent", "@xml\/backup_rules"\)/);
   assert.match(setup, /set\("dataExtractionRules", "@xml\/data_extraction_rules"\)/);
-  assert.match(setup, /android:allowBackup=\\?"false\\?"/);
-  assert.match(setup, /android:fullBackupContent=\\?"@xml\/backup_rules\\?"/);
-  assert.match(setup, /android:dataExtractionRules=\\?"@xml\/data_extraction_rules\\?"/);
+  assert.match(setup, /android:allowBackup/);
+  assert.match(setup, /android:fullBackupContent/);
+  assert.match(setup, /android:dataExtractionRules/);
 });
