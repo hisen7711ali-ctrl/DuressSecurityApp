@@ -13,6 +13,15 @@ test("encrypted storage cannot replace a missing key", async () => {
   assert.match(k, /hasExistingEncryptedRecords/);
 });
 
+test("secure reads fail closed instead of becoming a missing/default record", async () => {
+  const storage = await read("src/lib/app-storage.ts");
+  const store = await read("src/lib/store.ts");
+  assert.match(storage, /throw new Error\(reason\)/);
+  assert.match(storage, /Never turn a failed secure read into a missing record/);
+  assert.match(store, /if \(!raw\) return \{ \.\.INITIAL_SECURITY_STATE \}/);
+  assert.match(store, /nativeBridge\.isNativeAndroid\(\) \? null/);
+});
+
 test("storage failures are fail-closed and recovery cannot erase data", async () => {
   const store = await read("src/lib/store.ts");
   const shell = await read("src/components/app-shell.tsx");
@@ -28,12 +37,14 @@ test("startup hydration is bounded, retried serially, and native Keystore access
   const store = await read("src/lib/store.ts");
   const shell = await read("src/components/app-shell.tsx");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  const bridge = await read("src/lib/native-bridge.ts");
   assert.doesNotMatch(store, /Promise\.all\(\[nativeBridge\.secureStorageGet/);
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
   assert.match(shell, /STARTUP_MAX_RETRIES = 12/);
   assert.match(shell, /await hydrateSession\(\)/);
   assert.match(shell, /await sleep\(STARTUP_RETRY_DELAY_MS\)/);
   assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 120000/);
+  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 2500/);
   assert.match(plugin, /private val secureStorageExecutor = Executors\.newSingleThreadExecutor/);
   assert.match(plugin, /secureStorageExecutor\.execute/);
   assert.match(plugin, /secureStorageExecutor\.shutdownNow\(\)/);
