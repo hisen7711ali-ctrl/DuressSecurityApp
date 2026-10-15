@@ -15,7 +15,9 @@ type SecurityAdminNative = {
 };
 type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } };
 const NATIVE_CALL_TIMEOUT_MS = 2500;
-const NATIVE_STORAGE_TIMEOUT_MS = 5000;
+// Secure-storage operations are native Keystore work; keep each bridge call bounded so
+// the startup retry policy can remain fast while MainActivity warms the key in parallel.
+const NATIVE_STORAGE_TIMEOUT_MS = 2500;
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> { return new Promise((resolve) => { let settled = false; const finish = (value: T) => { if (settled) return; settled = true; resolve(value); }; const timer = window.setTimeout(() => finish(fallback), timeoutMs); promise.then((value) => { window.clearTimeout(timer); finish(value); }).catch(() => { window.clearTimeout(timer); finish(fallback); }); }); }
 function isNativeRuntime(): boolean { if (typeof window === "undefined") return false; return Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.()); }
 let pluginPromise: Promise<SecurityAdminNative | null> | null = null;
