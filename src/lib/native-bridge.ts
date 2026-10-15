@@ -15,8 +15,6 @@ type SecurityAdminNative = {
 };
 type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } };
 const NATIVE_CALL_TIMEOUT_MS = 2500;
-// Keystore operations are performed on a native worker. Give OEM implementations enough
-// time for first-use key generation without making a normal UI call unbounded.
 const NATIVE_STORAGE_TIMEOUT_MS = 5000;
 const NATIVE_INITIALIZE_TIMEOUT_MS = 10000;
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> { return new Promise((resolve) => { let settled = false; const finish = (value: T) => { if (settled) return; settled = true; resolve(value); }; const timer = window.setTimeout(() => finish(fallback), timeoutMs); promise.then((value) => { window.clearTimeout(timer); finish(value); }).catch(() => { window.clearTimeout(timer); finish(fallback); }); }); }
@@ -34,27 +32,8 @@ export async function authenticateBiometric(reason: string): Promise<boolean> { 
 export async function getPermissionStatus(): Promise<NativePermissionStatus | null> { const plugin = await getNativePlugin(); if (!plugin) return null; try { return await withNativeTimeout(plugin.getPermissionStatus(), null); } catch { return null; } }
 export async function requestSystemPermission(permission: NativePermissionKey): Promise<{ opened: boolean; supported: boolean }> { const plugin = await getNativePlugin(); if (!plugin) return { opened: false, supported: false }; try { return await withNativeTimeout(plugin.requestSystemPermission({ permission }), { opened: false, supported: false }); } catch { return { opened: false, supported: false }; } }
 export async function listLaunchableApps(): Promise<Array<{ packageName: string; label: string }> | null> { const plugin = await getNativePlugin(); if (!plugin) return null; try { return (await withNativeTimeout(plugin.listLaunchableApps(), { apps: [] })).apps.filter((app) => !!(app.packageName && app.label)); } catch { return null; } }
-
-export async function initializeSecureStorage(): Promise<boolean> {
-  const plugin = await getNativePlugin();
-  if (!plugin) return false;
-  try { return (await withNativeTimeout(plugin.initializeSecureStorage(), { ok: false }, NATIVE_INITIALIZE_TIMEOUT_MS)).ok; } catch { return false; }
-}
-
-export async function secureStorageGet(key: string): Promise<SecureRead> {
-  const unavailable = (reason: SecureStorageReason): SecureRead => ({ available: false, found: false, value: null, reason });
-  const plugin = await getNativePlugin();
-  if (!plugin) return unavailable("NATIVE_PLUGIN_UNAVAILABLE");
-  try {
-    const result = await new Promise<SecureRead>((resolve) => {
-      let settled = false;
-      const finish = (value: SecureRead) => { if (settled) return; settled = true; window.clearTimeout(timer); resolve(value); };
-      const timer = window.setTimeout(() => finish(unavailable("NATIVE_TIMEOUT")), NATIVE_STORAGE_TIMEOUT_MS);
-      plugin.secureGet({ key }).then(finish).catch(() => finish(unavailable("NATIVE_CALL_FAILED")));
-    });
-    return result;
-  } catch { return unavailable("NATIVE_CALL_FAILED"); }
-}
+export async function initializeSecureStorage(): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.initializeSecureStorage(), { ok: false }, NATIVE_INITIALIZE_TIMEOUT_MS)).ok; } catch { return false; } }
+export async function secureStorageGet(key: string): Promise<SecureRead> { const unavailable = (reason: SecureStorageReason): SecureRead => ({ available: false, found: false, value: null, reason }); const plugin = await getNativePlugin(); if (!plugin) return unavailable("NATIVE_PLUGIN_UNAVAILABLE"); try { return await new Promise<SecureRead>((resolve) => { let settled = false; let timer: number | undefined; const finish = (value: SecureRead) => { if (settled) return; settled = true; if (timer !== undefined) window.clearTimeout(timer); resolve(value); }; timer = window.setTimeout(() => finish(unavailable("NATIVE_TIMEOUT")), NATIVE_STORAGE_TIMEOUT_MS); plugin.secureGet({ key }).then(finish).catch(() => finish(unavailable("NATIVE_CALL_FAILED"))); }); } catch { return unavailable("NATIVE_CALL_FAILED"); } }
 export async function secureStorageSet(key: string, value: string): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.secureSet({ key, value }), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok; } catch { return false; } }
 export async function secureStorageRemove(key: string): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.secureRemove({ key }), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok; } catch { return false; } }
 export async function secureStorageClearOwned(): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok; } catch { return false; } }
