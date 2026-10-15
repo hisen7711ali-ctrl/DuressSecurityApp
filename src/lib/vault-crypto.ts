@@ -1,5 +1,5 @@
 /** Device-bound encrypted vault: PBKDF2-SHA-256 (600k) + Android Keystore-backed 256-bit secret + AES-256-GCM. */
-import * as nativeBridge from "@/lib/native-bridge";
+import * as nativeBridge from "./native-bridge";
 
 export type EncryptedVaultFile = { id: string; title: string; body: string; updatedAt: string };
 type VaultEnvelopeV1 = { version: 1; kdf: "PBKDF2-SHA256"; iterations: number; salt: string; iv: string; ciphertext: string };
