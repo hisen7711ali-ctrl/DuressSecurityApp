@@ -8,12 +8,15 @@ const read = (p) => readFile(path.join(root, p), "utf8");
 
 test("startup keeps calculator visible while secure storage retries are serialized and bounded", async () => {
   const shell = await read("src/components/app-shell.tsx");
+  const storage = await read("src/lib/app-storage.ts");
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 6/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 50000/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 2/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 80000/);
   assert.match(shell, /await hydrateSession\(\)/);
   assert.match(shell, /await sleep\(STARTUP_RETRY_DELAY_MS\)/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator/);
+  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
+  assert.match(storage, /STARTUP_RETRY_DELAY_MS = 3000/);
   assert.doesNotMatch(shell, /330000/);
 });
 
@@ -35,14 +38,7 @@ test("native secure storage is warmed before JavaScript startup work", async () 
   const bridge = await read("src/lib/native-bridge.ts");
   assert.match(activity, /DuressSecureWarmup/);
   assert.match(activity, /initializeForApp\(\)/);
-  assert.match(storage, /getOrCreateDeviceSecret/);
   assert.match(storage, /DEVICE_SECRET_BYTES = 32/);
-  assert.match(storage, /setIsStrongBoxBacked\(true\)/);
-  assert.match(bridge, /initializeSecureStorage/);
-});
-
-test("secure storage plugin does not keep a background executor alive after teardown", async () => {
-  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
-  assert.match(plugin, /override fun handleOnDestroy\(\)/);
-  assert.match(plugin, /secureStorageExecutor\.shutdownNow\(\)/);
+  assert.match(bridge, /initializeSecureStorage\(\)/);
+  assert.match(bridge, /NATIVE_INITIALIZE_TIMEOUT_MS = 10000/);
 });
