@@ -10,8 +10,7 @@ test('calculator is the ordinary startup screen and owner entry uses the exact n
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
-  assert.match(shell, /calculatorFront\] = useState\(true\)/);
-  assert.match(shell, /useState\(true\)/);
+  assert.match(shell, /calculatorFront, setCalculatorFront\] = useState\(true\)/);
   assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
   assert.match(shell, /securityGateFlow\.current = true/);
