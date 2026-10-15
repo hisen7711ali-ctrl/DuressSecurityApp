@@ -56,11 +56,14 @@ test("startup hydration is bounded, retried serially, and native Keystore access
   assert.match(plugin, /secureStorageExecutor\.shutdownNow\(\)/);
 });
 
-test("Android backup and transfer rules exclude app-owned sensitive data", async () => {
+test("Android backup and transfer rules are generated and asserted in the final manifest", async () => {
   const setup = await read("scripts/android-setup.mjs");
   assert.match(setup, /backup_rules\.xml/);
   assert.match(setup, /data_extraction_rules\.xml/);
-  assert.match(setup, /android:allowBackup="false"/);
-  assert.match(setup, /android:fullBackupContent="@xml\/backup_rules"/);
-  assert.match(setup, /android:dataExtractionRules="@xml\/data_extraction_rules"/);
+  assert.match(setup, /set\("allowBackup", "false"\)/);
+  assert.match(setup, /set\("fullBackupContent", "@xml\/backup_rules"\)/);
+  assert.match(setup, /set\("dataExtractionRules", "@xml\/data_extraction_rules"\)/);
+  assert.match(setup, /android:allowBackup=\\?"false\\?"/);
+  assert.match(setup, /android:fullBackupContent=\\?"@xml\/backup_rules\\?"/);
+  assert.match(setup, /android:dataExtractionRules=\\?"@xml\/data_extraction_rules\\?"/);
 });
