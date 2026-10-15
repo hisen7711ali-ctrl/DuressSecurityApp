@@ -18,7 +18,7 @@ test("secure reads fail closed instead of becoming a missing/default record", as
   const store = await read("src/lib/store.ts");
   assert.match(storage, /throw new Error\(reason\)/);
   assert.match(storage, /Never turn a failed secure read into a missing record/);
-  assert.match(store, /if \(!raw\) return \{ \.\.INITIAL_SECURITY_STATE \}/);
+  assert.match(store, /if \(!raw\)\s*return \{ \.\.INITIAL_SECURITY_STATE \}/);
   assert.match(store, /nativeBridge\.isNativeAndroid\(\) \? null/);
 });
 
