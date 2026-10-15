@@ -1,6 +1,7 @@
 package com.duresssecurity.admin
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -53,6 +54,7 @@ internal class SecureStorage(context: Context) {
         SecureRandom().nextBytes(bytes)
         val plain = Base64.encodeToString(bytes, Base64.NO_WRAP)
         if (!preferences.edit().putString(DEVICE_SECRET_KEY, encrypt(plain)).commit()) throw IllegalStateException("SECURE_STORAGE_WRITE_FAILED")
+        bytes.fill(0)
         return plain
     }
 
@@ -84,11 +86,26 @@ internal class SecureStorage(context: Context) {
         getExistingKey()?.let { return it }
         if (hasExistingEncryptedRecords()) throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        generator.init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setRandomizedEncryptionRequired(true).build())
-        return generator.generateKey()
+        try {
+            val builder = KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && contextHasStrongBox()) builder.setIsStrongBoxBacked(true)
+            generator.init(builder.build())
+            return generator.generateKey()
+        } catch (error: Exception) {
+            // StrongBox is a preference, not a hard requirement. If it is unavailable,
+            // retry once with the normal Android Keystore backed implementation.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || error !is android.security.keystore.StrongBoxUnavailableException) throw error
+            val fallback = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            fallback.init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true).build())
+            return fallback.generateKey()
+        }
     }
+
+    private fun contextHasStrongBox(): Boolean = context.packageManager.hasSystemFeature("android.hardware.strongbox_keystore")
 
     private fun hasExistingEncryptedRecords(): Boolean = preferences.all.keys.isNotEmpty()
 
