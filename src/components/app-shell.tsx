@@ -20,8 +20,8 @@ import { installNetworkGuard } from "@/lib/network-guard";
 const SECRET_CALCULATOR_COMMAND = "20272006=";
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
 const STARTUP_RETRY_DELAY_MS = 3000;
-const STARTUP_MAX_RETRIES = 6;
-const STARTUP_HYDRATION_WATCHDOG_MS = 50000;
+const STARTUP_MAX_RETRIES = 2;
+const STARTUP_HYDRATION_WATCHDOG_MS = 80000;
 const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "DEVICE_SECRET_INVALID", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
 
 export function AppShell() {
@@ -75,8 +75,6 @@ export function AppShell() {
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
-  // The calculator decoy must remain the first visible surface while secure storage warms,
-  // even when the first-install permission flow has not been completed yet.
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (!permissionsReady) return <PermissionsOnboardingScreen onComplete={() => setPermissionsReady(true)} />;
   if (pendingSecurityGate) return <LockGate />;
@@ -85,5 +83,5 @@ export function AppShell() {
   if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (overlay?.kind === "unlock") return <LockGate />;
   if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
-  return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
+  return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
 }
