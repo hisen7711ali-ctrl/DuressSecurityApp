@@ -35,13 +35,15 @@ for (const file of ["device_admin.xml", "app_lock_accessibility_service.xml"]) {
 }
 await writeFile(path.join(valuesDest, "duress_security_strings.xml"), await readFile(path.join(root, "android-native/plugin/src/main/res/values/strings.xml"), "utf8"));
 await writeFile(path.join(valuesDest, "calculator_branding.xml"), `<resources>\n  <string name="calculator_app_name">الآلة الحاسبة</string>\n</resources>\n`);
+await writeFile(path.join(resDest, "backup_rules.xml"), `<?xml version="1.0" encoding="utf-8"?>\n<full-backup-content>\n  <exclude domain="sharedpref" path="." />\n  <exclude domain="database" path="." />\n  <exclude domain="file" path="." />\n  <exclude domain="external" path="." />\n</full-backup-content>\n`);
+await writeFile(path.join(resDest, "data_extraction_rules.xml"), `<?xml version="1.0" encoding="utf-8"?>\n<data-extraction-rules>\n  <cloud-backup disableIfNoEncryptionCapabilities="true">\n    <exclude domain="sharedpref" path="." />\n    <exclude domain="database" path="." />\n    <exclude domain="file" path="." />\n    <exclude domain="external" path="." />\n  </cloud-backup>\n  <device-transfer>\n    <exclude domain="sharedpref" path="." />\n    <exclude domain="database" path="." />\n    <exclude domain="file" path="." />\n    <exclude domain="external" path="." />\n  </device-transfer>\n</data-extraction-rules>\n`);
 
 // Single-source professional calculator launcher icon. The visible identity is deliberately
 // a calculator: display panel + four keypad buttons, with no Android robot or security shield.
 const iconXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-<path android:fillColor="#071426" android:pathData="M20,3h68c10.5 0 17,6.5 17,17v68c0,10.5 -6.5,17 -17,17H20C9.5,105 3,98.5 3,88V20C3,9.5 9.5,3 20,3Z"/>
+<path android:fillColor="#071426" android:pathData="M20,3h68c10.5 0 17,6.5 17,17v68c0,10.5 -6.5 17 -17,17H20C9.5,105 3,98.5 3,88V20C3,9.5 9.5,3 20,3Z"/>
 <path android:fillColor="#F8FAFC" android:pathData="M28,19h52c4.4 0 8,3.6 8,8v54c0,4.4 -3.6 8 -8,8H28c-4.4 0 -8,-3.6 -8,-8V27c0,-4.4 3.6,-8 8,-8Z"/>
-<path android:fillColor="#0B1B31" android:pathData="M28,27h52c0,0 0,0 0,0v17c0,2.2 -1.8,4 -4,4H32c-2.2,0 -4,-1.8 -4,-4V27Z"/>
+<path android:fillColor="#0B1B31" android:pathData="M28,27h52c0,0 0,0 0,0v17c0,2.2 -1.8,4 -4,4H32c-2.2 0 -4,-1.8 -4,-4V27Z"/>
 <path android:fillColor="#23C7D9" android:pathData="M34,32h40v7H34z"/>
 <path android:fillColor="#0B1B31" android:pathData="M31,54h12v10H31zM48,54h12v10H48zM65,54h12v10H65zM31,69h12v10H31zM48,69h12v10H48zM65,69h12v10H65z"/>
 </vector>`;
@@ -57,6 +59,8 @@ manifest = manifest.replace(/<application\b([^>]*)>/, (_, attrs0) => {
     attrs = re.test(attrs) ? attrs.replace(re, `android:${name}="${value}"`) : `${attrs} android:${name}="${value}"`;
   };
   set("allowBackup", "false");
+  set("fullBackupContent", "@xml/backup_rules");
+  set("dataExtractionRules", "@xml/data_extraction_rules");
   set("label", "@string/calculator_app_name");
   set("icon", "@drawable/ic_launcher");
   set("roundIcon", "@drawable/ic_launcher_round");
@@ -64,10 +68,6 @@ manifest = manifest.replace(/<application\b([^>]*)>/, (_, attrs0) => {
 });
 manifest = manifest.replace(/\s*<uses-permission\s+android:name="android\.permission\.(?:INTERNET|ACCESS_NETWORK_STATE)"\s*\/>/g, "");
 
-// Capacitor generates the base manifest for each build. The native security receiver,
-// accessibility service and special-permission declarations therefore have to be injected
-// here on every setup pass; keeping them only in android-native/manifest-additions.xml is
-// documentation and does not modify the generated manifest by itself.
 const nativePermissions = [
   "android.permission.USE_BIOMETRIC",
   "android.permission.RECEIVE_BOOT_COMPLETED",
@@ -110,6 +110,9 @@ if (!manifest.includes("android.intent.category.LAUNCHER")) throw new Error("Gen
 if (!manifest.includes("com.duresssecurity.admin.AdminReceiver")) throw new Error("Generated Android manifest is missing AdminReceiver");
 if (!manifest.includes("com.duresssecurity.admin.BootCompletedReceiver")) throw new Error("Generated Android manifest is missing BootCompletedReceiver");
 if (!manifest.includes("com.duresssecurity.admin.AppLockAccessibilityService")) throw new Error("Generated Android manifest is missing AppLockAccessibilityService");
+if (!manifest.includes("android:allowBackup=\"false\"")) throw new Error("Generated Android manifest must disable backup");
+if (!manifest.includes("android:fullBackupContent=\"@xml/backup_rules\"")) throw new Error("Generated Android manifest is missing legacy backup exclusions");
+if (!manifest.includes("android:dataExtractionRules=\"@xml/data_extraction_rules\"")) throw new Error("Generated Android manifest is missing Android 12+ backup exclusions");
 await writeFile(manifestPath, manifest);
 
 const rootGradlePath = path.join(androidDir, "build.gradle");
@@ -147,4 +150,4 @@ if (await exists(gradlePath)) {
   await writeFile(gradlePath, gradle);
 }
 
-console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, required native manifest entries, strict offline manifest, and calculator launcher branding.");
+console.log("Android native wrapper prepared with Kotlin compilation, API 23+ compatibility, Java/Kotlin 21 targets, StrongBox-capable secure storage, explicit backup exclusion, required native manifest entries, strict offline manifest, and calculator launcher branding.");
