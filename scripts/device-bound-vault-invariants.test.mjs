@@ -7,6 +7,7 @@ test("startup retry keeps slow Keystore work off the UI path and is bounded", as
   const activity = await readFile("android-native/mainactivity-patch/MainActivity.kt", "utf8");
   const secure = await readFile("android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt", "utf8");
   const shell = await readFile("src/components/app-shell.tsx", "utf8");
+  const storage = await readFile("src/lib/app-storage.ts", "utf8");
   assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 5000/);
   assert.match(bridge, /NATIVE_INITIALIZE_TIMEOUT_MS = 10000/);
   assert.match(activity, /DuressSecureWarmup/);
@@ -16,9 +17,11 @@ test("startup retry keeps slow Keystore work off the UI path and is bounded", as
   assert.match(secure, /SecureRandom\(\)/);
   assert.match(secure, /SECURE_STORAGE_KEY_MISSING/);
   assert.match(secure, /setIsStrongBoxBacked\(true\)/);
+  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
+  assert.match(storage, /STARTUP_RETRY_DELAY_MS = 3000/);
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 6/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 50000/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 2/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 80000/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator/);
   assert.doesNotMatch(shell, /Preparing the security gate|جارٍ تجهيز بوابة الحماية/);
 });
