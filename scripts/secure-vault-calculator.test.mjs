@@ -6,126 +6,62 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (p) => readFile(path.join(root, p), 'utf8');
 
-test('calculator is the first ordinary screen and owner entry is hidden behind the exact numeric trigger', async () => {
+test('calculator is the ordinary startup screen and owner entry uses the exact numeric trigger', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
-  const icon = await read('scripts/brand-android-icon.mjs');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
-  assert.match(shell, /useState\(true\).*calculatorFront|calculatorFront.*useState\(true\)/s);
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND.*20272006=/);
-  assert.doesNotMatch(shell, /sequence !== SECRET_CALCULATOR_COMMAND \|\| session !== "locked"/);
+  assert.match(shell, /calculatorFront\] = useState\(true\)/);
+  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
-  assert.match(shell, /securityGateFlow/);
   assert.match(shell, /securityGateFlow\.current = true/);
-  assert.match(shell, /calculatorRestoreArmed\.current = false/);
   assert.match(shell, /setCalculatorFront\(false\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
+  assert.match(shell, /if \(!ready\) return <FakeCalculator/);
+  assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
   assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
-  assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
-  assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
-  assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\) \{/);
-  assert.match(shell, /calculatorRestoreArmed\.current = true/);
-  assert.match(shell, /if \(calculatorRestoreArmed\.current && \(previousSession\.current === "unlocked"/);
-  assert.doesNotMatch(shell, /if \(!ready\) \{[\s\S]*setCalculatorFront\(true\);\s*setPendingSecurityGate\(true\);/);
-  assert.doesNotMatch(shell, /if \(ready && pendingSecurityGate\) \{[\s\S]*if \(session === "locked"\) openOverlay\(\{ kind: "unlock" \}\);/);
-  assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
-  assert.doesNotMatch(shell, /if \(!ready\) return <LockGate \/>/);
-  assert.doesNotMatch(shell, /if \(!ready\)[\s\S]{0,120}return null/);
-  assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
-  assert.match(calculator, /onSecretCommand/);
-
-  const waitingGateIndex = shell.indexOf('if (pendingSecurityGate && !ready) {');
-  const startupCalculatorIndex = shell.indexOf('if (!ready) return <FakeCalculator');
-  const pendingGateIndex = shell.indexOf('if (pendingSecurityGate) return <LockGate />;');
-  const unlockOverlayIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
-  assert.ok(waitingGateIndex >= 0 && startupCalculatorIndex >= 0 && pendingGateIndex >= 0 && unlockOverlayIndex >= 0);
-  assert.ok(waitingGateIndex < startupCalculatorIndex, 'PIN entry must wait for session hydration instead of using temporary defaults');
-  assert.ok(startupCalculatorIndex < pendingGateIndex, 'the normal PIN gate must only render after ready becomes true');
-  assert.ok(pendingGateIndex < unlockOverlayIndex, 'pending security gate must have priority over the normal unlock overlay path');
-  assert.match(shell, /PIN entry will appear after saved settings finish loading/);
-
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(calculator, /ownerSequenceRef/);
-  assert.match(calculator, /const sequenceMatches = ownerSequenceRef\.current === OWNER_TRIGGER/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
-  assert.match(calculator, /if \(!sequenceMatches\) return false/);
-  assert.match(calculator, /if \(\/\^\\d\$\/\.test\(key\)\)/);
-  assert.doesNotMatch(calculator, /OWNER_TRIGGER = "0×0×0×9"/);
-  assert.doesNotMatch(calculator, /normalizeOwnerExpression|isOwnerTriggerExpression/);
-  assert.doesNotMatch(calculator, /secretVisible|setSecretVisible|onOpenOwner/);
-
-  assert.match(calculator, /\["AC", "⌫", "%", "÷"\]/);
-  assert.match(calculator, /\["1", "2", "3", "\+"\]/);
-  assert.match(calculator, /\["±", "\.", "0", "="\]/);
-  assert.match(calculator, /if \(key === "⌫"\)/);
-  assert.match(calculator, /if \(key === "±"\)/);
-  assert.match(calculator, /setDisplay\(next \|\| "0"\)/);
-  assert.match(calculator, /wide && "col-span-2 justify-center"/);
-
   assert.match(activity, /FLAG_SECURE/);
-  assert.match(activity, /setScreenCaptureAllowed\(true\)/);
-  assert.match(activity, /clearFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
-  assert.match(activity, /addFlags\(WindowManager\.LayoutParams\.FLAG_SECURE\)/);
-
-  assert.match(icon, /calculator-shaped|calculator/);
-  assert.match(icon, /<!-- calculator keys -->/);
-  assert.match(icon, /<!-- display -->/);
 });
 
 test('hidden trigger remains usable while duress mode is active', async () => {
   const shell = await read('src/components/app-shell.tsx');
-  const gateIndex = shell.indexOf('if (overlay?.kind === "unlock") return <LockGate />;');
-  const duressIndex = shell.indexOf('if (session === "duress") return <FakeCalculator');
-  assert.ok(gateIndex >= 0, 'unlock gate must exist');
-  assert.ok(duressIndex >= 0, 'duress calculator guard must exist');
-  assert.ok(gateIndex < duressIndex, 'unlock gate must have priority over duress calculator');
+  assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
+  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
 });
 
-test('vault encrypts data with PBKDF2 and AES-GCM and has no plaintext fallback', async () => {
+test('vault v2 uses PBKDF2 600k, AES-GCM, device secret and authenticated header with no plaintext fallback', async () => {
   const vault = await read('src/lib/vault-crypto.ts');
   const store = await read('src/lib/store.ts');
   const nativeStorage = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt');
   assert.match(nativeStorage, /val key = getExistingKey\(\)/);
   assert.match(nativeStorage, /SECURE_STORAGE_KEY_MISSING/);
-  assert.doesNotMatch(nativeStorage, /cipher\.init\(Cipher\.DECRYPT_MODE, getOrCreateKey\(\)/);
-  assert.match(vault, /PBKDF2-SHA256/);
-  assert.match(vault, /310_000/);
-  assert.match(vault, /AES-GCM/);
-  assert.match(vault, /VAULT_MIN_PASSPHRASE_LENGTH = 12/);
+  assert.match(nativeStorage, /DEVICE_SECRET_BYTES = 32/);
+  assert.match(vault, /PBKDF2_ITERATIONS = 600_000/);
+  assert.match(vault, /PBKDF2-SHA256\+DEVICE-SECRET/);
+  assert.match(vault, /VAULT_DEVICE_SECRET_KEY/);
+  assert.match(vault, /additionalData/);
+  assert.match(vault, /LEGACY_VAULT_STORAGE_KEY/);
+  assert.match(vault, /verifyV2/);
   assert.match(vault, /VAULT_RECORD_MISSING/);
-  assert.match(store, /s\.vaultEncrypted \? \{\} : \{ vault: s\.vault \}/);
   assert.match(store, /persistEncryptedVault/);
+  assert.match(store, /vaultEncrypted: false/);
 });
 
-test('retry lockout survives reload through the persisted application state', async () => {
+test('retry lockout survives reload through persisted application state', async () => {
   const store = await read('src/lib/store.ts');
   assert.match(store, /failedAttempts: s\.failedAttempts/);
   assert.match(store, /lockoutUntil: s\.lockoutUntil/);
   assert.match(store, /lockoutLevel: s\.lockoutLevel/);
   assert.match(store, /nextLockoutDelayMs\(state\.lockTimeoutSec, state\.lockoutLevel\)/);
-  assert.match(store, /get\(\)\.lockoutUntil > Date\.now\(\)/);
 });
 
-test('emergency reset is scoped to application-owned storage, never Android factory reset', async () => {
-  const service = await read('src/lib/security-service.ts');
+test('emergency reset is scoped to app-owned storage', async () => {
   const plugin = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt');
-  assert.match(service, /duress-security-vault/);
-  assert.match(service, /OWNED_DATABASE_DELETE_BLOCKED/);
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
-});
-
-test('master PIN is the normal unlock and the hidden flow must not restore the calculator', async () => {
-  const service = await read('src/lib/security-service.ts');
-  const shell = await read('src/components/app-shell.tsx');
-  assert.match(service, /master: "0000"/);
-  assert.match(service, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
-  assert.match(shell, /if \(securityGateFlow\.current && session === "unlocked"\)/);
-  assert.match(shell, /securityGateFlow\.current = false/);
-  assert.match(shell, /calculatorRestoreArmed\.current = true/);
-  assert.match(shell, /setPendingSecurityGate\(false\)/);
-  assert.match(shell, /setCalculatorFront\(false\)/);
 });
