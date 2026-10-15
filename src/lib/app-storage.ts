@@ -2,9 +2,6 @@ import * as nativeBridge from "@/lib/native-bridge";
 
 export type AppStorageValue = string | null | Promise<string | null>;
 
-// Startup retries are owned by AppShell so there is exactly one bounded retry loop.
-// Storage primitives must fail quickly and report the real native reason instead of
-// silently nesting a second retry loop inside every read.
 function reportSecureStorageError(reason = "SECURE_STORAGE_UNAVAILABLE"): void {
   if (typeof window === "undefined") return;
   try { window.dispatchEvent(new CustomEvent("duress-security-storage-error", { detail: { reason } })); } catch { /* ignore */ }
@@ -21,14 +18,20 @@ async function secureGetOnce(key: string): Promise<string | null> {
     const legacy = webGet(key);
     if (legacy !== null) {
       const migrated = await nativeBridge.secureStorageSet(key, legacy);
-      if (!migrated) { reportSecureStorageError("LEGACY_MIGRATION_FAILED"); return null; }
+      if (!migrated) {
+        reportSecureStorageError("LEGACY_MIGRATION_FAILED");
+        throw new Error("LEGACY_MIGRATION_FAILED");
+      }
       webRemove(key);
       return legacy;
     }
     return null;
   }
-  reportSecureStorageError(stored.reason ?? "SECURE_STORAGE_UNAVAILABLE");
-  return null;
+  const reason = stored.reason ?? "SECURE_STORAGE_UNAVAILABLE";
+  reportSecureStorageError(reason);
+  // Never turn a failed secure read into a missing record. Callers must distinguish
+  // "no record yet" from "the encrypted record could not be read" and fail closed.
+  throw new Error(reason);
 }
 
 export const appStorage = {
