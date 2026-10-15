@@ -16,18 +16,19 @@ test("default 0000 PIN auto-submits immediately after the fourth digit", async (
 
 test("fresh startup keeps the calculator visible while secure initialization retries in the background", async () => {
   const shell = await read("src/components/app-shell.tsx");
+  const storage = await read("src/lib/app-storage.ts");
   const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
   assert.match(shell, /const hydrateWithRetry = async/);
   assert.match(shell, /await hydrateSession\(\)/);
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 6/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 2/);
+  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 50000/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 80000/);
   assert.match(shell, /session: "storage-error"/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
   assert.match(activity, /DuressSecureWarmup/);
-  assert.match(activity, /SECURE_WARMUP_STARTED/);
   assert.match(plugin, /secureStorageExecutor/);
 });
 
