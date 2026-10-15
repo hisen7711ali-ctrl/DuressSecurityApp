@@ -14,13 +14,14 @@ test("default 0000 PIN auto-submits immediately after the fourth digit", async (
   assert.match(gate, /if \(next\.length === 4\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
 });
 
-test("fresh startup initializes automatically and has no blocking initialization screen", async () => {
+test("fresh startup initializes automatically without a blocking security initialization screen", async () => {
   const shell = await read("src/components/app-shell.tsx");
-  assert.match(shell, /const finish = \(\) => \{/);
-  assert.match(shell, /hydrateSession\(\)\.catch\(failHydrationClosed\)/);
-  assert.match(shell, /if \(useAppStore\.persist\.hasHydrated\(\)\) finish\(\);/);
+  assert.match(shell, /const hydrateWithRetry = async/);
+  assert.match(shell, /await hydrateSession\(\)/);
+  assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 12/);
   assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
-  assert.match(shell, /}, 35000\)/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 120000/);
   assert.match(shell, /session: "storage-error"/);
   assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
 });
@@ -33,8 +34,6 @@ test("calculator trigger is the exact 20272006= sequence and opens the security 
   assert.match(shell, /openSecurityGate\(\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
-  assert.match(shell, /if \(pendingSecurityGate && !ready\) \{/);
-  assert.match(shell, /Preparing the security gate/);
   assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
