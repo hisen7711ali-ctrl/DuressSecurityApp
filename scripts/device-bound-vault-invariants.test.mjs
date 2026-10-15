@@ -7,7 +7,7 @@ test("startup retry keeps slow Keystore work off the UI path and is bounded", as
   const activity = await readFile("android-native/mainactivity-patch/MainActivity.kt", "utf8");
   const secure = await readFile("android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt", "utf8");
   const shell = await readFile("src/components/app-shell.tsx", "utf8");
-  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 5000/);
+  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 2500/);
   assert.match(activity, /DuressSecureWarmup/);
   assert.match(activity, /initializeForApp\(\)/);
   assert.match(secure, /DEVICE_SECRET_BYTES = 32/);
