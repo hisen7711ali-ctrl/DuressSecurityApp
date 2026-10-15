@@ -11,6 +11,8 @@ test("encrypted storage cannot replace a missing key", async () => {
   assert.match(k, /AndroidKeyStore/);
   assert.match(k, /SECURE_STORAGE_KEY_MISSING/);
   assert.match(k, /hasExistingEncryptedRecords/);
+  assert.match(k, /setIsStrongBoxBacked\(true\)/);
+  assert.match(k, /StrongBoxUnavailableException/);
 });
 
 test("secure reads fail closed instead of becoming a missing/default record", async () => {
@@ -40,12 +42,25 @@ test("startup hydration is bounded, retried serially, and native Keystore access
   const bridge = await read("src/lib/native-bridge.ts");
   assert.doesNotMatch(store, /Promise\.all\(\[nativeBridge\.secureStorageGet/);
   assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 12/);
+  assert.match(shell, /STARTUP_MAX_RETRIES = 6/);
   assert.match(shell, /await hydrateSession\(\)/);
   assert.match(shell, /await sleep\(STARTUP_RETRY_DELAY_MS\)/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 120000/);
-  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 2500/);
+  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 50000/);
+  assert.match(shell, /if \(!ready\) return <FakeCalculator/);
+  assert.match(bridge, /NATIVE_STORAGE_TIMEOUT_MS = 5000/);
+  assert.match(bridge, /NATIVE_INITIALIZE_TIMEOUT_MS = 10000/);
+  assert.match(bridge, /initializeSecureStorage\(\)/);
   assert.match(plugin, /private val secureStorageExecutor = Executors\.newSingleThreadExecutor/);
+  assert.match(plugin, /initializeSecureStorage/);
   assert.match(plugin, /secureStorageExecutor\.execute/);
   assert.match(plugin, /secureStorageExecutor\.shutdownNow\(\)/);
+});
+
+test("Android backup and transfer rules exclude app-owned sensitive data", async () => {
+  const setup = await read("scripts/android-setup.mjs");
+  assert.match(setup, /backup_rules\.xml/);
+  assert.match(setup, /data_extraction_rules\.xml/);
+  assert.match(setup, /android:allowBackup=\\\"false\\\"/);
+  assert.match(setup, /android:fullBackupContent=\\\"@xml\/backup_rules\\\"/);
+  assert.match(setup, /android:dataExtractionRules=\\\"@xml\/data_extraction_rules\\\"/);
 });
