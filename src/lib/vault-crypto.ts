@@ -1,185 +1,114 @@
-/**
- * Passphrase-encrypted vault storage for browsers/PWA and the Capacitor WebView.
- * The vault is encrypted with AES-256-GCM; its key is derived with PBKDF2-SHA-256
- * from a user-chosen passphrase and a random salt. No plaintext fallback exists.
- * Android builds additionally keep the main app state in Android Keystore-backed
- * AES-GCM storage. Browser security still depends on a trusted origin and a strong
- * passphrase; data is exposed while the vault is unlocked in the running app.
- */
-export type EncryptedVaultFile = {
-  id: string;
-  title: string;
-  body: string;
-  updatedAt: string;
-};
+/** Device-bound encrypted vault: PBKDF2-SHA-256 (600k) + Android Keystore-backed 256-bit secret + AES-256-GCM. */
+import * as nativeBridge from "@/lib/native-bridge";
 
-type VaultEnvelope = {
-  version: 1;
-  kdf: "PBKDF2-SHA256";
-  iterations: number;
-  salt: string;
-  iv: string;
-  ciphertext: string;
-};
+export type EncryptedVaultFile = { id: string; title: string; body: string; updatedAt: string };
+type VaultEnvelopeV1 = { version: 1; kdf: "PBKDF2-SHA256"; iterations: number; salt: string; iv: string; ciphertext: string };
+type VaultEnvelopeV2 = { version: 2; kdf: "PBKDF2-SHA256+DEVICE-SECRET"; iterations: number; salt: string; iv: string; aad: string; ciphertext: string };
+type VaultEnvelope = VaultEnvelopeV1 | VaultEnvelopeV2;
 
-export const VAULT_STORAGE_KEY = "duress-security-vault-v1";
+export const VAULT_STORAGE_KEY = "duress-security-vault-v2";
+export const LEGACY_VAULT_STORAGE_KEY = "duress-security-vault-v1";
 export const VAULT_MIN_PASSPHRASE_LENGTH = 12;
-const PBKDF2_ITERATIONS = 310_000;
-const AES_KEY_BITS = 256;
+export const PBKDF2_ITERATIONS = 600_000;
+export const VAULT_VERSION = 2;
+export const VAULT_DEVICE_SECRET_KEY = "duress-security-vault-device-secret";
 const AES_IV_BYTES = 12;
 const SALT_BYTES = 16;
-
+const DEVICE_SECRET_BYTES = 32;
+const MIGRATION_KEY = `${VAULT_STORAGE_KEY}:migration`;
 let activeKey: CryptoKey | null = null;
 let activeSalt: Uint8Array | null = null;
+let activeVersion = 0;
 
-function webCrypto(): Crypto {
-  if (!globalThis.crypto?.subtle || !globalThis.crypto.getRandomValues) {
-    throw new Error("WEBCRYPTO_UNAVAILABLE");
-  }
-  return globalThis.crypto;
-}
-
-function localStore(): Storage {
-  if (typeof globalThis.localStorage === "undefined") throw new Error("SECURE_STORAGE_UNAVAILABLE");
-  return globalThis.localStorage;
-}
-
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!);
-  return btoa(binary);
-}
-
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
-}
-
-function asBufferSource(bytes: Uint8Array): BufferSource {
-  return bytes as unknown as BufferSource;
-}
-
-async function deriveKey(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
-  const cryptoApi = webCrypto();
-  const material = await cryptoApi.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(passphrase),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  return cryptoApi.subtle.deriveKey(
-    { name: "PBKDF2", hash: "SHA-256", salt: asBufferSource(salt), iterations },
-    material,
-    { name: "AES-GCM", length: AES_KEY_BITS },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-function validateFiles(value: unknown): value is EncryptedVaultFile[] {
-  return Array.isArray(value) && value.every((row) =>
-    row && typeof row === "object" && typeof row.id === "string" &&
-    typeof row.title === "string" && typeof row.body === "string" && typeof row.updatedAt === "string",
-  );
-}
+function webCrypto(): Crypto { if (!globalThis.crypto?.subtle || !globalThis.crypto.getRandomValues) throw new Error("WEBCRYPTO_UNAVAILABLE"); return globalThis.crypto; }
+function localStore(): Storage { if (typeof globalThis.localStorage === "undefined") throw new Error("SECURE_STORAGE_UNAVAILABLE"); return globalThis.localStorage; }
+function encodeBase64(bytes: Uint8Array): string { let binary = ""; for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!); return btoa(binary); }
+function decodeBase64(value: string): Uint8Array { const binary = atob(value); const out = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i); return out; }
+function asBufferSource(bytes: Uint8Array): BufferSource { return bytes as unknown as BufferSource; }
+function validateFiles(value: unknown): value is EncryptedVaultFile[] { return Array.isArray(value) && value.every((row) => row && typeof row === "object" && typeof row.id === "string" && typeof row.title === "string" && typeof row.body === "string" && typeof row.updatedAt === "string"); }
 
 function parseEnvelope(raw: string): VaultEnvelope {
-  const value: unknown = JSON.parse(raw);
+  let value: unknown; try { value = JSON.parse(raw); } catch { throw new Error("VAULT_RECORD_INVALID"); }
   if (!value || typeof value !== "object") throw new Error("VAULT_RECORD_INVALID");
-  const envelope = value as Partial<VaultEnvelope>;
-  if (envelope.version !== 1 || envelope.kdf !== "PBKDF2-SHA256" ||
-      !Number.isInteger(envelope.iterations) || (envelope.iterations ?? 0) < 100_000 ||
-      typeof envelope.salt !== "string" || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") {
-    throw new Error("VAULT_RECORD_INVALID");
-  }
-  return envelope as VaultEnvelope;
+  const e = value as Partial<VaultEnvelopeV1 & VaultEnvelopeV2>;
+  if (e.version === 1 && e.kdf === "PBKDF2-SHA256" && Number.isInteger(e.iterations) && (e.iterations ?? 0) >= 100_000 && typeof e.salt === "string" && typeof e.iv === "string" && typeof e.ciphertext === "string") return e as VaultEnvelopeV1;
+  if (e.version === 2 && e.kdf === "PBKDF2-SHA256+DEVICE-SECRET" && e.iterations === PBKDF2_ITERATIONS && typeof e.salt === "string" && typeof e.iv === "string" && typeof e.aad === "string" && typeof e.ciphertext === "string") return e as VaultEnvelopeV2;
+  throw new Error("VAULT_RECORD_INVALID");
 }
 
-async function encryptEnvelope(files: EncryptedVaultFile[], key: CryptoKey, salt: Uint8Array): Promise<void> {
-  const cryptoApi = webCrypto();
-  const iv = cryptoApi.getRandomValues(new Uint8Array(AES_IV_BYTES));
-  const plain = new TextEncoder().encode(JSON.stringify(files));
-  const encrypted = await cryptoApi.subtle.encrypt({ name: "AES-GCM", iv: asBufferSource(iv), tagLength: 128 }, key, asBufferSource(plain));
-  const envelope: VaultEnvelope = {
-    version: 1,
-    kdf: "PBKDF2-SHA256",
-    iterations: PBKDF2_ITERATIONS,
-    salt: encodeBase64(salt),
-    iv: encodeBase64(iv),
-    ciphertext: encodeBase64(new Uint8Array(encrypted)),
-  };
+async function derivePasswordBits(passphrase: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  const material = await webCrypto().subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await webCrypto().subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: asBufferSource(salt), iterations }, material, 256));
+}
+
+async function getDeviceSecret(): Promise<Uint8Array | null> {
+  if (!nativeBridge.isNativeAndroid()) return null;
+  const result = await nativeBridge.secureStorageGet(VAULT_DEVICE_SECRET_KEY);
+  if (!result.available || !result.found || !result.value) throw new Error(result.reason === "KEY_MISSING" ? "VAULT_DEVICE_SECRET_MISSING" : "VAULT_DEVICE_SECRET_UNAVAILABLE");
+  let secret: Uint8Array; try { secret = decodeBase64(result.value); } catch { throw new Error("VAULT_DEVICE_SECRET_INVALID"); }
+  if (secret.length !== DEVICE_SECRET_BYTES) throw new Error("VAULT_DEVICE_SECRET_INVALID");
+  return secret;
+}
+
+async function deriveV2Key(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+  const passwordBits = await derivePasswordBits(passphrase, salt, PBKDF2_ITERATIONS);
+  const deviceSecret = await getDeviceSecret();
+  const combined = new Uint8Array(passwordBits.length + (deviceSecret?.length ?? 0));
+  combined.set(passwordBits, 0); if (deviceSecret) combined.set(deviceSecret, passwordBits.length);
+  const digest = new Uint8Array(await webCrypto().subtle.digest("SHA-256", asBufferSource(combined)));
+  return webCrypto().subtle.importKey("raw", asBufferSource(digest), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+async function deriveV1Key(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> { const bits = await derivePasswordBits(passphrase, salt, iterations); return webCrypto().subtle.importKey("raw", asBufferSource(bits), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]); }
+function v2Aad(salt: Uint8Array): Uint8Array { return new TextEncoder().encode(`duress-vault-v2|PBKDF2-SHA256+DEVICE-SECRET|${PBKDF2_ITERATIONS}|${encodeBase64(salt)}`); }
+
+async function encryptV2(files: EncryptedVaultFile[], passphrase: string): Promise<{ envelope: VaultEnvelopeV2; key: CryptoKey; salt: Uint8Array }> {
+  if (!passphrase) throw new Error("PASSPHRASE_REQUIRED"); if (passphrase.length < VAULT_MIN_PASSPHRASE_LENGTH) throw new Error("PASSPHRASE_TOO_SHORT");
+  const salt = webCrypto().getRandomValues(new Uint8Array(SALT_BYTES)); const key = await deriveV2Key(passphrase, salt); const iv = webCrypto().getRandomValues(new Uint8Array(AES_IV_BYTES)); const aad = v2Aad(salt);
+  const plain = new TextEncoder().encode(JSON.stringify(files)); const encrypted = await webCrypto().subtle.encrypt({ name: "AES-GCM", iv: asBufferSource(iv), additionalData: asBufferSource(aad), tagLength: 128 }, key, asBufferSource(plain));
+  return { key, salt, envelope: { version: 2, kdf: "PBKDF2-SHA256+DEVICE-SECRET", iterations: PBKDF2_ITERATIONS, salt: encodeBase64(salt), iv: encodeBase64(iv), aad: encodeBase64(aad), ciphertext: encodeBase64(new Uint8Array(encrypted)) } };
+}
+
+async function decryptEnvelope(envelope: VaultEnvelope, passphrase: string): Promise<{ files: EncryptedVaultFile[]; key: CryptoKey; salt: Uint8Array; version: number }> {
+  const salt = decodeBase64(envelope.salt); const iv = decodeBase64(envelope.iv); const ciphertext = decodeBase64(envelope.ciphertext);
+  if (salt.length !== SALT_BYTES || iv.length !== AES_IV_BYTES || ciphertext.length < 16) throw new Error("VAULT_RECORD_INVALID");
+  const isV2 = envelope.version === 2; const key = isV2 ? await deriveV2Key(passphrase, salt) : await deriveV1Key(passphrase, salt, envelope.iterations);
+  try {
+    if (isV2) {
+      const aad = decodeBase64(envelope.aad); if (aad.length < 16 || encodeBase64(aad) !== envelope.aad || new TextDecoder().decode(aad) !== new TextDecoder().decode(v2Aad(salt))) throw new Error("VAULT_RECORD_INVALID");
+      const clear = await webCrypto().subtle.decrypt({ name: "AES-GCM", iv: asBufferSource(iv), additionalData: asBufferSource(aad), tagLength: 128 }, key, asBufferSource(ciphertext));
+      const parsed: unknown = JSON.parse(new TextDecoder().decode(clear)); if (!validateFiles(parsed)) throw new Error("VAULT_RECORD_INVALID"); return { files: parsed, key, salt, version: 2 };
+    }
+    const clear = await webCrypto().subtle.decrypt({ name: "AES-GCM", iv: asBufferSource(iv), tagLength: 128 }, key, asBufferSource(ciphertext));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(clear)); if (!validateFiles(parsed)) throw new Error("VAULT_RECORD_INVALID"); return { files: parsed, key, salt, version: 1 };
+  } catch (error) {
+    if (error instanceof Error && ["VAULT_RECORD_INVALID", "VAULT_DEVICE_SECRET_MISSING", "VAULT_DEVICE_SECRET_UNAVAILABLE", "VAULT_DEVICE_SECRET_INVALID"].includes(error.message)) throw error;
+    throw new Error("VAULT_PASSPHRASE_OR_INTEGRITY_ERROR");
+  }
+}
+
+async function verifyV2(raw: string, passphrase: string): Promise<void> { const opened = await decryptEnvelope(parseEnvelope(raw), passphrase); if (opened.version !== 2) throw new Error("VAULT_MIGRATION_VERIFICATION_FAILED"); }
+async function migrateV1(raw: string, passphrase: string): Promise<EncryptedVaultFile[]> {
+  const opened = await decryptEnvelope(parseEnvelope(raw), passphrase); if (opened.version !== 1) throw new Error("VAULT_RECORD_INVALID");
+  const upgraded = await encryptV2(opened.files, passphrase); const upgradedRaw = JSON.stringify(upgraded.envelope); const store = localStore();
+  store.setItem(MIGRATION_KEY, upgradedRaw); await verifyV2(store.getItem(MIGRATION_KEY) ?? "", passphrase); store.setItem(VAULT_STORAGE_KEY, upgradedRaw); store.removeItem(MIGRATION_KEY); store.removeItem(LEGACY_VAULT_STORAGE_KEY);
+  activeKey = upgraded.key; activeSalt = upgraded.salt; activeVersion = 2; return opened.files;
+}
+
+export function hasEncryptedVault(): boolean { try { const store = localStore(); return store.getItem(VAULT_STORAGE_KEY) !== null || store.getItem(LEGACY_VAULT_STORAGE_KEY) !== null; } catch { return false; } }
+
+export async function unlockOrCreateEncryptedVault(passphrase: string, legacyFiles: EncryptedVaultFile[], allowCreate = true): Promise<EncryptedVaultFile[]> {
+  if (!passphrase) throw new Error("PASSPHRASE_REQUIRED"); const store = localStore(); const v2Raw = store.getItem(VAULT_STORAGE_KEY);
+  if (v2Raw !== null) { const opened = await decryptEnvelope(parseEnvelope(v2Raw), passphrase); activeKey = opened.key; activeSalt = opened.salt; activeVersion = 2; return opened.files; }
+  const v1Raw = store.getItem(LEGACY_VAULT_STORAGE_KEY); if (v1Raw !== null) return migrateV1(v1Raw, passphrase);
+  if (!allowCreate) throw new Error("VAULT_RECORD_MISSING");
+  const created = await encryptV2(legacyFiles, passphrase); const raw = JSON.stringify(created.envelope); store.setItem(VAULT_STORAGE_KEY, raw); await verifyV2(store.getItem(VAULT_STORAGE_KEY) ?? "", passphrase);
+  activeKey = created.key; activeSalt = created.salt; activeVersion = 2; return legacyFiles;
+}
+
+export async function persistEncryptedVault(files: EncryptedVaultFile[]): Promise<void> {
+  if (!activeKey || !activeSalt || activeVersion !== 2) throw new Error("VAULT_LOCKED"); const iv = webCrypto().getRandomValues(new Uint8Array(AES_IV_BYTES)); const aad = v2Aad(activeSalt);
+  const plain = new TextEncoder().encode(JSON.stringify(files)); const encrypted = await webCrypto().subtle.encrypt({ name: "AES-GCM", iv: asBufferSource(iv), additionalData: asBufferSource(aad), tagLength: 128 }, activeKey, asBufferSource(plain));
+  const envelope: VaultEnvelopeV2 = { version: 2, kdf: "PBKDF2-SHA256+DEVICE-SECRET", iterations: PBKDF2_ITERATIONS, salt: encodeBase64(activeSalt), iv: encodeBase64(iv), aad: encodeBase64(aad), ciphertext: encodeBase64(new Uint8Array(encrypted)) };
   localStore().setItem(VAULT_STORAGE_KEY, JSON.stringify(envelope));
 }
-
-/** True when an encrypted vault envelope exists. Does not imply it can be decrypted. */
-export function hasEncryptedVault(): boolean {
-  try { return localStore().getItem(VAULT_STORAGE_KEY) !== null; }
-  catch { return false; }
-}
-
-/**
- * Open an existing vault, or create one while securely migrating any legacy
- * in-memory files. New passphrases must be at least 12 characters. Existing
- * passphrases are never silently replaced if authentication fails.
- */
-export async function unlockOrCreateEncryptedVault(
-  passphrase: string,
-  legacyFiles: EncryptedVaultFile[],
-  allowCreate = true,
-): Promise<EncryptedVaultFile[]> {
-  if (!passphrase) throw new Error("PASSPHRASE_REQUIRED");
-  const store = localStore();
-  const raw = store.getItem(VAULT_STORAGE_KEY);
-  if (raw !== null) {
-    const envelope = parseEnvelope(raw);
-    const salt = decodeBase64(envelope.salt);
-    const iv = decodeBase64(envelope.iv);
-    const ciphertext = decodeBase64(envelope.ciphertext);
-    if (salt.length !== SALT_BYTES || iv.length !== AES_IV_BYTES || ciphertext.length < 16) {
-      throw new Error("VAULT_RECORD_INVALID");
-    }
-    const key = await deriveKey(passphrase, salt, envelope.iterations);
-    let clear: ArrayBuffer;
-    try {
-      clear = await webCrypto().subtle.decrypt(
-        { name: "AES-GCM", iv: asBufferSource(iv), tagLength: 128 },
-        key,
-        asBufferSource(ciphertext),
-      );
-    } catch {
-      throw new Error("VAULT_PASSPHRASE_OR_INTEGRITY_ERROR");
-    }
-    let parsed: unknown;
-    try { parsed = JSON.parse(new TextDecoder().decode(clear)); }
-    catch { throw new Error("VAULT_RECORD_INVALID"); }
-    if (!validateFiles(parsed)) throw new Error("VAULT_RECORD_INVALID");
-    activeKey = key;
-    activeSalt = salt;
-    return parsed;
-  }
-
-  if (!allowCreate) throw new Error("VAULT_RECORD_MISSING");
-  if (passphrase.length < VAULT_MIN_PASSPHRASE_LENGTH) throw new Error("PASSPHRASE_TOO_SHORT");
-  const salt = webCrypto().getRandomValues(new Uint8Array(SALT_BYTES));
-  const key = await deriveKey(passphrase, salt, PBKDF2_ITERATIONS);
-  // Store ciphertext first; caller marks the state migrated only after this succeeds.
-  await encryptEnvelope(legacyFiles, key, salt);
-  activeKey = key;
-  activeSalt = salt;
-  return legacyFiles;
-}
-
-/** Persist changes only while an unlocked vault key is held in memory. */
-export async function persistEncryptedVault(files: EncryptedVaultFile[]): Promise<void> {
-  if (!activeKey || !activeSalt) throw new Error("VAULT_LOCKED");
-  await encryptEnvelope(files, activeKey, activeSalt);
-}
-
-/** Drop the in-memory cryptographic capability when the user leaves the vault. */
-export function lockEncryptedVaultSession(): void {
-  activeKey = null;
-  activeSalt = null;
-}
+export function lockEncryptedVaultSession(): void { activeKey = null; activeSalt = null; activeVersion = 0; }

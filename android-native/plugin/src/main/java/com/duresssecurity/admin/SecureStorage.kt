@@ -5,67 +5,66 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyStore
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Small AES-GCM encrypted store for app-owned security state. The AES key is
- * generated and retained by Android Keystore; it is never exported to JavaScript.
- * Values are encrypted before SharedPreferences sees them.
- */
+/** AES-GCM encrypted app-owned storage backed by an Android Keystore key. */
 internal class SecureStorage(context: Context) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun initializeForApp(): Boolean = synchronized(STORAGE_LOCK) {
+        getOrCreateKey()
+        getOrCreateDeviceSecret()
+        true
+    }
 
     fun get(key: String): String? = synchronized(STORAGE_LOCK) {
         validateKey(key)
         val encoded = preferences.getString(key, null) ?: return@synchronized null
-        // Never treat damaged ciphertext as an empty record. Existing ciphertext
-        // must always be decrypted with the original Keystore key.
         decrypt(encoded)
     }
 
     fun put(key: String, value: String): Boolean = synchronized(STORAGE_LOCK) {
         validateKey(key)
         val encrypted = encrypt(value)
-        if (!preferences.edit().putString(key, encrypted).commit()) {
-            throw IllegalStateException("SECURE_STORAGE_WRITE_FAILED")
-        }
+        if (!preferences.edit().putString(key, encrypted).commit()) throw IllegalStateException("SECURE_STORAGE_WRITE_FAILED")
         true
     }
 
-    fun remove(key: String): Boolean = synchronized(STORAGE_LOCK) {
-        validateKey(key)
-        preferences.edit().remove(key).commit()
-    }
+    fun remove(key: String): Boolean = synchronized(STORAGE_LOCK) { validateKey(key); preferences.edit().remove(key).commit() }
 
     fun removeOwned(): Boolean = synchronized(STORAGE_LOCK) {
-        // This preferences file is dedicated to Duress Security's encrypted data.
-        // Clear its records, then rotate the local Keystore key (cryptographic erasure).
         if (!preferences.edit().clear().commit()) return@synchronized false
-        try {
-            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-            keyStore.deleteEntry(KEY_ALIAS)
-            true
-        } catch (_: Exception) {
-            false
+        try { KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS); true } catch (_: Exception) { false }
+    }
+
+    private fun getOrCreateDeviceSecret(): String {
+        val existing = preferences.getString(DEVICE_SECRET_KEY, null)
+        if (existing != null) {
+            val plain = try { decrypt(existing) } catch (_: Exception) { throw IllegalStateException("SECURE_STORAGE_DEVICE_SECRET_INVALID") }
+            val decoded = try { Base64.decode(plain, Base64.NO_WRAP) } catch (_: Exception) { null }
+            if (decoded?.size == DEVICE_SECRET_BYTES) return plain
+            throw IllegalStateException("SECURE_STORAGE_DEVICE_SECRET_INVALID")
         }
+        val bytes = ByteArray(DEVICE_SECRET_BYTES)
+        SecureRandom().nextBytes(bytes)
+        val plain = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        if (!preferences.edit().putString(DEVICE_SECRET_KEY, encrypt(plain)).commit()) throw IllegalStateException("SECURE_STORAGE_WRITE_FAILED")
+        return plain
     }
 
     private fun validateKey(key: String) {
-        require(key.startsWith("duress-security") || key.startsWith("duress-")) {
-            "Only Duress Security namespaced keys are allowed"
-        }
+        require(key.startsWith("duress-security") || key.startsWith("duress-")) { "Only Duress Security namespaced keys are allowed" }
         require(key.length <= 200) { "Storage key is too long" }
     }
 
     private fun encrypt(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
-        val combined = cipher.iv + ciphertext
-        return Base64.encodeToString(combined, Base64.NO_WRAP)
+        return Base64.encodeToString(cipher.iv + cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
 
     private fun decrypt(encoded: String): String {
@@ -74,36 +73,20 @@ internal class SecureStorage(context: Context) {
         val iv = combined.copyOfRange(0, GCM_IV_LENGTH_BYTES)
         val ciphertext = combined.copyOfRange(GCM_IV_LENGTH_BYTES, combined.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        // A missing key with existing ciphertext is a recovery error. Never create
-        // a replacement key here because it cannot decrypt the old records.
         val key = getExistingKey() ?: throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 
-    private fun getExistingKey(): SecretKey? {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-    }
+    private fun getExistingKey(): SecretKey? = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.getKey(KEY_ALIAS, null) as? SecretKey
 
     private fun getOrCreateKey(): SecretKey {
         getExistingKey()?.let { return it }
-        // Never replace a key when encrypted records already exist. Doing so would
-        // overwrite the only path to the original ciphertext with undecryptable data.
-        if (hasExistingEncryptedRecords()) {
-            throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
-        }
+        if (hasExistingEncryptedRecords()) throw IllegalStateException("SECURE_STORAGE_KEY_MISSING")
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build(),
-        )
+        generator.init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).build())
         return generator.generateKey()
     }
 
@@ -117,5 +100,7 @@ internal class SecureStorage(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_LENGTH_BYTES = 12
         private const val GCM_TAG_LENGTH_BITS = 128
+        private const val DEVICE_SECRET_KEY = "duress-security-vault-device-secret"
+        private const val DEVICE_SECRET_BYTES = 32
     }
 }
