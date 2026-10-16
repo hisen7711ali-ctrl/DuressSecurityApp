@@ -12,6 +12,10 @@ test("extended lock uses maintenance copy and hides normal recovery UI", async (
   assert.match(source, /30 يوماً/);
   assert.match(source, /left-\[15%\] top-\[3\.5rem\]/);
   assert.doesNotMatch(source, /ShieldCheck/);
+  assert.match(source, /onClick=\{openRecovery\}/);
+  assert.match(source, /اضغط لإلغاء وضع الصيانة/);
+  assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
+  assert.match(source, /next.length === 4/);
 });
 
 test("device-level controls are not blocked by a test-device UI check", async () => {
@@ -29,6 +33,11 @@ test("native app-lock gate uses an on-screen keypad instead of the system keyboa
   assert.match(source, /pinValue.length == 4/);
   assert.match(source, /attempts >= 5/);
   assert.doesNotMatch(source, /EditText|InputMethodManager/);
+  assert.match(source, /duressPin/);
+  assert.match(source, /extendedLockPin/);
+  assert.match(source, /wipePin/);
+  assert.match(source, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+  assert.match(source, /performHapticFeedback/);
 });
 
 test("native app-lock gate does not dismiss on its own overlay package event", async () => {
@@ -46,4 +55,38 @@ test("device-policy failures do not claim that this is a test-device-only featur
   assert.doesNotMatch(source, /جهاز اختبار مُهيّأ كـ Device Owner/);
   const settings = await read("src/components/settings-screen.tsx");
   assert.match(settings, /صلاحية مسؤول الجهاز العادية وحدها لا تكفي/);
+});
+
+
+test("Android system lock prerequisites are exposed and the real Keyguard remains in charge", async () => {
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  const bridge = await read("src/lib/native-bridge.ts");
+  const store = await read("src/lib/store.ts");
+  const settings = await read("src/components/settings-screen.tsx");
+  const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
+  assert.match(plugin, /KeyguardManager/);
+  assert.match(plugin, /deviceSecure/);
+  assert.match(bridge, /deviceSecure: boolean/);
+  assert.match(store, /!nativeStatus\.deviceSecure/);
+  assert.match(settings, /اختبار قفل شاشة الهاتف الآن/);
+  assert.doesNotMatch(activity, /setShowWhenLocked\(true\)|setTurnScreenOn\(true\)|FLAG_SHOW_WHEN_LOCKED|FLAG_TURN_SCREEN_ON/);
+});
+
+test("native special PINs are handed to the same primary submitPin flow", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
+  const shell = await read("src/components/app-shell.tsx");
+  assert.match(service, /EXTRA_OWNER_PIN_ACTION/);
+  assert.match(activity, /__duressSecurityPendingPinAction/);
+  assert.match(shell, /state\.submitPin\(pin\)/);
+  assert.match(shell, /__duressSecurityHandlePinAction/);
+});
+
+test("Windows build scripts avoid shell-splitting the Node executable and Vite shim", async () => {
+  const env = await read("scripts/with-app-env.mjs");
+  const setup = await read("scripts/android-setup.mjs");
+  const apk = await read("scripts/build-apk.mjs");
+  assert.match(env, /node_modules", "vite", "bin", "vite\.js"/);
+  assert.match(setup, /shell: process\.platform === "win32" && cmd !== process\.execPath/);
+  assert.match(apk, /shell: process\.platform === "win32" && cmd !== process\.execPath/);
 });
