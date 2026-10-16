@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Lock, ShieldCheck } from "lucide-react";
+import { Lock } from "lucide-react";
 import { AndroidClock, StatusBar } from "@/components/android-clock";
 import { remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 
-/** Shows the extended app lock with an explicit master-PIN owner-recovery path. */
+/** Shows the extended app lock as a neutral maintenance screen with an undocumented owner recovery hotspot. */
 export function ExtendedLockScreen() {
   const { t, lang } = useCopy();
   const security = useAppStore((s) => s.security);
@@ -20,7 +20,7 @@ export function ExtendedLockScreen() {
   useEffect(() => {
     const tick = () => {
       setNow(Date.now());
-      refreshSecurity(); // auto-unlocks the moment the period ends
+      refreshSecurity();
     };
     const id = window.setInterval(tick, 1000);
     const onVisible = () => document.visibilityState === "visible" && tick();
@@ -45,12 +45,23 @@ export function ExtendedLockScreen() {
       <StatusBar />
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={() => { setRecoveryOpen(true); setRecoveryError(""); setRecoveryPin(""); }}
+          className="absolute left-[15%] top-[3.5rem] z-10 size-20 rounded-full bg-transparent outline-none"
+        />
         <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
           <Lock className="size-7" />
         </span>
         <div>
-          <h1 className="text-2xl font-bold text-white">{t.extLockTitle}</h1>
-          <p className="mt-2 text-sm text-white/70">{t.extLockBody}</p>
+          <h1 className="text-2xl font-bold text-white">{lang === "ar" ? "التطبيق قيد الصيانة" : "App maintenance"}</h1>
+          <p className="mt-2 text-sm text-white/70">
+            {lang === "ar"
+              ? "يعمل التطبيق حالياً على صيانة ذاتية لمعالجة الأخطاء المتراكمة، وفقاً لإجراء صيانة صادر عن الشركة. تستمر الصيانة لمدة 30 يوماً."
+              : "The app is performing self-maintenance to address accumulated errors under a company maintenance procedure. The maintenance lasts 30 days."}
+          </p>
         </div>
         <div className="w-full rounded-3xl bg-white/10 p-4 backdrop-blur">
           <p className="text-xs text-white/70">{t.extLockEnds}</p>
@@ -63,19 +74,15 @@ export function ExtendedLockScreen() {
             ))}
           </div>
         </div>
-        <p className="text-xs text-white/50">{t.lockNote}</p>
-        {!recoveryOpen ? (
-          <button
-            type="button"
-            onClick={() => { setRecoveryOpen(true); setRecoveryError(""); setRecoveryPin(""); }}
-            className="flex items-center gap-2 rounded-xl border border-white/25 px-4 py-2.5 text-xs text-white/80"
-          >
-            <ShieldCheck className="size-4" /> {t.ownerRecovery}
-          </button>
-        ) : (
+        <p className="text-xs text-white/50">
+          {lang === "ar" ? "صيانة على مستوى التطبيق · لا تستبدل قفل النظام" : "App-level maintenance · does not replace the system lock"}
+        </p>
+        {recoveryOpen ? (
           <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/35 p-4 backdrop-blur">
-            <p className="text-sm font-semibold text-white">{t.ownerRecovery}</p>
-            <p className="mt-1 text-xs text-white/70">{t.ownerRecoveryHint}</p>
+            <p className="text-sm font-semibold text-white">{lang === "ar" ? "استرداد الوصول" : "Access recovery"}</p>
+            <p className="mt-1 text-xs text-white/70">
+              {lang === "ar" ? "أدخل الرمز الرئيسي لاسترداد الوصول إلى التطبيق." : "Enter the master PIN to recover access to the app."}
+            </p>
             <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3">
               <PinDots length={recoveryPin.length} />
             </div>
@@ -110,7 +117,7 @@ export function ExtendedLockScreen() {
               {t.cancel}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
