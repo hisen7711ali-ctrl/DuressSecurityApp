@@ -3,7 +3,7 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, merged-fix]
+    branches: [main, master, merged-fix, fix/maintenance-and-app-lock]
 
 permissions:
   contents: read
