@@ -15,6 +15,7 @@ type SecurityAdminNative = {
 };
 type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } };
 const NATIVE_CALL_TIMEOUT_MS = 2500;
+const NATIVE_ACTIVITY_TIMEOUT_MS = 30000;
 const NATIVE_STORAGE_TIMEOUT_MS = 5000;
 const NATIVE_INITIALIZE_TIMEOUT_MS = 10000;
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> { return new Promise((resolve) => { let settled = false; const finish = (value: T) => { if (settled) return; settled = true; resolve(value); }; const timer = window.setTimeout(() => finish(fallback), timeoutMs); promise.then((value) => { window.clearTimeout(timer); finish(value); }).catch(() => { window.clearTimeout(timer); finish(fallback); }); }); }
@@ -24,7 +25,7 @@ function getNativePlugin(): SecurityAdminNative | null { if (!isNativeRuntime())
 export function isNativeAndroid(): boolean { return isNativeRuntime() && (window as CapacitorWindow).Capacitor?.getPlatform?.() === "android"; }
 export async function setScreenCaptureAllowed(allowed: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setScreenCaptureAllowed({ allowed }), { ok: false })).ok; } catch { return false; } }
 export async function isDeviceAdminActive(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.isDeviceAdminActive(), { active: false })).active; } catch { return false; } }
-export async function requestDeviceAdmin(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.requestDeviceAdmin(), { granted: false })).granted; } catch { return false; } }
+export async function requestDeviceAdmin(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.requestDeviceAdmin(), { granted: false }, NATIVE_ACTIVITY_TIMEOUT_MS)).granted; } catch { return false; } }
 export async function lockNow(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.lockNow(), { ok: false })).ok; } catch { return false; } }
 export const nativeLockNow = lockNow;
 export async function isBiometricAvailable(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.isBiometricAvailable(), { available: false })).available; } catch { return false; } }
