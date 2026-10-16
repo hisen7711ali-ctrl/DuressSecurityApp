@@ -168,7 +168,8 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             val pins = state.optJSONObject("pins")
             val master = pins?.optString("master")?.takeIf { it.isNotBlank() } ?: return null
-            val maintenanceJson = state.optJSONObject("maintenancePackages")
+            val maintenanceRaw = try { SecureStorage(this).get(TARGET_MAINTENANCE_KEY) } catch (_: Exception) { null }
+            val maintenanceJson = maintenanceRaw?.let { runCatching { JSONObject(it) }.getOrNull() }
             val maintenance = buildMap {
                 if (maintenanceJson != null) {
                     maintenanceJson.keys().forEach { pkg ->
@@ -202,12 +203,10 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun writeTargetMaintenance(targetPackage: String, until: Long): Boolean {
         return try {
-            val raw = SecureStorage(this).get("duress-security-app") ?: return false
-            val root = JSONObject(raw)
-            val state = root.optJSONObject("state") ?: root
-            val maintenance = state.optJSONObject("maintenancePackages") ?: JSONObject().also { state.put("maintenancePackages", it) }
+            val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY)
+            val maintenance = if (current.isNullOrBlank()) JSONObject() else JSONObject(current)
             maintenance.put(targetPackage, until)
-            SecureStorage(this).put("duress-security-app", root.toString())
+            SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
         } catch (_: Exception) {
             false
         }
@@ -215,12 +214,11 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun clearTargetMaintenance(targetPackage: String): Boolean {
         return try {
-            val raw = SecureStorage(this).get("duress-security-app") ?: return false
-            val root = JSONObject(raw)
-            val state = root.optJSONObject("state") ?: root
-            val maintenance = state.optJSONObject("maintenancePackages") ?: return true
+            val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY) ?: return true
+            val maintenance = JSONObject(current)
             maintenance.remove(targetPackage)
-            SecureStorage(this).put("duress-security-app", root.toString())
+            if (maintenance.length() == 0) SecureStorage(this).remove(TARGET_MAINTENANCE_KEY)
+            else SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
         } catch (_: Exception) {
             false
         }
@@ -625,19 +623,11 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
-        // While a target app is in its 30-day maintenance state, only the current
-        // master PIN can recover it. The other configured owner actions are not
-        // allowed to turn maintenance into an unintended global action.
         if (maintenanceUntil != null) {
-            attempts = (attempts + 1).coerceAtMost(1_000_000)
-            pinValue = ""
-            updatePinDots()
             recordFailedAttempt(targetPackage, now)
             return
         }
 
-        // Special PINs are read from the same encrypted, current policy as the
-        // main application. No hard-coded 4444/5555/7777 values are used here.
         if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
             val until = now + 30L * 24L * 60L * 60L * 1000L
             if (!writeTargetMaintenance(targetPackage, until)) {
@@ -651,9 +641,9 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 4444 keeps its existing duress/camouflage meaning: it is routed through
-        // the primary security flow, which presents the calculator decoy. 5555 is
-        // the only special PIN that is target-scoped; 7777 remains app-owned wipe.
+        // 4444 keeps its existing duress/camouflage meaning and 7777 keeps the
+        // existing app-owned wipe flow. Both values are always read from the
+        // current encrypted policy; there are no hard-coded old PINs here.
         val isOwnerAction = typed.isNotEmpty() && (
             policy.duressPin?.let { typed == normalizePin(it) } == true ||
             policy.wipePin?.let { typed == normalizePin(it) } == true
@@ -904,6 +894,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
     companion object {
+        private const val TARGET_MAINTENANCE_KEY = "duress-security-app-lock-maintenance"
         private val MAINTENANCE_HINTS = listOf(
             "قال الله تعالى: إِنَّ مَعَ الْعُسْرِ يُسْرًا" to "Indeed, with hardship comes ease.",
             "قال الله تعالى: وَمَن يَتَوَكَّلْ عَلَى اللَّهِ فَهُوَ حَسْبُهُ" to "Whoever relies upon Allah, He is sufficient for him.",
