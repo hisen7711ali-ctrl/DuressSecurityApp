@@ -176,7 +176,47 @@ export const useAppStore = create<AppStore>()(
       lockSession: () => { const prior = get(); lockEncryptedVaultSession(); set({ session: "locked", overlay: { kind: "unlock" }, tab: "home", panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); },
       setToast: (toast) => set({ toast }),
       refreshSecurity: () => { const current = get().security; const next = reconcile(current); if (next !== current) { void saveSecurity(next); set({ security: next }); } if (get().session === "extlocked" && !isExtendedLockActive(next)) set({ session: "locked", overlay: { kind: "unlock" }, failedAttempts: 0, lockoutUntil: 0 }); },
-      recoverExtendedLock: async (masterPin) => { const state = get(); if (state.session !== "extlocked" || normalizePin(masterPin) !== normalizePin(state.pins.master)) return false; const cleared = { ...INITIAL_SECURITY_STATE }; const saved = await saveSecurity(cleared); if (!saved && nativeBridge.isNativeAndroid()) { set({ toast: state.lang === "ar" ? "تعذّر تحديث سجل القفل الآمن؛ لم يتم الاسترداد." : "Secure lock state could not be updated; recovery was not completed." }); return false; } set({ security: cleared, session: "unlocked", overlay: null, tab: "home", panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: state.lang === "ar" ? "تم استرداد الوصول بواسطة الرمز الرئيسي" : "Owner recovery completed with the master PIN" }); if (state.dedicatedDeviceMode) await nativeBridge.setKioskMode(false); if (state.preventUninstall) await nativeBridge.setSelfUninstallBlocked(false); await get().refreshNativePermissions(); return true; },
+      recoverExtendedLock: async (masterPin) => {
+        const state = get();
+        if (state.session !== "extlocked") return false;
+        const now = Date.now();
+        if (now < state.lockoutUntil) return false;
+        if (normalizePin(masterPin) !== normalizePin(state.pins.master)) {
+          const nextAttempts = state.failedAttempts + 1;
+          const shouldLockOut = nextAttempts >= state.maxAttempts;
+          const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel);
+          set({
+            failedAttempts: shouldLockOut ? 0 : nextAttempts,
+            lockoutUntil: shouldLockOut ? now + delayMs : 0,
+            lockoutLevel: shouldLockOut ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel,
+            toast: shouldLockOut
+              ? (state.lang === "ar" ? `تم إيقاف محاولات الاسترداد مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `Recovery attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`)
+              : null,
+          });
+          return false;
+        }
+        const cleared = { ...INITIAL_SECURITY_STATE };
+        const saved = await saveSecurity(cleared);
+        if (!saved && nativeBridge.isNativeAndroid()) {
+          set({ toast: state.lang === "ar" ? "تعذّر تحديث سجل القفل الآمن؛ لم يتم الاسترداد." : "Secure lock state could not be updated; recovery was not completed." });
+          return false;
+        }
+        // Recovery ends the app-level maintenance lock only. It must not silently
+        // disable separately configured Kiosk or uninstall-block policies.
+        set({
+          security: cleared,
+          session: "unlocked",
+          overlay: null,
+          tab: "home",
+          panel: "none",
+          failedAttempts: 0,
+          lockoutUntil: 0,
+          lockoutLevel: 0,
+          toast: state.lang === "ar" ? "تم استرداد الوصول بواسطة الرمز الرئيسي" : "Owner recovery completed with the master PIN",
+        });
+        await get().refreshNativePermissions();
+        return true;
+      },
 
       openOverlay: (overlay) => set({ overlay }),
       closeOverlay: () => { if (get().session === "locked" || get().session === "wiping") return; set({ overlay: null }); },
