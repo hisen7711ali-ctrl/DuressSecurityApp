@@ -175,6 +175,21 @@ export function FilesScreen() {
       </header>
 
       <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "استيراد ملف إلى الخزنة المشفّرة" : "Import a file into the encrypted vault"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          {lang === "ar"
+            ? "يمكنك اختيار صورة أو مستند أو أي ملف من الجهاز. نخزّن نسخة مشفّرة داخل الخزنة ولا نشغّل الملفات تلقائيًا. يبقى الأصل في مكانه؛ احذفه بنفسك من مدير الملفات إذا رغبت."
+            : "Choose an image, document, or any file. An encrypted copy is stored in the vault; files are never executed automatically. The original remains in place and can be removed manually in your file manager."}
+        </p>
+        <label className="mt-3 flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-cyan px-3 text-sm font-semibold text-night">
+          <Upload className="size-4" />
+          {attachmentBusy ? (lang === "ar" ? "جارٍ التشفير والاستيراد…" : "Encrypting and importing…") : (lang === "ar" ? "اختيار ملف من الجهاز" : "Choose a file from device")}
+          <input type="file" disabled={attachmentBusy || !vaultCryptoReady} onChange={(event) => void importAttachment(event)} className="sr-only" />
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold text-cyan">{lang === "ar" ? "إضافة ملاحظة نصية" : "Add a text note"}</h2>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
