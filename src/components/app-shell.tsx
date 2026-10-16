@@ -50,7 +50,7 @@ export function AppShell() {
         return;
       }
       // These are the same configured owner PIN actions used by the main login.
-      // Do not allow a relaunch to bypass a storage error or an active 30-day lock.
+      // Preserve storage-error and in-progress-wipe blocking; explicit owner PIN actions remain available during maintenance.
       if (state.session === "storage-error" || state.session === "wiping") return;
       state.openOverlay({ kind: "unlock" });
       state.submitPin(pin);
