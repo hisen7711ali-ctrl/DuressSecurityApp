@@ -6,18 +6,19 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("extended lock uses maintenance copy and hides normal recovery UI", async () => {
+test("extended lock uses maintenance copy, red triangle, and title-tap recovery without a moon shortcut", async () => {
   const source = await read("src/components/extended-lock-screen.tsx");
   assert.match(source, /التطبيق قيد الصيانة/);
   assert.match(source, /30 يوماً/);
-  assert.match(source, /<Moon className="size-5" \/>/);
-  assert.match(source, /onClick=\{openRecovery\}/);
-  assert.match(source, /استرداد المالك من وضع الصيانة/);
+  assert.match(source, /onClick=\{\(\) => \{/);
+  assert.match(source, /recoveryOpen/);
   assert.match(source, /اضغط لإلغاء وضع الصيانة/);
-  assert.doesNotMatch(source, /aria-hidden="true"/);
+  assert.doesNotMatch(source, /Moon/);
+  assert.match(source, /clip-path:polygon\(0_0,100%_0,50%_100%\)/);
   assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
   assert.match(source, /next.length === 4/);
 });
+
 
 test("device-level controls are not blocked by a test-device UI check", async () => {
   const source = await read("src/components/settings-screen.tsx");
@@ -133,14 +134,14 @@ test("native App Lock biometric flow requires configured package and enabled bio
 });
 
 
-test("extended maintenance uses native immersive bars and a visible owner recovery moon", async () => {
+test("extended maintenance uses immersive bars and title-triggered recovery without moon UI", async () => {
   const screen = await read("src/components/extended-lock-screen.tsx");
   const bridge = await read("src/lib/native-bridge.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
   assert.match(screen, /setImmersiveMode\(true\)/);
   assert.match(screen, /setImmersiveMode\(false\)/);
-  assert.match(screen, /<Moon className="size-5" \/>/);
-  assert.match(screen, /onClick=\{openRecovery\}/);
+  assert.doesNotMatch(screen, /Moon/);
+  assert.match(screen, /onClick=\{\(\) => \{/);
   assert.match(screen, /ضع كلمة السر لإلغاء وضع الصيانة/);
   assert.match(bridge, /setImmersiveMode\(options: \{ enabled: boolean \}\)/);
   assert.match(plugin, /fun setImmersiveMode/);
@@ -183,4 +184,39 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
   assert.match(service, /"back"/);
   assert.match(service, /"ok"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+});
+
+
+test("native App Lock sends duress and wipe owner PINs before maintenance rejection", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  const ownerAction = service.indexOf("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }");
+  const maintenanceReject = service.indexOf("if (maintenanceUntil != null) { recordFailedAttempt(targetPackage, now); return }");
+  assert.ok(ownerAction >= 0 && maintenanceReject > ownerAction);
+  assert.match(service, /maintenanceRecoveryOpen = !maintenanceRecoveryOpen/);
+  assert.match(service, /dots\.visibility = View\.GONE/);
+  assert.match(service, /numberPad\.visibility = View\.GONE/);
+  assert.match(service, /startMaintenanceTicker\(targetPackage, maintenanceUntil\)/);
+});
+
+test("App Lock background is selected by the owner and stored with the app-owned secure key", async () => {
+  const settings = await read("src/components/settings-screen.tsx");
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  assert.match(settings, /accept="image\/\*"/);
+  assert.match(settings, /setStoredValue\(APP_LOCK_BACKGROUND_KEY, dataUrl\)/);
+  assert.match(service, /APP_LOCK_BACKGROUND_KEY/);
+  assert.match(service, /BitmapFactory\.decodeByteArray/);
+});
+
+test("vault attachments are encrypted in chunks and arbitrary file types are not auto-executed", async () => {
+  const crypto = await read("src/lib/vault-crypto.ts");
+  const store = await read("src/lib/store.ts");
+  const screen = await read("src/components/files-screen.tsx");
+  assert.match(crypto, /encryptAndStoreAttachment/);
+  assert.match(crypto, /subtle\.encrypt/);
+  assert.match(crypto, /subtle\.decrypt/);
+  assert.match(crypto, /ATTACHMENT_CHUNK_BYTES = 1024 \* 1024/);
+  assert.match(store, /addAttachment: async/);
+  assert.match(screen, /type="file"/);
+  assert.match(screen, /files are never executed automatically/i);
+  assert.match(screen, /download=\{preview\.name\}/);
 });
