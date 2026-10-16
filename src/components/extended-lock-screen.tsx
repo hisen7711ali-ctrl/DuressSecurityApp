@@ -21,8 +21,15 @@ export function ExtendedLockScreen() {
   const recoveryAttemptRef = useRef(false);
 
   useEffect(() => {
-    void setImmersiveMode(true);
-    return () => { void setImmersiveMode(false); };
+    const syncImmersiveMode = () => {
+      if (document.visibilityState === "visible") void setImmersiveMode(true);
+    };
+    syncImmersiveMode();
+    document.addEventListener("visibilitychange", syncImmersiveMode);
+    return () => {
+      document.removeEventListener("visibilitychange", syncImmersiveMode);
+      void setImmersiveMode(false);
+    };
   }, []);
 
   useEffect(() => {
