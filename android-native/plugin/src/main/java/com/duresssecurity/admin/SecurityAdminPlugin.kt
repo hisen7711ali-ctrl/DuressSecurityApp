@@ -14,6 +14,9 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.view.WindowManager
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -51,6 +54,45 @@ class SecurityAdminPlugin : Plugin() {
         saveCall(call); val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply { putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent()); putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Duress Security uses this permission only to lock the screen on request. It does not wipe the device or read the system PIN. You can revoke this permission in Android Settings.") }; startActivityForResult(call, intent, "onDeviceAdminResult")
     }
     @ActivityCallback private fun onDeviceAdminResult(call: PluginCall?) { if (call != null) call.resolve(JSObject().putCompat("granted", dpm().isAdminActive(adminComponent()))) }
+    @PluginMethod
+    fun setImmersiveMode(call: PluginCall) {
+        val enabled = call.getBoolean("enabled", false) ?: false
+        val hostActivity = activity
+        if (hostActivity == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        hostActivity.runOnUiThread {
+            try {
+                val decor = hostActivity.window.decorView
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val controller = hostActivity.window.insetsController
+                    if (enabled) {
+                        controller?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                        controller?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    } else {
+                        controller?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                        decor.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                    }
+                } else {
+                    decor.systemUiVisibility = if (enabled) {
+                        (View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+                    } else {
+                        View.SYSTEM_UI_FLAG_VISIBLE
+                    }
+                }
+                call.resolve(JSObject().putCompat("ok", true))
+            } catch (_: Exception) {
+                call.resolve(JSObject().putCompat("ok", false))
+            }
+        }
+    }
+
     @PluginMethod
     fun lockNow(call: PluginCall) { val ret = JSObject(); if (!dpm().isAdminActive(adminComponent())) { call.resolve(ret.putCompat("ok", false)); return }; try { dpm().lockNow(); ret.putCompat("ok", true) } catch (_: SecurityException) { ret.putCompat("ok", false) }; call.resolve(ret) }
     @PluginMethod fun isBiometricAvailable(call: PluginCall) { call.resolve(JSObject().putCompat("available", biometricAvailable())) }
