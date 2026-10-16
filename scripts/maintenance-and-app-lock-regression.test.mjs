@@ -90,3 +90,32 @@ test("Windows build scripts avoid shell-splitting the Node executable and Vite s
   assert.match(setup, /shell: process\.platform === "win32" && cmd !== process\.execPath/);
   assert.match(apk, /shell: process\.platform === "win32" && cmd !== process\.execPath/);
 });
+
+
+test("maintenance recovery is rate-limited and preserves separate device policies", async () => {
+  const store = await read("src/lib/store.ts");
+  const start = store.indexOf("recoverExtendedLock: async");
+  const end = store.indexOf("openOverlay: (overlay)", start);
+  const recovery = store.slice(start, end);
+  const screen = await read("src/components/extended-lock-screen.tsx");
+  assert.match(recovery, /nextLockoutDelayMs/);
+  assert.match(recovery, /state\.maxAttempts/);
+  assert.doesNotMatch(recovery, /setKioskMode\(false\)|setSelfUninstallBlocked\(false\)/);
+  assert.match(screen, /recoveryBlockedSeconds/);
+  assert.match(screen, /disabled=\{recoveryBlockedSeconds > 0\}/);
+});
+
+test("native App Lock biometric flow requires configured package and enabled biometric setting", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  const bridge = await read("src/lib/native-bridge.ts");
+  const shell = await read("src/components/app-shell.tsx");
+  assert.match(service, /BiometricManager/);
+  assert.match(service, /dispatchBiometricRequest\(targetPackage\)/);
+  assert.match(service, /ACTION_BIOMETRIC_UNLOCKED/);
+  assert.match(plugin, /state\.optBoolean\("biometricEnabled", false\)/);
+  assert.match(plugin, /isConfiguredLockedPackage\(targetPackage\)/);
+  assert.match(bridge, /completeAppLockBiometric/);
+  assert.match(shell, /nativeBridge\.authenticateBiometric/);
+  assert.match(shell, /nativeBridge\.completeAppLockBiometric/);
+});
