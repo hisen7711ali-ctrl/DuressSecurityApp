@@ -19,8 +19,8 @@ const NATIVE_STORAGE_TIMEOUT_MS = 5000;
 const NATIVE_INITIALIZE_TIMEOUT_MS = 10000;
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> { return new Promise((resolve) => { let settled = false; const finish = (value: T) => { if (settled) return; settled = true; resolve(value); }; const timer = window.setTimeout(() => finish(fallback), timeoutMs); promise.then((value) => { window.clearTimeout(timer); finish(value); }).catch(() => { window.clearTimeout(timer); finish(fallback); }); }); }
 function isNativeRuntime(): boolean { if (typeof window === "undefined") return false; return Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.()); }
-let pluginPromise: Promise<SecurityAdminNative | null> | null = null;
-async function getNativePlugin(): Promise<SecurityAdminNative | null> { if (!isNativeRuntime()) return null; pluginPromise ??= Promise.resolve(registerPlugin<SecurityAdminNative>("SecurityAdmin")); return pluginPromise; }
+let nativePlugin: SecurityAdminNative | null | undefined;
+function getNativePlugin(): SecurityAdminNative | null { if (!isNativeRuntime()) return null; nativePlugin ??= registerPlugin<SecurityAdminNative>("SecurityAdmin"); return nativePlugin; }
 export function isNativeAndroid(): boolean { return isNativeRuntime() && (window as CapacitorWindow).Capacitor?.getPlatform?.() === "android"; }
 export async function setScreenCaptureAllowed(allowed: boolean): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setScreenCaptureAllowed({ allowed }), { ok: false })).ok; } catch { return false; } }
 export async function isDeviceAdminActive(): Promise<boolean> { const plugin = await getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.isDeviceAdminActive(), { active: false })).active; } catch { return false; } }
