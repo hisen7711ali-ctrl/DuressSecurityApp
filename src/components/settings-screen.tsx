@@ -3,7 +3,7 @@ import { Fingerprint, ShieldCheck } from "lucide-react";
 import { ToggleRow } from "@/components/apps-screen";
 import { useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
-import { isNativeAndroid } from "@/lib/native-bridge";
+import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
@@ -49,6 +49,33 @@ export function SettingsScreen() {
         : "Device Admin is active. Set a PIN or pattern in Android Settings for secure screen locking.");
     } else {
       setToast(t.deviceAdminActive);
+    }
+  }
+
+  async function onLockPhoneNow() {
+    if (!native) {
+      setToast(t.nativeOnlyToast);
+      return;
+    }
+    await refreshNativePermissions();
+    const latest = useAppStore.getState();
+    if (!latest.deviceAdmin) {
+      setToast(lang === "ar"
+        ? "فعّل صلاحية مسؤول الجهاز أولاً."
+        : "Enable Device Admin first.");
+      return;
+    }
+    if (!latest.deviceSecure) {
+      setToast(lang === "ar"
+        ? "اضبط PIN أو نمطًا لقفل شاشة أندرويد أولاً؛ من دونه قد ينام الهاتف دون قفله."
+        : "Set an Android screen PIN or pattern first; without one, the device may sleep without locking.");
+      return;
+    }
+    const ok = await requestSystemLock();
+    if (!ok) {
+      setToast(lang === "ar"
+        ? "أندرويد لم يؤكد طلب قفل الشاشة. تحقق من صلاحية الإدارة وإعدادات القفل."
+        : "Android did not confirm the lock request. Check admin permission and screen-lock settings.");
     }
   }
 
@@ -155,6 +182,14 @@ export function SettingsScreen() {
             ? (lang === "ar" ? "قفل شاشة أندرويد الآمن: مفعّل." : "Android secure screen lock: configured.")
             : (lang === "ar" ? "قفل شاشة الهاتف شيء مستقل: اضبط PIN أو نمطًا من إعدادات أندرويد. التطبيق لا يستطيع إنشاء كلمة مرور النظام بدلًا منك." : "The phone's secure screen lock is separate: set a PIN or pattern in Android Settings. The app cannot create the system password for you.")}
         </p>
+        <button
+          type="button"
+          onClick={() => { void onLockPhoneNow(); }}
+          disabled={!native || !deviceAdmin || !deviceSecure}
+          className="mt-3 h-10 w-full rounded-lg border border-cyan/40 bg-cyan/10 text-xs font-semibold text-cyan disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {lang === "ar" ? "اختبار قفل شاشة الهاتف الآن" : "Test Android screen lock now"}
+        </button>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
