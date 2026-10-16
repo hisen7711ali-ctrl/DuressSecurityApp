@@ -37,6 +37,18 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Install npm dependencies
         run: npm install --no-audit --no-fund
+      - name: Resolve available dependency fixes without force or major upgrades
+        run: npm audit fix --package-lock-only --no-fund
+      - name: Sync installed dependencies to the refreshed lockfile
+        run: npm install --no-audit --no-fund
+      - name: Upload refreshed lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-refreshed-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Generate npm audit report
         if: always()
         shell: bash
