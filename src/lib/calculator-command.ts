@@ -15,6 +15,10 @@ export function getCalculatorCommand(): string {
   return cachedCommand;
 }
 
+export function resetCalculatorCommand(): void {
+  cachedCommand = DEFAULT_CALCULATOR_COMMAND;
+}
+
 export async function loadCalculatorCommand(): Promise<string> {
   try {
     const stored = await getStoredValue(CALCULATOR_COMMAND_STORAGE_KEY);
