@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { FileText, LockKeyhole, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { FileText, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Eye, Download, X } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
+import { readEncryptedAttachment } from "@/lib/vault-crypto";
+import type { VaultFile } from "@/lib/store";
 
 export function FilesScreen() {
   const { t, lang } = useCopy();
@@ -14,6 +16,8 @@ export function FilesScreen() {
   const setVaultOpen = useAppStore((s) => s.setVaultOpen);
   const openOverlay = useAppStore((s) => s.openOverlay);
   const addFile = useAppStore((s) => s.addFile);
+  const addAttachment = useAppStore((s) => s.addAttachment);
+  const setToast = useAppStore((s) => s.setToast);
   const updateFile = useAppStore((s) => s.updateFile);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -22,6 +26,38 @@ export function FilesScreen() {
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [passphraseError, setPassphraseError] = useState("");
   const [passphraseBusy, setPassphraseBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [preview, setPreview] = useState<{ name: string; type: string; url: string } | null>(null);
+
+  useEffect(() => {
+    const url = preview?.url;
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [preview?.url]);
+
+  async function importAttachment(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setAttachmentBusy(true);
+    try {
+      await addAttachment(file);
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  async function openAttachment(file: VaultFile) {
+    if (!file.attachment || !vaultCryptoReady) return;
+    try {
+      const blob = await readEncryptedAttachment(file.attachment);
+      const url = URL.createObjectURL(blob);
+      setPreview({ name: file.attachment.name, type: file.attachment.type || "application/octet-stream", url });
+    } catch {
+      setToast(lang === "ar"
+        ? "تعذّر فك تشفير الملف أو فشل التحقق من سلامته؛ لم نعرضه."
+        : "The file could not be decrypted or its integrity check failed; it was not displayed.");
+    }
+  }
 
   if (!vaultOpen) {
     return (
