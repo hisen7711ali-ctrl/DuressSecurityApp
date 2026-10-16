@@ -12,6 +12,8 @@ test("calculator command is stored through secure app storage with the original 
   assert.match(module, /duress-security-app:calculator-command/);
   assert.match(module, /getStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY\)/);
   assert.match(module, /setStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY, normalized\)/);
+  assert.match(module, /if \(stored === null\) cachedCommand = DEFAULT_CALCULATOR_COMMAND/);
+  assert.match(module, /resetCalculatorCommand\(\)/);
   assert.match(module, /\\d\{8\}/);
 });
 
@@ -35,6 +37,10 @@ test("calculator unlock follows the currently stored command in every calculator
   assert.match(fullscreen, /secretCommand=\{calculatorCommand\}/);
   assert.match(shell, /getCalculatorCommand\(\)/);
   assert.match(shell, /if \(sequence !== `\$\{getCalculatorCommand\(\)\}=`\) return false/);
+  const wipe = await read("src/components/wipe-screen.tsx");
+  assert.match(wipe, /resetCalculatorCommand\(\)/);
+  assert.match(wipe, /duress-security-app:calculator-command/);
+  assert.match(wipe, /duress-security-app-lock-background-image/);
   assert.doesNotMatch(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.doesNotMatch(fullscreen, /LEGACY_CALCULATOR_COMMAND/);
 });
