@@ -5,7 +5,13 @@ import process from "node:process";
 
 const root = process.cwd();
 const run = (cmd, args, cwd = root) => new Promise((resolve, reject) => {
-  const p = spawn(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
+  // Avoid passing Node's Program Files path through cmd.exe. Batch files
+  // such as gradlew.bat still need the Windows shell.
+  const p = spawn(cmd, args, {
+    cwd,
+    stdio: "inherit",
+    shell: process.platform === "win32" && cmd !== process.execPath,
+  });
   p.on("error", reject);
   p.on("exit", code => code === 0 ? resolve() : reject(new Error(`${cmd} exited with ${code}`)));
 });
