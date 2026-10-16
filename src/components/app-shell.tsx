@@ -95,14 +95,11 @@ export function AppShell() {
         state.setToast(state.lang === "ar" ? "البصمة غير متاحة لفتح هذا التطبيق في الحالة الحالية." : "Biometric unlock is unavailable for this app in the current state.");
         return;
       }
-      void nativeBridge.authenticateBiometric(state.lang === "ar" ? "تحقق لفتح التطبيق المحمي" : "Verify to open the protected app").then(async (verified) => {
-        if (!verified) {
-          useAppStore.getState().setToast(useAppStore.getState().lang === "ar" ? "لم يتم التحقق بالبصمة؛ بقي التطبيق محميًا." : "Biometric verification failed; the app remains protected.");
-          return;
-        }
-        const opened = await nativeBridge.completeAppLockBiometric(targetPackage);
+      void nativeBridge.completeAppLockBiometric(targetPackage).then((opened) => {
         if (!opened) {
-          useAppStore.getState().setToast(useAppStore.getState().lang === "ar" ? "تعذّر إكمال فتح التطبيق بعد التحقق." : "Could not complete app unlock after verification.");
+          useAppStore.getState().setToast(useAppStore.getState().lang === "ar"
+            ? "لم يكتمل التحقق بالبصمة أو تعذّر فتح التطبيق؛ بقيت الحماية مفعّلة."
+            : "Biometric verification did not complete or the app could not be opened; protection remains active.");
         }
       });
     };
