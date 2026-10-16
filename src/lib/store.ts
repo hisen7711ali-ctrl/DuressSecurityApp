@@ -116,7 +116,15 @@ type Actions = {
 };
 export type AppStore = PersistedSlice & TransientSlice & Actions;
 
-function withPins(pins: Pins): Pins { return { master: pins.master || DEFAULT_PINS.master, duress: pins.duress ?? "", lock: pins.lock || DEFAULT_PINS.lock, format: pins.format || DEFAULT_PINS.format }; }
+function withPins(pins: Pins): Pins {
+  const next: Pins = { master: pins.master || DEFAULT_PINS.master, duress: pins.duress ?? "", lock: pins.lock || DEFAULT_PINS.lock, format: pins.format || DEFAULT_PINS.format };
+  // Prevent a persisted decoy/lock/wipe PIN from taking precedence over the master PIN.
+  const master = normalizePin(next.master);
+  for (const kind of ["duress", "lock", "format"] as const) {
+    if (next[kind] && normalizePin(next[kind]) === master) next[kind] = DEFAULT_PINS[kind] !== master ? DEFAULT_PINS[kind] : "";
+  }
+  return next;
+}
 
 export const useAppStore = create<AppStore>()(
   persist(
