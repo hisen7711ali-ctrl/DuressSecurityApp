@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
-import { AndroidClock, StatusBar } from "@/components/android-clock";
+import { AndroidClock } from "@/components/android-clock";
 import { remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
 import { useAppStore } from "@/lib/store";
@@ -16,6 +16,7 @@ export function ExtendedLockScreen() {
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryPin, setRecoveryPin] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const recoveryAttemptRef = useRef(false);
 
   useEffect(() => {
     const tick = () => {
@@ -31,6 +32,34 @@ export function ExtendedLockScreen() {
     };
   }, [refreshSecurity]);
 
+  async function verifyRecoveryPin(pin: string) {
+    if (recoveryAttemptRef.current) return;
+    if (pin.length !== 4) {
+      setRecoveryError(lang === "ar" ? "أدخل كلمة السر المكوّنة من أربعة أرقام." : "Enter the four-digit owner PIN.");
+      return;
+    }
+    recoveryAttemptRef.current = true;
+    try {
+      const recovered = await recoverExtendedLock(pin);
+      if (recovered) {
+        setRecoveryOpen(false);
+        setRecoveryPin("");
+        setRecoveryError("");
+      } else {
+        setRecoveryError(lang === "ar" ? "كلمة السر غير صحيحة أو تعذّر حفظ الاسترداد." : "Incorrect PIN or recovery could not be saved.");
+        setRecoveryPin("");
+      }
+    } finally {
+      recoveryAttemptRef.current = false;
+    }
+  }
+
+  const openRecovery = () => {
+    setRecoveryOpen(true);
+    setRecoveryError("");
+    setRecoveryPin("");
+  };
+
   const r = remainingTime(security, now);
   const nf = new Intl.NumberFormat(lang === "ar" ? "ar-EG" : "en-US");
   const cells: [number, string][] = [
@@ -42,21 +71,28 @@ export function ExtendedLockScreen() {
 
   return (
     <div className="bg-mountains flex min-h-svh flex-col select-none">
-      <StatusBar />
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
         <button
           type="button"
           tabIndex={-1}
           aria-hidden="true"
-          onClick={() => { setRecoveryOpen(true); setRecoveryError(""); setRecoveryPin(""); }}
+          onClick={openRecovery}
+          aria-label={lang === "ar" ? "استرداد الوصول من وضع الصيانة" : "Recover access from maintenance"}
           className="absolute left-[15%] top-[3.5rem] z-10 size-20 rounded-full bg-transparent outline-none"
         />
         <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
           <Lock className="size-7" />
         </span>
         <div>
-          <h1 className="text-2xl font-bold text-white">{lang === "ar" ? "التطبيق قيد الصيانة" : "App maintenance"}</h1>
+          <button
+            type="button"
+            onClick={openRecovery}
+            className="text-2xl font-bold text-white outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan"
+            aria-label={lang === "ar" ? "اضغط لإلغاء وضع الصيانة" : "Tap to exit maintenance"}
+          >
+            {lang === "ar" ? "التطبيق قيد الصيانة" : "App maintenance"}
+          </button>
           <p className="mt-2 text-sm text-white/70">
             {lang === "ar"
               ? "يعمل التطبيق حالياً على صيانة ذاتية لمعالجة الأخطاء المتراكمة، وفقاً لإجراء صيانة صادر عن الشركة. تستمر الصيانة لمدة 30 يوماً."
@@ -79,9 +115,9 @@ export function ExtendedLockScreen() {
         </p>
         {recoveryOpen ? (
           <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/35 p-4 backdrop-blur">
-            <p className="text-sm font-semibold text-white">{lang === "ar" ? "استرداد الوصول" : "Access recovery"}</p>
+            <p className="text-sm font-semibold text-white">{lang === "ar" ? "إلغاء وضع الصيانة" : "Exit maintenance"}</p>
             <p className="mt-1 text-xs text-white/70">
-              {lang === "ar" ? "أدخل الرمز الرئيسي لاسترداد الوصول إلى التطبيق." : "Enter the master PIN to recover access to the app."}
+              {lang === "ar" ? "ضع كلمة السر لإلغاء وضع الصيانة." : "Enter the owner PIN to cancel maintenance mode."}
             </p>
             <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3">
               <PinDots length={recoveryPin.length} />
@@ -91,22 +127,12 @@ export function ExtendedLockScreen() {
               <PinKeypad
                 compact
                 value={recoveryPin}
-                onChange={(next) => { setRecoveryPin(next); setRecoveryError(""); }}
-                onConfirm={() => {
-                  if (recoveryPin.length !== 4) {
-                    setRecoveryError(t.invalidPin);
-                    return;
-                  }
-                  void recoverExtendedLock(recoveryPin).then((recovered) => {
-                    if (recovered) {
-                      setRecoveryOpen(false);
-                      setRecoveryPin("");
-                    } else {
-                      setRecoveryError(t.wrongPin);
-                      setRecoveryPin("");
-                    }
-                  });
+                onChange={(next) => {
+                  setRecoveryPin(next);
+                  setRecoveryError("");
+                  if (next.length === 4) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
                 }}
+                onConfirm={() => { void verifyRecoveryPin(recoveryPin); }}
               />
             </div>
             <button
