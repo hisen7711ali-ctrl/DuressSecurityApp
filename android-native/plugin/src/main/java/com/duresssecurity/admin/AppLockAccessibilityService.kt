@@ -313,14 +313,15 @@ class AppLockAccessibilityService : AccessibilityService() {
             if (maintenanceUntil != null && !clearTargetMaintenance(targetPackage)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."; return }
             unlockedTarget = targetPackage; clearAttemptState(targetPackage); attempts = 0; blockedUntil = 0L; dismissGate(); return
         }
+        val isOwnerAction = policy.duressPin?.let { typed == normalizePin(it) } == true ||
+            policy.wipePin?.let { typed == normalizePin(it) } == true
+        if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
         if (maintenanceUntil != null) { recordFailedAttempt(targetPackage, now); return }
         if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
             val until = now + 30L * 24L * 60L * 60L * 1000L
             if (!writeTargetMaintenance(targetPackage, until)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ صيانة هذا التطبيق؛ بقي محميًا." else "Could not save maintenance for this app; it remains protected."; return }
             pinValue = ""; updatePinDots(); val refreshed = readPolicy(); showGate(targetPackage, maintenanceUntil = targetMaintenanceUntil(refreshed ?: policy, targetPackage)); return
         }
-        val isOwnerAction = typed.isNotEmpty() && (policy.duressPin?.let { typed == normalizePin(it) } == true || policy.wipePin?.let { typed == normalizePin(it) } == true)
-        if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
         recordFailedAttempt(targetPackage, now)
     }
 
