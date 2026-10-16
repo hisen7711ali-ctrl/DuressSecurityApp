@@ -5,10 +5,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +22,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.util.Base64
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -214,7 +219,8 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(22), dp(16), dp(22), dp(16))
-            background = GradientDrawable().apply { setColor(Color.rgb(10, 17, 32)); cornerRadius = dp(24).toFloat(); setStroke(dp(1), Color.rgb(40, 220, 230)) }
+            background = createPanelBackground()
+            clipToOutline = true
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event -> keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP }
         }
@@ -317,6 +323,35 @@ class AppLockAccessibilityService : AccessibilityService() {
             if (storageUnavailable) setKeypadEnabled(false) else if (blockedUntil > System.currentTimeMillis()) { setKeypadEnabled(false); showBlockedMessage(); if (blockedUntil != Long.MAX_VALUE) startRetryTicker(targetPackage) }
             if (maintenanceUntil != null) startMaintenanceTicker(targetPackage, maintenanceUntil)
         } catch (_: Exception) { lockView = null; currentTarget = null; activeMaintenanceUntil = null; stopUiTickers() }
+    }
+
+    private fun createPanelBackground(): Drawable {
+        val base = GradientDrawable().apply {
+            setColor(Color.rgb(10, 17, 32))
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), Color.rgb(40, 220, 230))
+        }
+        val raw = try { SecureStorage(this).get(APP_LOCK_BACKGROUND_KEY) } catch (_: Exception) { null } ?: return base
+        val bitmap = try {
+            val encoded = raw.substringAfter(",", "")
+            if (encoded.isBlank()) return base
+            val bytes = Base64.decode(encoded, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Exception) { null } ?: return base
+        val imageLayer = BitmapDrawable(resources, bitmap).apply {
+            alpha = 118
+            gravity = Gravity.FILL
+        }
+        val dimLayer = GradientDrawable().apply {
+            setColor(Color.argb(165, 8, 14, 27))
+            cornerRadius = dp(24).toFloat()
+        }
+        val borderLayer = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), Color.rgb(40, 220, 230))
+        }
+        return LayerDrawable(arrayOf(base, imageLayer, dimLayer, borderLayer))
     }
 
     private fun createKeyButton(label: String, key: String, symbol: Boolean, targetPackage: String): Button {
@@ -444,6 +479,7 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TARGET_MAINTENANCE_KEY = "duress-security-app-lock-maintenance"
+        private const val APP_LOCK_BACKGROUND_KEY = "duress-security-app-lock-background-image"
         private val FAITH_HINTS = listOf(
             "﴿وَأَعِدُّوا لَهُم مَّا اسْتَطَعْتُم مِّن قُوَّةٍ وَمِن رِّبَاطِ الْخَيْلِ تُرْهِبُونَ بِهِ عَدُوَّ اللَّهِ وَعَدُوَّكُمْ﴾",
             "قال ﷺ: «رِبَاطُ يَوْمٍ وَلَيْلَةٍ خَيْرٌ مِنْ صِيَامِ شَهْرٍ وَقِيَامِهِ»",
