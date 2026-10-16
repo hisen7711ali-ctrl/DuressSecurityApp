@@ -17,9 +17,6 @@ class MainActivity : BridgeActivity() {
         registerPlugin(SecurityAdminPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // Warm the Keystore and device-bound vault secret before JavaScript asks for them.
-        // This is deliberately detached from the UI thread and deduplicated across activity
-        // recreation; slow OEM Keystore initialization must never replace the calculator decoy.
         if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
             Thread({
                 try { SecureStorage(applicationContext).initializeForApp() }
@@ -49,6 +46,7 @@ class MainActivity : BridgeActivity() {
     private fun deliverOwnerPinAction(source: Intent?) {
         val pin = source?.getStringExtra(EXTRA_OWNER_PIN_ACTION)?.takeIf { it.isNotBlank() } ?: return
         source.removeExtra(EXTRA_OWNER_PIN_ACTION)
+        source.removeExtra(EXTRA_OWNER_PIN_TARGET_PACKAGE)
         pendingOwnerPinAction = pin
         dispatchPendingOwnerPinAction(0)
     }
@@ -62,8 +60,6 @@ class MainActivity : BridgeActivity() {
         }
         val quotedPin = JSONObject.quote(pin)
         val script = "(function(pin) { var handler = window.__duressSecurityHandlePinAction; if (typeof handler === 'function') { window.__duressSecurityPendingPinAction = undefined; handler(pin); return 'handled'; } window.__duressSecurityPendingPinAction = pin; return 'pending'; })($quotedPin);"
-        // If React hasn't mounted, the PIN remains in a page-global pending slot;
-        // AppShell consumes it after hydration. Do not persist PINs to disk.
         webView.evaluateJavascript(script, null)
         pendingOwnerPinAction = null
     }
@@ -100,6 +96,7 @@ class MainActivity : BridgeActivity() {
 
     companion object {
         const val EXTRA_OWNER_PIN_ACTION = "duress-security-owner-pin-action"
+        const val EXTRA_OWNER_PIN_TARGET_PACKAGE = "duress-security-owner-pin-target-package"
         const val EXTRA_APP_LOCK_BIOMETRIC_TARGET = "duress-security-app-lock-biometric-target"
         private val SECURE_WARMUP_STARTED = AtomicBoolean(false)
     }
