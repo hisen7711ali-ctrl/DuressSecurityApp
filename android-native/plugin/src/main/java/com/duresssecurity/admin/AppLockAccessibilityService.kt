@@ -59,6 +59,12 @@ class AppLockAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == ACTION_RELEASE_APP_LOCK) {
+                    pendingBiometricTarget = null
+                    dismissGate()
+                    disableSelf()
+                    return
+                }
                 val target = intent?.getStringExtra(EXTRA_TARGET_PACKAGE) ?: return
                 if (target != pendingBiometricTarget) return
                 pendingBiometricTarget = null
@@ -74,6 +80,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         val filter = IntentFilter().apply {
             addAction(ACTION_BIOMETRIC_UNLOCKED)
             addAction(ACTION_BIOMETRIC_FAILED)
+            addAction(ACTION_RELEASE_APP_LOCK)
         }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -488,6 +495,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         )
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
         const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
+        const val ACTION_RELEASE_APP_LOCK = "com.duresssecurity.app.ACTION_RELEASE_APP_LOCK"
         const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
     }
 }
