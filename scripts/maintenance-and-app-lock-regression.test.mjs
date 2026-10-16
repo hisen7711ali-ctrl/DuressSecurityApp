@@ -26,3 +26,11 @@ test("native app-lock gate does not dismiss on its own overlay package event", a
   assert.match(source, /if \(lockView == null\) \{\s*currentTarget = null/);
   assert.match(source, /override fun onInterrupt\(\) \{[\s\S]*Do not remove/);
 });
+
+test("device-policy failures do not claim that this is a test-device-only feature", async () => {
+  const source = await read("src/lib/store.ts");
+  assert.match(source, /أندرويد لم يسمح بتطبيق سياسة منع الإزالة/);
+  assert.match(source, /أندرويد لم يسمح بتفعيل وضع الجهاز المخصص/);
+  assert.doesNotMatch(source, /تتطلب هذه الميزة إعداد الجهاز كـ Device Owner/);
+  assert.doesNotMatch(source, /جهاز اختبار مُهيّأ كـ Device Owner/);
+});
