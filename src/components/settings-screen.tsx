@@ -105,20 +105,16 @@ export function SettingsScreen() {
           }
         />
         <ToggleRow
-          label={t.preventUninstall}
-          hint={preventUninstall ? t.uninstallProtected : undefined}
+          label={lang === "ar" ? "منع الإزالة" : "Block uninstall"}
+          hint={preventUninstall ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.") : (lang === "ar" ? "يحاول التطبيق تفعيل سياسة منع الإزالة التي يسمح بها أندرويد على هذا الجهاز." : "The app asks Android to enable the uninstall-block policy allowed on this device.")}
           on={preventUninstall}
-          onToggle={(value) => {
-            if (!deviceOwner) {
-              setToast(t.deviceOwnerOnly);
-              return;
-            }
+          onToggle={(value) =>
             openOverlay({
               kind: "confirm",
               action: { type: "toggle-prevent", value },
               title: t.enterMasterConfirm,
-            });
-          }}
+            })
+          }
         />
       </section>
 
@@ -141,29 +137,25 @@ export function SettingsScreen() {
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold text-cyan">{t.kioskMode}</h2>
-        <p className="mt-2 text-xs leading-relaxed text-muted">{t.kioskModeHint}</p>
-        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-danger"}`}>
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">{lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}</p>
+        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-muted"}`}>
           {deviceOwner
-            ? (lang === "ar" ? "حالة الجهاز: Device Owner مفعّل" : "Device status: Device Owner active")
-            : (lang === "ar" ? "حالة الجهاز: هاتف عادي، ليس Device Owner" : "Device status: regular phone, not Device Owner")}
+            ? (lang === "ar" ? "حالة إدارة الجهاز: مفعّلة" : "Device management: active")
+            : (lang === "ar" ? "حالة إدارة الجهاز: غير مفعّلة" : "Device management: not active")}
         </p>
         <div className="mt-3">
           <ToggleRow
-            label={t.kioskMode}
-            hint={t.kioskModeHint}
+            label={lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}
+            hint={lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}
             on={dedicatedDeviceMode}
-            onToggle={(value) => {
-              if (!deviceOwner) {
-                setToast(t.deviceOwnerOnly);
-                return;
-              }
+            onToggle={(value) =>
               openOverlay({
                 kind: "confirm",
                 action: { type: "toggle-kiosk", value },
                 title: t.enterMasterConfirm,
-              });
-            }}
+              })
+            }
           />
         </div>
       </section>
