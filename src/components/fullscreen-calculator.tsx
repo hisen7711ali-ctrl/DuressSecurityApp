@@ -26,11 +26,15 @@ export function FakeCalculator(props: Props) {
     if (key === "=") {
       const configuredMatch = sequenceRef.current === calculatorCommand;
       const legacyMatch = sequenceRef.current === LEGACY_CALCULATOR_COMMAND;
-      event.stopPropagation();
-      if (configuredMatch) props.onSecretCommand?.(`${LEGACY_CALCULATOR_COMMAND}=`);
-      // If the owner changed the command, the old value is deliberately swallowed
-      // and never forwarded to AppShell. It is not kept as a hidden alias.
-      sequenceRef.current = "";
+      if (configuredMatch || legacyMatch) {
+        event.stopPropagation();
+        if (configuredMatch) props.onSecretCommand?.(`${LEGACY_CALCULATOR_COMMAND}=`);
+        // If the owner changed the command, the old value is deliberately swallowed
+        // and never forwarded to AppShell. It is not kept as a hidden alias.
+        sequenceRef.current = "";
+      } else {
+        sequenceRef.current = "";
+      }
       return;
     }
 
