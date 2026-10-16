@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ShieldMark } from "@/components/shield-mark";
 import { wipeAppData } from "@/lib/security-service";
 import { useAppStore } from "@/lib/store";
-import { isNativeAndroid, secureStorageClearOwned, secureStorageGet } from "@/lib/native-bridge";
+import { isNativeAndroid, releaseAppLockControls, secureStorageClearOwned, secureStorageGet, setKioskMode, setSelfUninstallBlocked } from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 import { resetCalculatorCommand } from "@/lib/calculator-command";
 
@@ -33,6 +33,12 @@ export function WipeScreen() {
     setWipeError(false);
     try {
       if (isNativeAndroid()) {
+        // Best-effort release overlays and app-owned device-management policies
+        // before deleting the encrypted policy they depend on. Android may still
+        // require the owner to revoke overlay/usage access in system Settings.
+        await releaseAppLockControls();
+        await setKioskMode(false);
+        await setSelfUninstallBlocked(false);
         // Clear the Android Keystore-backed store first. The verification below
         // proves the old encrypted records and device-bound vault secret are gone
         // before the in-memory Zustand state is replaced with fresh defaults.
