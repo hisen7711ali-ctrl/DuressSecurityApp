@@ -258,6 +258,29 @@ export function FilesScreen() {
           </article>
         ))
       )}
+
+      {preview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label={preview.name}>
+          <div className="flex max-h-[90svh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line bg-night p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="break-all text-sm font-semibold">{preview.name}</p>
+              <button type="button" onClick={() => setPreview(null)} className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface" aria-label={lang === "ar" ? "إغلاق العرض" : "Close preview"}><X className="size-4" /></button>
+            </div>
+            {preview.type.startsWith("image/") ? (
+              <img src={preview.url} alt={preview.name} className="mt-4 max-h-[65svh] w-full rounded-lg object-contain" />
+            ) : (
+              <div className="mt-4 rounded-xl bg-surface p-4 text-center">
+                <FileText className="mx-auto size-8 text-cyan" />
+                <p className="mt-2 text-xs leading-relaxed text-muted">
+                  {lang === "ar" ? "حُفظ الملف مشفّرًا. لتنزيل نسخة مفكوكة التشفير وفتحها، اضغط الزر أدناه؛ لا نشغّل الملف داخل التطبيق." : "The file is encrypted at rest. Explicitly download a decrypted copy to open it; it is not executed inside the app."}
+                </p>
+                <a href={preview.url} download={preview.name} className="mt-4 flex h-11 items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night"><Download className="size-4" />{lang === "ar" ? "تنزيل نسخة لفك التشفير" : "Download decrypted copy"}</a>
+              </div>
+            )}
+            <button type="button" onClick={() => setPreview(null)} className="mt-3 h-10 rounded-lg border border-line text-sm">{lang === "ar" ? "إغلاق" : "Close"}</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
