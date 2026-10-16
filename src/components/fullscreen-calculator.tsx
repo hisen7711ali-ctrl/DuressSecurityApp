@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import type { ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type MouseEvent } from "react";
 import { FakeCalculator as BaseCalculator } from "@/components/fake-calculator";
 import { DEFAULT_CALCULATOR_COMMAND, getCalculatorCommand, loadCalculatorCommand } from "@/lib/calculator-command";
 import "@/styles/calculator-fullscreen.css";
 
 const LEGACY_CALCULATOR_COMMAND = DEFAULT_CALCULATOR_COMMAND;
-
 type Props = ComponentProps<typeof BaseCalculator>;
 
 export function FakeCalculator(props: Props) {
@@ -20,7 +18,7 @@ export function FakeCalculator(props: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  function handleCalculatorCapture(event: React.MouseEvent<HTMLDivElement>) {
+  function handleCalculatorCapture(event: MouseEvent<HTMLDivElement>) {
     const button = (event.target as HTMLElement).closest("button");
     const key = button?.textContent?.trim();
     if (!key) return;
@@ -28,16 +26,11 @@ export function FakeCalculator(props: Props) {
     if (key === "=") {
       const configuredMatch = sequenceRef.current === calculatorCommand;
       const legacyMatch = sequenceRef.current === LEGACY_CALCULATOR_COMMAND;
-      if (configuredMatch || legacyMatch) {
-        // The underlying calculator still owns the normal UI/calculation logic.
-        // We intercept only the secret command so the old hard-coded trigger can
-        // never remain usable after the owner changes it in Settings.
-        event.stopPropagation();
-        sequenceRef.current = "";
-        props.onSecretCommand?.(`${LEGACY_CALCULATOR_COMMAND}=`);
-      } else {
-        sequenceRef.current = "";
-      }
+      event.stopPropagation();
+      if (configuredMatch) props.onSecretCommand?.(`${LEGACY_CALCULATOR_COMMAND}=`);
+      // If the owner changed the command, the old value is deliberately swallowed
+      // and never forwarded to AppShell. It is not kept as a hidden alias.
+      sequenceRef.current = "";
       return;
     }
 
