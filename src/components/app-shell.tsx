@@ -27,6 +27,8 @@ const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "DE
 type NativePinActionWindow = Window & {
   __duressSecurityHandlePinAction?: (pin: string) => void;
   __duressSecurityPendingPinAction?: string;
+  __duressSecurityHandleAppLockBiometric?: (targetPackage: string) => void;
+  __duressSecurityPendingAppLockBiometricTarget?: string;
 };
 
 export function AppShell() {
@@ -70,10 +72,52 @@ export function AppShell() {
     if (!ready) return;
     const host = window as NativePinActionWindow;
     const pending = host.__duressSecurityPendingPinAction;
-    if (!pending) return;
-    host.__duressSecurityPendingPinAction = undefined;
-    host.__duressSecurityHandlePinAction?.(pending);
+    if (pending) {
+      host.__duressSecurityPendingPinAction = undefined;
+      host.__duressSecurityHandlePinAction?.(pending);
+    }
+    const pendingBiometricTarget = host.__duressSecurityPendingAppLockBiometricTarget;
+    if (pendingBiometricTarget) {
+      host.__duressSecurityPendingAppLockBiometricTarget = undefined;
+      host.__duressSecurityHandleAppLockBiometric?.(pendingBiometricTarget);
+    }
   }, [ready]);
+
+  useEffect(() => {
+    const host = window as NativePinActionWindow;
+    const handleBiometricTarget = (targetPackage: string) => {
+      const state = useAppStore.getState();
+      if (!state.ready) {
+        host.__duressSecurityPendingAppLockBiometricTarget = targetPackage;
+        return;
+      }
+      if (!state.biometricEnabled || state.session === "storage-error" || state.session === "extlocked" || state.session === "wiping") {
+        state.setToast(state.lang === "ar" ? "البصمة غير متاحة لفتح هذا التطبيق في الحالة الحالية." : "Biometric unlock is unavailable for this app in the current state.");
+        return;
+      }
+      void nativeBridge.authenticateBiometric(state.lang === "ar" ? "تحقق لفتح التطبيق المحمي" : "Verify to open the protected app").then(async (verified) => {
+        if (!verified) {
+          useAppStore.getState().setToast(useAppStore.getState().lang === "ar" ? "لم يتم التحقق بالبصمة؛ بقي التطبيق محميًا." : "Biometric verification failed; the app remains protected.");
+          return;
+        }
+        const opened = await nativeBridge.completeAppLockBiometric(targetPackage);
+        if (!opened) {
+          useAppStore.getState().setToast(useAppStore.getState().lang === "ar" ? "تعذّر إكمال فتح التطبيق بعد التحقق." : "Could not complete app unlock after verification.");
+        }
+      });
+    };
+    host.__duressSecurityHandleAppLockBiometric = handleBiometricTarget;
+    if (host.__duressSecurityPendingAppLockBiometricTarget) {
+      const pending = host.__duressSecurityPendingAppLockBiometricTarget;
+      host.__duressSecurityPendingAppLockBiometricTarget = undefined;
+      handleBiometricTarget(pending);
+    }
+    return () => {
+      if (host.__duressSecurityHandleAppLockBiometric === handleBiometricTarget) {
+        delete host.__duressSecurityHandleAppLockBiometric;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     installNetworkGuard();
