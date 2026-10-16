@@ -106,7 +106,11 @@ export function SettingsScreen() {
         />
         <ToggleRow
           label={lang === "ar" ? "منع الإزالة" : "Block uninstall"}
-          hint={preventUninstall ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.") : (lang === "ar" ? "يحاول التطبيق تفعيل سياسة منع الإزالة التي يسمح بها أندرويد على هذا الجهاز." : "The app asks Android to enable the uninstall-block policy allowed on this device.")}
+          hint={preventUninstall
+            ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.")
+            : !deviceOwner
+              ? (lang === "ar" ? "يتطلب منع الإزالة صفة مالك الجهاز (Device Owner)؛ صلاحية مسؤول الجهاز العادية وحدها لا تكفي." : "Blocking uninstall requires Device Owner; ordinary Device Admin permission is not enough.")
+              : (lang === "ar" ? "مالك الجهاز مفعّل، لكن أندرويد لم يؤكد سياسة منع الإزالة بعد." : "Device Owner is active, but Android has not confirmed the uninstall-block policy yet.")}
           on={preventUninstall}
           onToggle={(value) =>
             openOverlay({
