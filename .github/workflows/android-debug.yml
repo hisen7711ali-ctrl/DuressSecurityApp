@@ -3,7 +3,7 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, security-hardening-v4-clean]
 
 permissions:
   contents: read
@@ -66,24 +66,14 @@ jobs:
           set -euo pipefail
           npm run dev > dev-server.log 2>&1 &
           DEV_PID=$!
-          cleanup() {
-            kill "$DEV_PID" 2>/dev/null || true
-            wait "$DEV_PID" 2>/dev/null || true
-          }
+          cleanup() { kill "$DEV_PID" 2>/dev/null || true; wait "$DEV_PID" 2>/dev/null || true; }
           trap cleanup EXIT
           ready=0
           for _ in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then
-              ready=1
-              break
-            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then ready=1; break; fi
             sleep 1
           done
-          if [ "$ready" -ne 1 ]; then
-            echo 'ERROR: wrapped Vite dev server did not become ready.' >&2
-            cat dev-server.log >&2 || true
-            exit 1
-          fi
+          if [ "$ready" -ne 1 ]; then cat dev-server.log >&2 || true; exit 1; fi
           npm run check:auth
       - name: Lint source
         shell: bash
@@ -111,59 +101,23 @@ jobs:
           test -f "$APK"
           test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee apk-permissions.txt
-          for permission in \
-            'android.permission.USE_BIOMETRIC' \
-            'android.permission.RECEIVE_BOOT_COMPLETED' \
-            'android.permission.POST_NOTIFICATIONS' \
-            'android.permission.SYSTEM_ALERT_WINDOW' \
-            'android.permission.PACKAGE_USAGE_STATS'; do
-            if ! grep -Fq "$permission" apk-permissions.txt; then
-              echo "ERROR: final APK is missing required permission $permission" >&2
-              exit 1
-            fi
+          for permission in android.permission.USE_BIOMETRIC android.permission.RECEIVE_BOOT_COMPLETED android.permission.POST_NOTIFICATIONS android.permission.SYSTEM_ALERT_WINDOW android.permission.PACKAGE_USAGE_STATS; do
+            grep -Fq "$permission" apk-permissions.txt || { echo "ERROR: missing $permission" >&2; exit 1; }
           done
-          for forbidden in \
-            'android.permission.INTERNET' \
-            'android.permission.ACCESS_NETWORK_STATE' \
-            'android.permission.QUERY_ALL_PACKAGES'; do
-            if grep -Fq "$forbidden" apk-permissions.txt; then
-              echo "ERROR: final APK declares forbidden broad/network permission $forbidden" >&2
-              exit 1
-            fi
+          for forbidden in android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE android.permission.QUERY_ALL_PACKAGES; do
+            if grep -Fq "$forbidden" apk-permissions.txt; then echo "ERROR: forbidden $forbidden" >&2; exit 1; fi
           done
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee apk-manifest.txt
-          for component in \
-            'com.duresssecurity.admin.AdminReceiver' \
-            'com.duresssecurity.admin.BootCompletedReceiver' \
-            'com.duresssecurity.admin.AppLockAccessibilityService' \
-            'com.duresssecurity.app.MainActivity'; do
-            if ! grep -Fq "$component" apk-manifest.txt; then
-              echo "ERROR: final APK manifest is missing required component $component" >&2
-              exit 1
-            fi
+          for component in com.duresssecurity.admin.AdminReceiver com.duresssecurity.admin.BootCompletedReceiver com.duresssecurity.admin.AppLockAccessibilityService com.duresssecurity.app.MainActivity; do
+            grep -Fq "$component" apk-manifest.txt || { echo "ERROR: missing component $component" >&2; exit 1; }
           done
-          if ! grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt; then
-            echo 'ERROR: Device Admin receiver binding permission is missing.' >&2
-            exit 1
-          fi
-          if ! grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt; then
-            echo 'ERROR: Accessibility service binding permission is missing.' >&2
-            exit 1
-          fi
-          if ! grep -Fq 'android:allowBackup' apk-manifest.txt; then
-            echo 'ERROR: final APK manifest does not expose the expected allowBackup attribute.' >&2
-            exit 1
-          fi
+          grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt || exit 1
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt || exit 1
+          grep -Fq 'android:allowBackup' apk-manifest.txt || exit 1
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
-          if ! grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt; then
-            echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2
-            exit 1
-          fi
-          if ! grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt; then
-            echo 'ERROR: final APK launcher activity is not MainActivity.' >&2
-            exit 1
-          fi
-          echo 'OK: final APK is offline, has the required declared security permissions, contains all native security components, and launches the calculator-branded MainActivity.'
+          grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt || exit 1
+          grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt || exit 1
+          echo 'OK: final APK is offline, calculator-branded, and structurally complete.'
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
