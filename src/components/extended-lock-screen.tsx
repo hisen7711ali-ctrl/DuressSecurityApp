@@ -12,6 +12,7 @@ export function ExtendedLockScreen() {
   const security = useAppStore((s) => s.security);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
   const recoverExtendedLock = useAppStore((s) => s.recoverExtendedLock);
+  const lockoutUntil = useAppStore((s) => s.lockoutUntil);
   const [now, setNow] = useState(() => Date.now());
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryPin, setRecoveryPin] = useState("");
@@ -46,7 +47,15 @@ export function ExtendedLockScreen() {
         setRecoveryPin("");
         setRecoveryError("");
       } else {
-        setRecoveryError(lang === "ar" ? "كلمة السر غير صحيحة أو تعذّر حفظ الاسترداد." : "Incorrect PIN or recovery could not be saved.");
+        const current = useAppStore.getState();
+        if (current.lockoutUntil > Date.now()) {
+          const seconds = Math.ceil((current.lockoutUntil - Date.now()) / 1000);
+          setRecoveryError(lang === "ar"
+            ? `محاولات كثيرة. انتظر ${seconds} ثانية قبل المحاولة مجددًا.`
+            : `Too many attempts. Wait ${seconds} seconds before trying again.`);
+        } else {
+          setRecoveryError(lang === "ar" ? "كلمة السر غير صحيحة أو تعذّر حفظ الاسترداد." : "Incorrect PIN or recovery could not be saved.");
+        }
         setRecoveryPin("");
       }
     } finally {
@@ -60,6 +69,7 @@ export function ExtendedLockScreen() {
     setRecoveryPin("");
   };
 
+  const recoveryBlockedSeconds = Math.max(0, Math.ceil((lockoutUntil - now) / 1000));
   const r = remainingTime(security, now);
   const nf = new Intl.NumberFormat(lang === "ar" ? "ar-EG" : "en-US");
   const cells: [number, string][] = [
@@ -122,10 +132,15 @@ export function ExtendedLockScreen() {
             <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3">
               <PinDots length={recoveryPin.length} />
             </div>
-            {recoveryError ? <p className="mt-2 text-center text-xs text-red-300">{recoveryError}</p> : null}
+            {recoveryBlockedSeconds > 0 ? (
+              <p className="mt-2 text-center text-xs text-red-300">
+                {lang === "ar" ? `محاولات كثيرة. انتظر ${recoveryBlockedSeconds} ثانية.` : `Too many attempts. Wait ${recoveryBlockedSeconds} seconds.`}
+              </p>
+            ) : recoveryError ? <p className="mt-2 text-center text-xs text-red-300">{recoveryError}</p> : null}
             <div className="mt-3">
               <PinKeypad
                 compact
+                disabled={recoveryBlockedSeconds > 0}
                 value={recoveryPin}
                 onChange={(next) => {
                   setRecoveryPin(next);
