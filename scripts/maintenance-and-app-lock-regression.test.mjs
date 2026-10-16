@@ -128,3 +128,56 @@ test("native App Lock biometric flow requires configured package and enabled bio
   const success = biometricMethod.slice(biometricMethod.indexOf("override fun onAuthenticationSucceeded"), biometricMethod.indexOf("override fun onAuthenticationError"));
   assert.ok(success.indexOf("context.startActivity(targetIntent)") < success.indexOf("context.sendBroadcast"));
 });
+
+
+test("extended maintenance uses native immersive bars and a visible owner recovery moon", async () => {
+  const screen = await read("src/components/extended-lock-screen.tsx");
+  const bridge = await read("src/lib/native-bridge.ts");
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  assert.match(screen, /setImmersiveMode\(true\)/);
+  assert.match(screen, /setImmersiveMode\(false\)/);
+  assert.match(screen, /<Moon className="size-5" \/>/);
+  assert.match(screen, /onClick=\{openRecovery\}/);
+  assert.match(screen, /ضع كلمة السر لإلغاء وضع الصيانة/);
+  assert.match(bridge, /setImmersiveMode\(options: \{ enabled: boolean \}\)/);
+  assert.match(plugin, /fun setImmersiveMode/);
+  assert.match(plugin, /WindowInsets\.Type\.statusBars\(\) or WindowInsets\.Type\.navigationBars\(\)/);
+  assert.match(plugin, /SYSTEM_UI_FLAG_IMMERSIVE_STICKY/);
+});
+
+test("uninstall protection is visibly unsupported until Device Owner and stays policy-confirmed", async () => {
+  const settings = await read("src/components/settings-screen.tsx");
+  const genericToggle = await read("src/components/apps-screen.tsx");
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  const store = await read("src/lib/store.ts");
+  assert.match(settings, /disabled=\{!deviceOwner && !preventUninstall\}/);
+  assert.match(settings, /Device Owner/);
+  assert.match(genericToggle, /disabled\?: boolean/);
+  assert.match(plugin, /dpm\(\)\.isDeviceOwnerApp\(context\.packageName\)/);
+  assert.match(plugin, /dpm\(\)\.isUninstallBlocked\(adminComponent\(\), context\.packageName\) == blocked/);
+  assert.match(store, /Android did not confirm the uninstall-block policy/);
+});
+
+test("Android asks the owner for only the permission needed by each explicit feature", async () => {
+  const store = await read("src/lib/store.ts");
+  const settings = await read("src/components/settings-screen.tsx");
+  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
+  assert.match(store, /requestSystemPermission\("accessibilityPermission"\)/);
+  const extended = store.slice(store.indexOf('if (action === "extended-lock")'), store.indexOf('if (action === "duress")'));
+  assert.match(extended, /nativeBridge\.requestDeviceAdmin\(\)/);
+  assert.match(extended, /nativeBridge\.lockNow\(\)/);
+  assert.match(extended, /nativeStatus\?\.deviceSecure/);
+  assert.match(settings, /تعذّر فتح إعدادات إمكانية الوصول/);
+  assert.doesNotMatch(plugin, /REQUEST_IGNORE_BATTERY_OPTIMIZATIONS/);
+  assert.doesNotMatch(plugin, /QUERY_ALL_PACKAGES/);
+});
+
+test("native App Lock keypad is not an Android text field or system keyboard", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  assert.doesNotMatch(service, /EditText|InputMethodManager|setInputType/);
+  assert.match(service, /listOf\("أ", "ي", "ع"\)/);
+  assert.match(service, /listOf\("1", "2", "3"\)/);
+  assert.match(service, /"back"/);
+  assert.match(service, /"ok"/);
+  assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+});
