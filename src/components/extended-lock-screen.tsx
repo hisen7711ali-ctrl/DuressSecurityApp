@@ -5,8 +5,9 @@ import { remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
+import { setImmersiveMode } from "@/lib/native-bridge";
 
-/** Shows the extended app lock as a neutral maintenance screen with an undocumented owner recovery hotspot. */
+/** Shows app-level maintenance with owner PIN recovery and immersive system bars. */
 export function ExtendedLockScreen() {
   const { t, lang } = useCopy();
   const security = useAppStore((s) => s.security);
@@ -18,6 +19,11 @@ export function ExtendedLockScreen() {
   const [recoveryPin, setRecoveryPin] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const recoveryAttemptRef = useRef(false);
+
+  useEffect(() => {
+    void setImmersiveMode(true);
+    return () => { void setImmersiveMode(false); };
+  }, []);
 
   useEffect(() => {
     const tick = () => {
