@@ -27,6 +27,7 @@ import org.json.JSONObject
 import androidx.biometric.BiometricManager
 import com.duresssecurity.app.MainActivity
 
+/** Foreground app gate. It never reads other apps' text, screenshots, or keystrokes. */
 class AppLockAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var lockView: View? = null
@@ -45,6 +46,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var quoteTicker: Runnable? = null
     private var biometricUnlockReceiver: BroadcastReceiver? = null
     private var pendingBiometricTarget: String? = null
+    private var activeMaintenanceUntil: Long? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -54,10 +56,7 @@ class AppLockAccessibilityService : AccessibilityService() {
                 val target = intent?.getStringExtra(EXTRA_TARGET_PACKAGE) ?: return
                 if (target != pendingBiometricTarget) return
                 pendingBiometricTarget = null
-                if (intent?.action == ACTION_BIOMETRIC_FAILED) {
-                    unlockedTarget = null
-                    return
-                }
+                if (intent?.action == ACTION_BIOMETRIC_FAILED) { unlockedTarget = null; return }
                 unlockedTarget = target
                 clearAttemptState(target)
                 attempts = 0
@@ -96,7 +95,9 @@ class AppLockAccessibilityService : AccessibilityService() {
         if (currentTarget != foregroundPackage || lockView == null || maintenanceUntil != activeMaintenanceUntil) showGate(foregroundPackage, maintenanceUntil = maintenanceUntil)
     }
 
-    override fun onInterrupt() { }
+    override fun onInterrupt() {
+        // Accessibility can be interrupted temporarily by Android. Do not remove an active protection gate here.
+    }
 
     override fun onDestroy() {
         dismissGate()
@@ -117,7 +118,6 @@ class AppLockAccessibilityService : AccessibilityService() {
         val maintenancePackages: Map<String, Long>,
     )
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
-    private var activeMaintenanceUntil: Long? = null
 
     private fun readPolicy(): Policy? {
         val raw = try { SecureStorage(this).get("duress-security-app") } catch (_: Exception) { null } ?: return null
@@ -125,13 +125,20 @@ class AppLockAccessibilityService : AccessibilityService() {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
             val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
-            val locked = buildSet { for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add) }
+            val locked = buildSet {
+                for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
             val pins = state.optJSONObject("pins")
             val master = pins?.optString("master")?.takeIf { it.isNotBlank() } ?: return null
             val maintenanceRaw = try { SecureStorage(this).get(TARGET_MAINTENANCE_KEY) } catch (_: Exception) { null }
             val maintenanceJson = maintenanceRaw?.let { runCatching { JSONObject(it) }.getOrNull() }
             val maintenance = buildMap {
-                if (maintenanceJson != null) maintenanceJson.keys().forEach { pkg -> maintenanceJson.optLong(pkg, 0L).takeIf { it > 0L }?.let { put(pkg, it) } }
+                if (maintenanceJson != null) {
+                    maintenanceJson.keys().forEach { pkg ->
+                        val until = maintenanceJson.optLong(pkg, 0L)
+                        if (until > 0L) put(pkg, until)
+                    }
+                }
             }
             Policy(
                 enabled = state.optBoolean("appLockEnabled", false),
@@ -151,32 +158,42 @@ class AppLockAccessibilityService : AccessibilityService() {
         val until = policy.maintenancePackages[targetPackage] ?: return null
         return if (until > System.currentTimeMillis()) until else null
     }
+
     private fun isTargetMaintenanceActive(policy: Policy, targetPackage: String): Boolean = targetMaintenanceUntil(policy, targetPackage) != null
 
-    private fun writeTargetMaintenance(targetPackage: String, until: Long): Boolean = try {
-        val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY)
-        val maintenance = if (current.isNullOrBlank()) JSONObject() else JSONObject(current)
-        maintenance.put(targetPackage, until)
-        SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
-    } catch (_: Exception) { false }
+    private fun writeTargetMaintenance(targetPackage: String, until: Long): Boolean {
+        return try {
+            val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY)
+            val maintenance = if (current.isNullOrBlank()) JSONObject() else JSONObject(current)
+            maintenance.put(targetPackage, until)
+            SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
+        } catch (_: Exception) { false }
+    }
 
-    private fun clearTargetMaintenance(targetPackage: String): Boolean = try {
-        val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY) ?: return true
-        val maintenance = JSONObject(current)
-        maintenance.remove(targetPackage)
-        if (maintenance.length() == 0) SecureStorage(this).remove(TARGET_MAINTENANCE_KEY) else SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
-    } catch (_: Exception) { false }
+    private fun clearTargetMaintenance(targetPackage: String): Boolean {
+        return try {
+            val current = SecureStorage(this).get(TARGET_MAINTENANCE_KEY) ?: return true
+            val maintenance = JSONObject(current)
+            maintenance.remove(targetPackage)
+            if (maintenance.length() == 0) SecureStorage(this).remove(TARGET_MAINTENANCE_KEY)
+            else SecureStorage(this).put(TARGET_MAINTENANCE_KEY, maintenance.toString())
+        } catch (_: Exception) { false }
+    }
 
     private fun attemptKey(targetPackage: String) = "duress-security-applock-attempts:$targetPackage"
-    private fun loadAttemptState(targetPackage: String): AttemptState = try {
-        val raw = SecureStorage(this).get(attemptKey(targetPackage)) ?: return AttemptState(0, 0L)
-        val obj = JSONObject(raw)
-        AttemptState(obj.optInt("attempts", 0).coerceAtLeast(0), obj.optLong("blockedUntil", 0L).coerceAtLeast(0L))
-    } catch (_: Exception) { AttemptState(Int.MAX_VALUE, Long.MAX_VALUE) }
 
-    private fun saveAttemptState(targetPackage: String, state: AttemptState): Boolean = try {
-        SecureStorage(this).put(attemptKey(targetPackage), JSONObject().put("attempts", state.attempts).put("blockedUntil", state.blockedUntil).toString())
-    } catch (_: Exception) { false }
+    private fun loadAttemptState(targetPackage: String): AttemptState {
+        return try {
+            val raw = SecureStorage(this).get(attemptKey(targetPackage)) ?: return AttemptState(0, 0L)
+            val obj = JSONObject(raw)
+            AttemptState(obj.optInt("attempts", 0).coerceAtLeast(0), obj.optLong("blockedUntil", 0L).coerceAtLeast(0L))
+        } catch (_: Exception) { AttemptState(Int.MAX_VALUE, Long.MAX_VALUE) }
+    }
+
+    private fun saveAttemptState(targetPackage: String, state: AttemptState): Boolean {
+        return try { SecureStorage(this).put(attemptKey(targetPackage), JSONObject().put("attempts", state.attempts).put("blockedUntil", state.blockedUntil).toString()) }
+        catch (_: Exception) { false }
+    }
 
     private fun clearAttemptState(targetPackage: String) { try { SecureStorage(this).remove(attemptKey(targetPackage)) } catch (_: Exception) { } }
 
@@ -194,26 +211,21 @@ class AppLockAccessibilityService : AccessibilityService() {
         val appIcon = try { packageManager.getApplicationIcon(targetPackage) } catch (_: Exception) { null }
 
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(22), dp(16), dp(22), dp(16))
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(22), dp(16), dp(22), dp(16))
             background = GradientDrawable().apply { setColor(Color.rgb(10, 17, 32)); cornerRadius = dp(24).toFloat(); setStroke(dp(1), Color.rgb(40, 220, 230)) }
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event -> keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP }
         }
-
         val appHeader = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
         val icon = ImageView(this).apply {
             if (appIcon != null) setImageDrawable(appIcon) else setImageResource(android.R.drawable.sym_def_app_icon)
-            contentDescription = appLabel
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = appLabel; scaleType = ImageView.ScaleType.CENTER_INSIDE
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(24, 255, 255, 255)) }
             setPadding(dp(7), dp(7), dp(7), dp(7))
         }
         appHeader.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
         val appName = TextView(this).apply { text = appLabel; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setPadding(0, dp(7), 0, 0) }
         appHeader.addView(appName, matchWrap())
-
         val shield = TextView(this).apply { text = "◈"; textSize = 30f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }
         val title = TextView(this).apply {
             text = if (storageUnavailable) { if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable" } else if (maintenanceUntil != null) { if (isArabic) "التطبيق قيد الصيانة" else "App under maintenance" } else if (isArabic) "التطبيق محمي" else "App protected"
@@ -225,66 +237,48 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
         val countdown = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(3), 0, dp(5)) }
         maintenanceCountdownView = if (maintenanceUntil != null) countdown else null
-
-        val quoteView = TextView(this).apply {
-            text = maintenanceHint(0)
-            textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8))
-        }
+        val quoteView = TextView(this).apply { text = FAITH_HINTS[0]; textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8)) }
         startQuoteTicker(quoteView)
 
         val dots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8)) }
         pinDotViews.clear()
         repeat(4) {
             val dot = View(this).apply { background = makeDotBackground(false) }
-            val params = LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginStart = dp(8); marginEnd = dp(8) }
-            dots.addView(dot, params); pinDotViews.add(dot)
+            dots.addView(dot, LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginStart = dp(8); marginEnd = dp(8) }); pinDotViews.add(dot)
         }
-
         keypadButtons.clear()
         val symbols = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         listOf("أ", "ي", "ع").forEach { key ->
             val button = createKeyButton(key, key, true, targetPackage)
-            symbols.addView(button, LinearLayout.LayoutParams(dp(56), dp(32)).apply { marginStart = dp(5); marginEnd = dp(5); bottomMargin = dp(5) })
-            keypadButtons.add(button)
+            symbols.addView(button, LinearLayout.LayoutParams(dp(56), dp(32)).apply { marginStart = dp(5); marginEnd = dp(5); bottomMargin = dp(5) }); keypadButtons.add(button)
         }
-
         val numberPad = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
         listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("back", "0", "ok")).forEach { rowKeys ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
             rowKeys.forEach { key ->
                 val label = when (key) { "back" -> "⌫"; "ok" -> "✓"; else -> key }
                 val button = createKeyButton(label, key, false, targetPackage)
-                row.addView(button, LinearLayout.LayoutParams(dp(60), dp(60)).apply { marginStart = dp(4); marginEnd = dp(4); topMargin = dp(3); bottomMargin = dp(3) })
-                keypadButtons.add(button)
+                row.addView(button, LinearLayout.LayoutParams(dp(60), dp(60)).apply { marginStart = dp(4); marginEnd = dp(4); topMargin = dp(3); bottomMargin = dp(3) }); keypadButtons.add(button)
             }
             numberPad.addView(row, LinearLayout.LayoutParams(-2, -2))
         }
-
         val biometricAvailable = !storageUnavailable && maintenanceUntil == null && readPolicy()?.biometricEnabled == true && BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
         val biometricButton = if (biometricAvailable) Button(this).apply {
             text = if (isArabic) "استخدام البصمة" else "Use fingerprint"; isAllCaps = false; textSize = 14f; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.argb(26, 255, 255, 255)); setStroke(dp(1), Color.rgb(55, 76, 98)) }
             setOnClickListener { dispatchBiometricRequest(targetPackage) }
         } else null
-
         val error = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "استعد التخزين الآمن من داخل التطبيق" else "Recover secure storage from inside the app" } else " "; textSize = 12f; setTextColor(Color.rgb(255, 105, 105)); gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(2)) }
-        val footer = TextView(this).apply {
-            text = if (storageUnavailable) { if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection" } else if (maintenanceUntil != null) { if (isArabic) "الرمز الرئيسي يلغي صيانة هذا التطبيق فقط" else "The master PIN cancels maintenance for this app only" } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"
-            textSize = 11f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, 0)
-        }
-
+        val footer = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection" } else if (maintenanceUntil != null) { if (isArabic) "الرمز الرئيسي يلغي صيانة هذا التطبيق فقط" else "The master PIN cancels maintenance for this app only" } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"; textSize = 11f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, 0) }
         root.addView(appHeader, matchWrap()); root.addView(shield, matchWrap()); root.addView(title, matchWrap()); root.addView(subtitle, matchWrap())
         if (maintenanceUntil != null) root.addView(countdown, matchWrap())
         root.addView(quoteView, matchWrap()); root.addView(dots, matchWrap()); root.addView(symbols, matchWrap()); root.addView(numberPad, matchWrap())
-        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
-        root.addView(error, matchWrap()); root.addView(footer, matchWrap())
+        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) }); root.addView(error, matchWrap()); root.addView(footer, matchWrap())
         errorView = error; lockView = root; updatePinDots()
-
         try {
             val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SECURE, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.CENTER }
             windowManager?.addView(root, params)
-            if (storageUnavailable) setKeypadEnabled(false)
-            else if (blockedUntil > System.currentTimeMillis()) { setKeypadEnabled(false); showBlockedMessage(); if (blockedUntil != Long.MAX_VALUE) startRetryTicker(targetPackage) }
+            if (storageUnavailable) setKeypadEnabled(false) else if (blockedUntil > System.currentTimeMillis()) { setKeypadEnabled(false); showBlockedMessage(); if (blockedUntil != Long.MAX_VALUE) startRetryTicker(targetPackage) }
             if (maintenanceUntil != null) startMaintenanceTicker(targetPackage, maintenanceUntil)
         } catch (_: Exception) { lockView = null; currentTarget = null; activeMaintenanceUntil = null; stopUiTickers() }
     }
@@ -294,10 +288,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         return Button(this).apply {
             text = label; isAllCaps = false; textSize = if (symbol) 16f else 26f; minWidth = 0; minHeight = 0; setPadding(0, 0, 0, 0); gravity = Gravity.CENTER
             setTextColor(if (isAction) Color.rgb(6, 18, 29) else Color.WHITE)
-            background = GradientDrawable().apply {
-                if (symbol) { cornerRadius = dp(18).toFloat(); setColor(Color.argb(26, 255, 255, 255)); setStroke(dp(1), Color.argb(45, 255, 255, 255)) }
-                else { shape = GradientDrawable.OVAL; setColor(when { isAction -> Color.rgb(40, 220, 230); isBack -> Color.TRANSPARENT; else -> Color.argb(26, 255, 255, 255) }) }
-            }
+            background = GradientDrawable().apply { if (symbol) { cornerRadius = dp(18).toFloat(); setColor(Color.argb(26, 255, 255, 255)); setStroke(dp(1), Color.argb(45, 255, 255, 255)) } else { shape = GradientDrawable.OVAL; setColor(when { isAction -> Color.rgb(40, 220, 230); isBack -> Color.TRANSPARENT; else -> Color.argb(26, 255, 255, 255) }) } }
             contentDescription = when (key) { "back" -> if (currentLanguage().equals("ar", true)) "حذف رقم" else "Delete digit"; "ok" -> if (currentLanguage().equals("ar", true)) "تأكيد الرمز" else "Confirm PIN"; else -> key }
             isEnabled = true
             setOnClickListener { view -> view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); handleKey(targetPackage, key) }
@@ -391,12 +382,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     }
 
     private fun stopUiTickers() { retryTicker?.let { uiHandler.removeCallbacks(it) }; maintenanceTicker?.let { uiHandler.removeCallbacks(it) }; quoteTicker?.let { uiHandler.removeCallbacks(it) }; retryTicker = null; maintenanceTicker = null; quoteTicker = null }
-    private fun showBlockedMessage() {
-        val isArabic = currentLanguage().equals("ar", true)
-        if (blockedUntil == Long.MAX_VALUE) { errorView?.text = if (isArabic) "تعذر التحقق من سجل المحاولات؛ الوصول موقوف حفاظًا على الحماية." else "Attempt state cannot be verified; access remains blocked for safety."; return }
-        val remaining = ((blockedUntil - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L
-        errorView?.text = if (isArabic) "محاولات كثيرة. انتظر $remaining ثانية" else "Too many attempts. Wait $remaining seconds"
-    }
+    private fun showBlockedMessage() { val isArabic = currentLanguage().equals("ar", true); if (blockedUntil == Long.MAX_VALUE) { errorView?.text = if (isArabic) "تعذر التحقق من سجل المحاولات؛ الوصول موقوف حفاظًا على الحماية." else "Attempt state cannot be verified; access remains blocked for safety."; return }; val remaining = ((blockedUntil - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L; errorView?.text = if (isArabic) "محاولات كثيرة. انتظر $remaining ثانية" else "Too many attempts. Wait $remaining seconds" }
     private fun startRetryTicker(targetPackage: String) {
         retryTicker?.let { uiHandler.removeCallbacks(it) }
         val ticker = object : Runnable {
