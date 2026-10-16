@@ -24,11 +24,17 @@ test("calculator settings require the master PIN and reject security-PIN reuse",
   assert.match(panel, /تم تغيير رمز فتح الحاسبة/);
 });
 
-test("calculator intercepts the configurable command and swallows the old command", async () => {
-  const calculator = await read("src/components/fullscreen-calculator.tsx");
-  assert.match(calculator, /getCalculatorCommand\(\)/);
-  assert.match(calculator, /sequenceRef\.current === calculatorCommand/);
-  assert.match(calculator, /sequenceRef\.current === LEGACY_CALCULATOR_COMMAND/);
-  assert.match(calculator, /if \(configuredMatch\) props\.onSecretCommand/);
-  assert.match(calculator, /old value is deliberately swallowed/);
+test("calculator unlock follows the currently stored command in every calculator surface", async () => {
+  const calculator = await read("src/components/fake-calculator.tsx");
+  const fullscreen = await read("src/components/fullscreen-calculator.tsx");
+  const shell = await read("src/components/app-shell.tsx");
+  assert.match(calculator, /secretCommand = DEFAULT_CALCULATOR_COMMAND/);
+  assert.match(calculator, /secretCommand\.startsWith\(next\)/);
+  assert.match(calculator, /onSecretCommand\?\.\(`\$\{secretCommand\}=`\)/);
+  assert.match(fullscreen, /loadCalculatorCommand\(\)/);
+  assert.match(fullscreen, /secretCommand=\{calculatorCommand\}/);
+  assert.match(shell, /getCalculatorCommand\(\)/);
+  assert.match(shell, /if \(sequence !== `\$\{getCalculatorCommand\(\)\}=`\) return false/);
+  assert.doesNotMatch(calculator, /OWNER_TRIGGER = "20272006"/);
+  assert.doesNotMatch(fullscreen, /LEGACY_CALCULATOR_COMMAND/);
 });
