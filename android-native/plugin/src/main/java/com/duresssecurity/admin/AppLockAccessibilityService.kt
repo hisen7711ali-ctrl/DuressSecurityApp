@@ -1,8 +1,9 @@
 package com.duresssecurity.admin
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Context
 import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -13,18 +14,18 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.content.Intent
-import com.duresssecurity.app.MainActivity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.biometric.BiometricManager
+import com.duresssecurity.app.MainActivity
 
 /**
  * Explicitly enabled Accessibility service used only to observe the foreground
@@ -42,11 +43,14 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var attempts = 0
     private var blockedUntil = 0L
     private var errorView: TextView? = null
+    private var maintenanceCountdownView: TextView? = null
     private var pinValue = ""
     private val pinDotViews = mutableListOf<View>()
     private val keypadButtons = mutableListOf<Button>()
     private val uiHandler = Handler(Looper.getMainLooper())
     private var retryTicker: Runnable? = null
+    private var maintenanceTicker: Runnable? = null
+    private var quoteTicker: Runnable? = null
     private var biometricUnlockReceiver: BroadcastReceiver? = null
     private var pendingBiometricTarget: String? = null
 
@@ -59,8 +63,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 if (target != pendingBiometricTarget) return
                 pendingBiometricTarget = null
                 if (intent?.action == ACTION_BIOMETRIC_FAILED) {
-                    // A cancelled/error biometric is not authorization; the next
-                    // foreground event for the target app must show the PIN gate.
                     unlockedTarget = null
                     return
                 }
@@ -93,8 +95,6 @@ class AppLockAccessibilityService : AccessibilityService() {
         val foregroundPackage = event.packageName?.toString() ?: return
 
         if (foregroundPackage == packageName) {
-            // The accessibility overlay can create an event attributed to this
-            // package. Never let that synthetic event dismiss an active gate.
             if (lockView == null) {
                 currentTarget = null
                 unlockedTarget = null
@@ -119,8 +119,11 @@ class AppLockAccessibilityService : AccessibilityService() {
             currentTarget = null
             return
         }
-        if (unlockedTarget == foregroundPackage) return
-        if (currentTarget != foregroundPackage || lockView == null) showGate(foregroundPackage)
+        if (unlockedTarget == foregroundPackage && !isTargetMaintenanceActive(policy, foregroundPackage)) return
+        val maintenanceUntil = targetMaintenanceUntil(policy, foregroundPackage)
+        if (currentTarget != foregroundPackage || lockView == null || maintenanceUntil != activeMaintenanceUntil) {
+            showGate(foregroundPackage, maintenanceUntil = maintenanceUntil)
+        }
     }
 
     override fun onInterrupt() {
@@ -144,9 +147,12 @@ class AppLockAccessibilityService : AccessibilityService() {
         val extendedLockPin: String?,
         val wipePin: String?,
         val biometricEnabled: Boolean,
+        val maintenancePackages: Map<String, Long>,
     )
 
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
+
+    private var activeMaintenanceUntil: Long? = null
 
     private fun readPolicy(): Policy? {
         val raw = try { SecureStorage(this).get("duress-security-app") } catch (_: Exception) { null }
@@ -162,6 +168,15 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             val pins = state.optJSONObject("pins")
             val master = pins?.optString("master")?.takeIf { it.isNotBlank() } ?: return null
+            val maintenanceJson = state.optJSONObject("maintenancePackages")
+            val maintenance = buildMap {
+                if (maintenanceJson != null) {
+                    maintenanceJson.keys().forEach { pkg ->
+                        val until = maintenanceJson.optLong(pkg, 0L)
+                        if (until > 0L) put(pkg, until)
+                    }
+                }
+            }
             Policy(
                 enabled = state.optBoolean("appLockEnabled", false),
                 overlayEnabled = state.optBoolean("overlayEnabled", true),
@@ -171,9 +186,43 @@ class AppLockAccessibilityService : AccessibilityService() {
                 extendedLockPin = pins.optString("lock").takeIf { it.isNotBlank() },
                 wipePin = pins.optString("format").takeIf { it.isNotBlank() },
                 biometricEnabled = state.optBoolean("biometricEnabled", false),
+                maintenancePackages = maintenance,
             )
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun targetMaintenanceUntil(policy: Policy, targetPackage: String): Long? {
+        val until = policy.maintenancePackages[targetPackage] ?: return null
+        return if (until > System.currentTimeMillis()) until else null
+    }
+
+    private fun isTargetMaintenanceActive(policy: Policy, targetPackage: String): Boolean = targetMaintenanceUntil(policy, targetPackage) != null
+
+    private fun writeTargetMaintenance(targetPackage: String, until: Long): Boolean {
+        return try {
+            val raw = SecureStorage(this).get("duress-security-app") ?: return false
+            val root = JSONObject(raw)
+            val state = root.optJSONObject("state") ?: root
+            val maintenance = state.optJSONObject("maintenancePackages") ?: JSONObject().also { state.put("maintenancePackages", it) }
+            maintenance.put(targetPackage, until)
+            SecureStorage(this).put("duress-security-app", root.toString())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun clearTargetMaintenance(targetPackage: String): Boolean {
+        return try {
+            val raw = SecureStorage(this).get("duress-security-app") ?: return false
+            val root = JSONObject(raw)
+            val state = root.optJSONObject("state") ?: root
+            val maintenance = state.optJSONObject("maintenancePackages") ?: return true
+            maintenance.remove(targetPackage)
+            SecureStorage(this).put("duress-security-app", root.toString())
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -210,10 +259,11 @@ class AppLockAccessibilityService : AccessibilityService() {
         try { SecureStorage(this).remove(attemptKey(targetPackage)) } catch (_: Exception) { }
     }
 
-    private fun showGate(targetPackage: String, storageUnavailable: Boolean = false) {
-        if (lockView != null && currentTarget == targetPackage) return
+    private fun showGate(targetPackage: String, storageUnavailable: Boolean = false, maintenanceUntil: Long? = null) {
+        if (lockView != null && currentTarget == targetPackage && activeMaintenanceUntil == maintenanceUntil) return
         dismissGate()
         currentTarget = targetPackage
+        activeMaintenanceUntil = maintenanceUntil
         pinValue = ""
 
         val persistedAttempts = loadAttemptState(targetPackage)
@@ -221,10 +271,17 @@ class AppLockAccessibilityService : AccessibilityService() {
         blockedUntil = persistedAttempts.blockedUntil
 
         val isArabic = currentLanguage().equals("ar", ignoreCase = true)
+        val appLabel = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(targetPackage, 0)).toString()
+        } catch (_: Exception) {
+            targetPackage
+        }
+        val appIcon = try { packageManager.getApplicationIcon(targetPackage) } catch (_: Exception) { null }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(24), dp(20), dp(24), dp(20))
+            setPadding(dp(22), dp(16), dp(22), dp(16))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(10, 17, 32))
                 cornerRadius = dp(24).toFloat()
@@ -236,17 +293,46 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
         }
 
+        val appHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        val icon = ImageView(this).apply {
+            if (appIcon != null) setImageDrawable(appIcon)
+            else setImageResource(android.R.drawable.sym_def_app_icon)
+            contentDescription = appLabel
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(24, 255, 255, 255))
+            }
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+        }
+        appHeader.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
+        val appName = TextView(this).apply {
+            text = appLabel
+            textSize = 17f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(7), 0, 0)
+        }
+        appHeader.addView(appName, matchWrap())
+
         val shield = TextView(this).apply {
             text = "◈"
-            textSize = 46f
+            textSize = 30f
             setTextColor(Color.rgb(40, 220, 230))
             gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
         }
         val title = TextView(this).apply {
             text = if (storageUnavailable) {
                 if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable"
+            } else if (maintenanceUntil != null) {
+                if (isArabic) "التطبيق قيد الصيانة" else "App under maintenance"
             } else if (isArabic) "التطبيق محمي" else "App protected"
-            textSize = 24f
+            textSize = 23f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -254,23 +340,44 @@ class AppLockAccessibilityService : AccessibilityService() {
         val subtitle = TextView(this).apply {
             text = if (storageUnavailable) {
                 if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery."
-            } else if (isArabic) "أدخل الرمز الرئيسي للمتابعة" else "Enter the master PIN to continue"
+            } else if (maintenanceUntil != null) {
+                if (isArabic) "هذا التطبيق في وضع الصيانة لمدة 30 يوماً. أدخل الرمز الرئيسي لإلغاء الصيانة." else "This app is in maintenance for 30 days. Enter the master PIN to cancel maintenance."
+            } else if (isArabic) {
+                "أدخل الرمز الرئيسي للمتابعة"
+            } else {
+                "Enter the master PIN to continue"
+            }
             textSize = 14f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(10))
+            setPadding(0, dp(5), 0, dp(8))
         }
+
+        val countdown = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.rgb(40, 220, 230))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(3), 0, dp(5))
+        }
+        maintenanceCountdownView = if (maintenanceUntil != null) countdown else null
+
+        val quoteView = TextView(this).apply {
+            text = maintenanceHint(0, isArabic)
+            textSize = 12f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(4), dp(8), dp(8))
+        }
+        startQuoteTicker(quoteView, isArabic)
 
         val dots = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(10), 0, dp(14))
+            setPadding(0, dp(5), 0, dp(8))
         }
         pinDotViews.clear()
         repeat(4) {
-            val dot = View(this).apply {
-                background = makeDotBackground(false)
-            }
+            val dot = View(this).apply { background = makeDotBackground(false) }
             val params = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
                 marginStart = dp(8)
                 marginEnd = dp(8)
@@ -286,10 +393,10 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
         listOf("أ", "ي", "ع").forEach { key ->
             val button = createKeyButton(key, key, symbol = true, targetPackage = targetPackage)
-            val params = LinearLayout.LayoutParams(dp(56), dp(36)).apply {
+            val params = LinearLayout.LayoutParams(dp(56), dp(32)).apply {
                 marginStart = dp(5)
                 marginEnd = dp(5)
-                bottomMargin = dp(8)
+                bottomMargin = dp(5)
             }
             symbols.addView(button, params)
             keypadButtons.add(button)
@@ -317,11 +424,11 @@ class AppLockAccessibilityService : AccessibilityService() {
                     else -> key
                 }
                 val button = createKeyButton(label, key, symbol = false, targetPackage = targetPackage)
-                val params = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
-                    marginStart = dp(5)
-                    marginEnd = dp(5)
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
+                val params = LinearLayout.LayoutParams(dp(60), dp(60)).apply {
+                    marginStart = dp(4)
+                    marginEnd = dp(4)
+                    topMargin = dp(3)
+                    bottomMargin = dp(3)
                 }
                 row.addView(button, params)
                 keypadButtons.add(button)
@@ -330,6 +437,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
 
         val biometricAvailable = !storageUnavailable &&
+            maintenanceUntil == null &&
             readPolicy()?.biometricEnabled == true &&
             BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
         val biometricButton = if (biometricAvailable) {
@@ -354,25 +462,34 @@ class AppLockAccessibilityService : AccessibilityService() {
             textSize = 12f
             setTextColor(Color.rgb(255, 105, 105))
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(4))
+            setPadding(0, dp(6), 0, dp(2))
         }
         val footer = TextView(this).apply {
             text = if (storageUnavailable) {
                 if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection"
-            } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"
+            } else if (maintenanceUntil != null) {
+                if (isArabic) "الرمز الرئيسي يلغي صيانة هذا التطبيق فقط" else "The master PIN cancels maintenance for this app only"
+            } else if (isArabic) {
+                "أدخل الرمز الرئيسي من لوحة الأرقام"
+            } else {
+                "Use the on-screen PIN keypad"
+            }
             textSize = 11f
             setTextColor(Color.GRAY)
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, 0)
+            setPadding(0, dp(5), 0, 0)
         }
 
+        root.addView(appHeader, matchWrap())
         root.addView(shield, matchWrap())
         root.addView(title, matchWrap())
         root.addView(subtitle, matchWrap())
+        if (maintenanceUntil != null) root.addView(countdown, matchWrap())
+        root.addView(quoteView, matchWrap())
         root.addView(dots, matchWrap())
         root.addView(symbols, matchWrap())
         root.addView(numberPad, matchWrap())
-        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
         root.addView(error, matchWrap())
         root.addView(footer, matchWrap())
 
@@ -396,11 +513,12 @@ class AppLockAccessibilityService : AccessibilityService() {
                 showBlockedMessage()
                 if (blockedUntil != Long.MAX_VALUE) startRetryTicker(targetPackage)
             }
+            if (maintenanceUntil != null) startMaintenanceTicker(targetPackage, maintenanceUntil)
         } catch (_: Exception) {
             lockView = null
             currentTarget = null
-            retryTicker?.let { uiHandler.removeCallbacks(it) }
-            retryTicker = null
+            activeMaintenanceUntil = null
+            stopUiTickers()
         }
     }
 
@@ -410,7 +528,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         return Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = if (symbol) 16f else 27f
+            textSize = if (symbol) 16f else 26f
             minWidth = 0
             minHeight = 0
             setPadding(0, 0, 0, 0)
@@ -490,7 +608,15 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         val typed = normalizePin(pinValue)
         val master = normalizePin(policy.masterPin)
-        if (typed.isNotEmpty() && typed == master) {
+        val maintenanceUntil = targetMaintenanceUntil(policy, targetPackage)
+
+        if (typed == master) {
+            if (maintenanceUntil != null) {
+                if (!clearTargetMaintenance(targetPackage)) {
+                    errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."
+                    return
+                }
+            }
             unlockedTarget = targetPackage
             clearAttemptState(targetPackage)
             attempts = 0
@@ -499,13 +625,37 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Keep the same special PIN actions as the primary login. These PINs
-        // are handed to the app's existing submitPin flow rather than reimplemented
-        // in this service, so wipe remains limited to app-owned data and the
-        // normal 30-day lock/recovery logic is reused.
+        // While a target app is in its 30-day maintenance state, only the current
+        // master PIN can recover it. The other configured owner actions are not
+        // allowed to turn maintenance into an unintended global action.
+        if (maintenanceUntil != null) {
+            attempts = (attempts + 1).coerceAtMost(1_000_000)
+            pinValue = ""
+            updatePinDots()
+            recordFailedAttempt(targetPackage, now)
+            return
+        }
+
+        // Special PINs are read from the same encrypted, current policy as the
+        // main application. No hard-coded 4444/5555/7777 values are used here.
+        if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
+            val until = now + 30L * 24L * 60L * 60L * 1000L
+            if (!writeTargetMaintenance(targetPackage, until)) {
+                errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ صيانة هذا التطبيق؛ بقي محميًا." else "Could not save maintenance for this app; it remains protected."
+                return
+            }
+            pinValue = ""
+            updatePinDots()
+            val refreshed = readPolicy()
+            showGate(targetPackage, maintenanceUntil = targetMaintenanceUntil(refreshed ?: policy, targetPackage))
+            return
+        }
+
+        // 4444 keeps its existing duress/camouflage meaning: it is routed through
+        // the primary security flow, which presents the calculator decoy. 5555 is
+        // the only special PIN that is target-scoped; 7777 remains app-owned wipe.
         val isOwnerAction = typed.isNotEmpty() && (
             policy.duressPin?.let { typed == normalizePin(it) } == true ||
-            policy.extendedLockPin?.let { typed == normalizePin(it) } == true ||
             policy.wipePin?.let { typed == normalizePin(it) } == true
         )
         if (isOwnerAction) {
@@ -513,6 +663,10 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
+        recordFailedAttempt(targetPackage, now)
+    }
+
+    private fun recordFailedAttempt(targetPackage: String, now: Long) {
         attempts = (attempts + 1).coerceAtMost(1_000_000)
         pinValue = ""
         updatePinDots()
@@ -583,6 +737,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         launchIntent.putExtra(MainActivity.EXTRA_OWNER_PIN_ACTION, pin)
+        launchIntent.putExtra(MainActivity.EXTRA_OWNER_PIN_TARGET_PACKAGE, targetPackage)
         try {
             startActivity(launchIntent)
             dismissGate()
@@ -595,14 +750,60 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun blockUntilStorageRecovers() {
-        blockedUntil = Long.MAX_VALUE
-        setKeypadEnabled(false)
-        errorView?.text = if (currentLanguage().equals("ar", true)) {
-            "تعذر حفظ سجل المحاولات؛ أُوقفت المحاولات حفاظًا على الحماية."
-        } else {
-            "Attempt state could not be saved; retries are blocked to preserve protection."
+    private fun startQuoteTicker(view: TextView, isArabic: Boolean) {
+        quoteTicker?.let { uiHandler.removeCallbacks(it) }
+        val ticker = object : Runnable {
+            private var index = 0
+            override fun run() {
+                if (lockView == null) { quoteTicker = null; return }
+                index = (index + 1) % MAINTENANCE_HINTS.size
+                view.text = maintenanceHint(index, isArabic)
+                uiHandler.postDelayed(this, 5000L)
+            }
         }
+        quoteTicker = ticker
+        uiHandler.postDelayed(ticker, 5000L)
+    }
+
+    private fun startMaintenanceTicker(targetPackage: String, until: Long) {
+        maintenanceTicker?.let { uiHandler.removeCallbacks(it) }
+        val ticker = object : Runnable {
+            override fun run() {
+                if (lockView == null || currentTarget != targetPackage || activeMaintenanceUntil != until) {
+                    maintenanceTicker = null
+                    return
+                }
+                val remaining = (until - System.currentTimeMillis()).coerceAtLeast(0L)
+                if (remaining <= 0L) {
+                    clearTargetMaintenance(targetPackage)
+                    maintenanceTicker = null
+                    dismissGate()
+                    return
+                }
+                val totalSeconds = remaining / 1000L
+                val days = totalSeconds / 86400L
+                val hours = (totalSeconds % 86400L) / 3600L
+                val minutes = (totalSeconds % 3600L) / 60L
+                val seconds = totalSeconds % 60L
+                maintenanceCountdownView?.text = if (currentLanguage().equals("ar", true)) {
+                    "المتبقي: ${days}ي ${hours}س ${minutes}د ${seconds}ث"
+                } else {
+                    "Remaining: ${days}d ${hours}h ${minutes}m ${seconds}s"
+                }
+                uiHandler.postDelayed(this, 1000L)
+            }
+        }
+        maintenanceTicker = ticker
+        uiHandler.post(ticker)
+    }
+
+    private fun stopUiTickers() {
+        retryTicker?.let { uiHandler.removeCallbacks(it) }
+        maintenanceTicker?.let { uiHandler.removeCallbacks(it) }
+        quoteTicker?.let { uiHandler.removeCallbacks(it) }
+        retryTicker = null
+        maintenanceTicker = null
+        quoteTicker = null
     }
 
     private fun showBlockedMessage() {
@@ -654,8 +855,7 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun updatePinDots() {
         pinDotViews.forEachIndexed { index, dot ->
-            val filled = index < pinValue.length
-            dot.background = makeDotBackground(filled)
+            dot.background = makeDotBackground(index < pinValue.length)
         }
     }
 
@@ -665,19 +865,24 @@ class AppLockAccessibilityService : AccessibilityService() {
         setStroke(dp(2), if (filled) Color.rgb(40, 220, 230) else Color.rgb(125, 138, 154))
     }
 
+    private fun maintenanceHint(index: Int, isArabic: Boolean): String =
+        if (isArabic) MAINTENANCE_HINTS[index % MAINTENANCE_HINTS.size].first
+        else MAINTENANCE_HINTS[index % MAINTENANCE_HINTS.size].second
+
     private fun dismissGate() {
-        retryTicker?.let { uiHandler.removeCallbacks(it) }
-        retryTicker = null
+        stopUiTickers()
         val current = lockView
         if (current != null) {
             try { windowManager?.removeView(current) } catch (_: Exception) { }
         }
         lockView = null
         errorView = null
+        maintenanceCountdownView = null
         pinValue = ""
         pinDotViews.clear()
         keypadButtons.clear()
         currentTarget = null
+        activeMaintenanceUntil = null
     }
 
     private fun normalizePin(value: String): String = value.map { ch ->
@@ -699,6 +904,13 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
     companion object {
+        private val MAINTENANCE_HINTS = listOf(
+            "قال الله تعالى: إِنَّ مَعَ الْعُسْرِ يُسْرًا" to "Indeed, with hardship comes ease.",
+            "قال الله تعالى: وَمَن يَتَوَكَّلْ عَلَى اللَّهِ فَهُوَ حَسْبُهُ" to "Whoever relies upon Allah, He is sufficient for him.",
+            "قال رسول الله ﷺ: مَن لا يَرحَم لا يُرحَم" to "Whoever does not show mercy will not be shown mercy.",
+            "قال الله تعالى: فَاذْكُرُونِي أَذْكُرْكُمْ" to "So remember Me; I will remember you.",
+            "قال الله تعالى: إِنَّ اللَّهَ مَعَ الصَّابِرِينَ" to "Indeed, Allah is with the patient."
+        )
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
         const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
         const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
