@@ -33,12 +33,14 @@ class MainActivity : BridgeActivity() {
         // device automatically; DevicePolicyManager.lockNow() performs an
         // explicit device-lock request only after the owner enabled Device Admin.
         deliverOwnerPinAction(intent)
+        deliverAppLockBiometricTarget(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         deliverOwnerPinAction(intent)
+        deliverAppLockBiometricTarget(intent)
     }
 
     private var pendingOwnerPinAction: String? = null
@@ -66,6 +68,28 @@ class MainActivity : BridgeActivity() {
         pendingOwnerPinAction = null
     }
 
+    private var pendingAppLockBiometricTarget: String? = null
+
+    private fun deliverAppLockBiometricTarget(source: Intent?) {
+        val target = source?.getStringExtra(EXTRA_APP_LOCK_BIOMETRIC_TARGET)?.takeIf { it.isNotBlank() } ?: return
+        source.removeExtra(EXTRA_APP_LOCK_BIOMETRIC_TARGET)
+        pendingAppLockBiometricTarget = target
+        dispatchPendingAppLockBiometricTarget(0)
+    }
+
+    private fun dispatchPendingAppLockBiometricTarget(attempt: Int) {
+        val target = pendingAppLockBiometricTarget ?: return
+        val webView = bridge?.webView
+        if (webView == null || webView.url.isNullOrBlank() || webView.url == "about:blank") {
+            if (attempt < 40) mainHandler.postDelayed({ dispatchPendingAppLockBiometricTarget(attempt + 1) }, 250L)
+            return
+        }
+        val quotedTarget = JSONObject.quote(target)
+        val script = "(function(targetPackage) { var handler = window.__duressSecurityHandleAppLockBiometric; if (typeof handler === 'function') { window.__duressSecurityPendingAppLockBiometricTarget = undefined; handler(targetPackage); return 'handled'; } window.__duressSecurityPendingAppLockBiometricTarget = targetPackage; return 'pending'; })($quotedTarget);"
+        webView.evaluateJavascript(script, null)
+        pendingAppLockBiometricTarget = null
+    }
+
     fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
 
     override fun onStop() {
@@ -76,6 +100,7 @@ class MainActivity : BridgeActivity() {
 
     companion object {
         const val EXTRA_OWNER_PIN_ACTION = "duress-security-owner-pin-action"
+        const val EXTRA_APP_LOCK_BIOMETRIC_TARGET = "duress-security-app-lock-biometric-target"
         private val SECURE_WARMUP_STARTED = AtomicBoolean(false)
     }
 }
