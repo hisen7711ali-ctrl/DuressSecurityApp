@@ -164,9 +164,9 @@ class SecurityAdminPlugin : Plugin() {
         )
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle(if (java.util.Locale.getDefault().language.equals("ar", true)) "فتح التطبيق المحمي" else "Unlock protected app")
-            .setSubtitle(if (currentLanguage().equals("ar", true)) "تحقّق بالبصمة للمتابعة" else "Verify your biometric to continue")
+            .setSubtitle(if (java.util.Locale.getDefault().language.equals("ar", true)) "تحقّق بالبصمة للمتابعة" else "Verify your biometric to continue")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .setNegativeButtonText(if (currentLanguage().equals("ar", true)) "إلغاء" else "Cancel")
+            .setNegativeButtonText(if (java.util.Locale.getDefault().language.equals("ar", true)) "إلغاء" else "Cancel")
             .build()
         fragmentActivity.runOnUiThread { prompt.authenticate(info) }
     }
