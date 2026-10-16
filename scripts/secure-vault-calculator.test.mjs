@@ -63,8 +63,18 @@ test('retry lockout survives reload through persisted application state', async 
   assert.match(store, /nextLockoutDelayMs\(state\.lockTimeoutSec, state\.lockoutLevel\)/);
 });
 
-test('emergency reset is scoped to app-owned storage', async () => {
+test('emergency reset removes app-owned encrypted state only and verifies the wipe', async () => {
   const plugin = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt');
+  const wipe = await read('src/components/wipe-screen.tsx');
+  const security = await read('src/lib/security-service.ts');
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
+  assert.match(wipe, /secureStorageClearOwned\(\)/);
+  assert.match(wipe, /verifyOwnedSecureStoreEmpty/);
+  assert.match(wipe, /duress-security-app:calculator-command/);
+  assert.match(wipe, /duress-security-app-lock-background-image/);
+  assert.match(wipe, /resetCalculatorCommand\(\)/);
+  assert.match(security, /duress-security-app-lock-/);
+  assert.match(security, /deleteDatabase\("duress-security-vault-attachments"\)/);
+  assert.match(security, /duress-security-vault/);
 });
