@@ -48,17 +48,21 @@ class AppLockAccessibilityService : AccessibilityService() {
         val foregroundPackage = event.packageName?.toString() ?: return
 
         if (foregroundPackage == packageName) {
-            dismissGate()
-            currentTarget = null
-            unlockedTarget = null
+            // A TYPE_ACCESSIBILITY_OVERLAY window can itself produce a window-state
+            // event attributed to this package. Never let that synthetic event
+            // dismiss the gate that is actively protecting another app. Once the
+            // gate is gone, a real foreground event for this package can clear the
+            // previous target normally.
+            if (lockView == null) {
+                currentTarget = null
+                unlockedTarget = null
+            }
             return
         }
 
         if (foregroundPackage != unlockedTarget) unlockedTarget = null
         val policy = readPolicy()
         if (policy == null) {
-            // Fail closed: without a trustworthy policy we cannot prove that the
-            // foreground app is allowed. Keep a non-dismissible recovery gate up.
             if (currentTarget != foregroundPackage || lockView == null) {
                 showGate(foregroundPackage, storageUnavailable = true)
             }
@@ -77,7 +81,11 @@ class AppLockAccessibilityService : AccessibilityService() {
         if (currentTarget != foregroundPackage || lockView == null) showGate(foregroundPackage)
     }
 
-    override fun onInterrupt() { dismissGate() }
+    override fun onInterrupt() {
+        // Accessibility can be interrupted temporarily by Android. Do not remove
+        // an active protection gate here; the next foreground event will reconcile
+        // the policy and recreate the gate if necessary.
+    }
 
     override fun onDestroy() {
         dismissGate()
@@ -93,7 +101,6 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
 
-    /** null means the encrypted policy could not be read or validated. */
     private fun readPolicy(): Policy? {
         val raw = try { SecureStorage(this).get("duress-security-app") } catch (_: Exception) { null }
             ?: return null
@@ -130,8 +137,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                 blockedUntil = obj.optLong("blockedUntil", 0L).coerceAtLeast(0L),
             )
         } catch (_: Exception) {
-            // If the attempt record is unreadable, do not silently reset it.
-            // Keep the gate blocked until the main security store is recovered.
             AttemptState(Int.MAX_VALUE, Long.MAX_VALUE)
         }
     }
@@ -261,8 +266,6 @@ class AppLockAccessibilityService : AccessibilityService() {
                     return@setOnClickListener
                 }
 
-                // Attempts survive gate recreation, app switches, service restarts
-                // and process death. There is no reset in showGate().
                 attempts = (attempts + 1).coerceAtMost(1_000_000)
                 input.setText("")
                 if (attempts >= 5) {
