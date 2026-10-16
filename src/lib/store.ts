@@ -138,19 +138,13 @@ export const useAppStore = create<AppStore>()(
       security: { ...INITIAL_SECURITY_STATE },
 
       hydrateSession: async () => {
-        // Permission probing is useful UI metadata, not a prerequisite for secure startup.
-        // Keep slow DevicePolicyManager calls from serializing session hydration.
         void get().refreshNativePermissions().catch(() => undefined);
-        // Zustand persistence already verifies "duress-security-app". Read the separate
-        // security record exactly once below instead of probing and immediately re-reading it.
         const homeLock = get().homeLockEnabled;
         const installed = get().installedApps ?? [];
         const allowed = new Set(installed.map((a) => a.packageName));
         const loadedSecurity = await loadSecurity();
         if (loadedSecurity === null) { set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false }); return; }
         const security = reconcile(loadedSecurity);
-        // A normal startup must not perform an unnecessary Keystore write. Persist only
-        // when reconciliation actually changes an expired/invalidated lock record.
         if (security !== loadedSecurity) {
           const securitySaved = await saveSecurity(security);
           if (!securitySaved && nativeBridge.isNativeAndroid()) {
@@ -190,8 +184,8 @@ export const useAppStore = create<AppStore>()(
         if (action.type === "toggle-home-lock") set({ homeLockEnabled: action.value });
         if (action.type === "toggle-app-lock") set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
         if (action.type === "toggle-overlay") set({ overlayEnabled: action.value });
-        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "تتطلب هذه الميزة إعداد الجهاز كـ Device Owner؛ لم يتم تغيير سياسة الإزالة." : "This requires Device Owner provisioning; uninstall policy was not changed." }); });
-        if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "وضع الكشك يتطلب جهاز اختبار مُهيّأ كـ Device Owner." : "Kiosk mode requires a test device provisioned as Device Owner." }); });
+        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتطبيق سياسة منع الإزالة على هذا الجهاز؛ لم تتغير سياسة الإزالة." : "Android did not allow the uninstall policy on this device; the uninstall policy was not changed." }); });
+        if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتفعيل وضع الجهاز المخصص على هذا الجهاز." : "Android did not allow dedicated-device mode on this device." }); });
         if (action.type === "save-pin") set((s) => ({ pins: { ...s.pins, [action.target]: normalizePin(action.value) }, lastCheckAt: nowIso() }));
         if (action.type === "delete-file") { const state = get(); if (!state.vaultCryptoReady) { set({ toast: state.lang === "ar" ? "افتح الخزنة المشفّرة أولاً." : "Unlock the encrypted vault first." }); return; } const nextVault = state.vault.filter((f) => f.id !== action.id); void persistEncryptedVault(nextVault).then(() => set({ vault: nextVault })).catch(() => set({ toast: get().lang === "ar" ? "تعذّر حفظ التغيير المشفّر." : "Encrypted vault change could not be saved." })); }
         if (action.type === "open-vault") set({ vaultOpen: true });
@@ -247,9 +241,6 @@ export const useAppStore = create<AppStore>()(
         const vaultMigrationRequired = old.vaultMigrationRequired === true || (old.vaultEncrypted !== true && hasLegacyVaultContent(vault));
         return { ...old, pins, vault, vaultEncrypted: old.vaultEncrypted === true, vaultMigrationRequired, lockoutLevel: Math.max(0, Math.min(13, Math.floor(Number(old.lockoutLevel) || 0))) } as PersistedSlice;
       },
-      // New installations start with an empty vault and never save user files before encryption.
-      // During a detected legacy migration only, preserve the old files until the forced
-      // passphrase flow encrypts them; successful encryption then removes this plaintext field.
       partialize: (s) => ({ lang: s.lang, theme: s.theme, pins: s.pins, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
     },
   ),
