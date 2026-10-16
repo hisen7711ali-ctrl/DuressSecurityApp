@@ -217,16 +217,29 @@ export function FilesScreen() {
             <div className="flex items-start justify-between gap-3">
               <button
                 type="button"
-                className="text-start"
+                className="min-w-0 flex-1 text-start"
                 onClick={() => {
-                  setEditing(file.id);
-                  setTitle(file.title);
-                  setBody(file.body);
+                  if (file.attachment) {
+                    void openAttachment(file);
+                  } else {
+                    setEditing(file.id);
+                    setTitle(file.title);
+                    setBody(file.body);
+                  }
                 }}
               >
-                <h2 className="font-semibold">{file.title}</h2>
-                <p className="mt-1 line-clamp-3 text-sm text-muted">{file.body}</p>
+                <h2 className="break-words font-semibold">{file.title}</h2>
+                {file.attachment ? (
+                  <p className="mt-1 text-xs text-muted">
+                    {file.attachment.type || "application/octet-stream"} · {(file.attachment.size / 1024).toFixed(1)} KB
+                  </p>
+                ) : <p className="mt-1 line-clamp-3 text-sm text-muted">{file.body}</p>}
               </button>
+              {file.attachment ? (
+                <button type="button" className="grid size-10 shrink-0 place-items-center rounded-lg bg-cyan/10 text-cyan" onClick={() => void openAttachment(file)} aria-label={lang === "ar" ? "عرض الملف داخل الخزنة" : "View file inside vault"}>
+                  <Eye className="size-4" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="grid size-10 place-items-center text-danger"
