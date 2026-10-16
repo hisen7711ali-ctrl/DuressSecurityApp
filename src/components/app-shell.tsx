@@ -91,7 +91,8 @@ export function AppShell() {
         host.__duressSecurityPendingAppLockBiometricTarget = targetPackage;
         return;
       }
-      if (!state.biometricEnabled || state.session === "storage-error" || state.session === "extlocked" || state.session === "wiping") {
+      if (!state.biometricEnabled || state.session === "storage-error" || state.session === "extlocked" || state.session === "wiping" || state.session === "duress") {
+        void nativeBridge.cancelAppLockBiometric(targetPackage);
         state.setToast(state.lang === "ar" ? "البصمة غير متاحة لفتح هذا التطبيق في الحالة الحالية." : "Biometric unlock is unavailable for this app in the current state.");
         return;
       }
