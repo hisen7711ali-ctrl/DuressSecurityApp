@@ -58,6 +58,12 @@ class AppLockAccessibilityService : AccessibilityService() {
                 val target = intent?.getStringExtra(EXTRA_TARGET_PACKAGE) ?: return
                 if (target != pendingBiometricTarget) return
                 pendingBiometricTarget = null
+                if (intent?.action == ACTION_BIOMETRIC_FAILED) {
+                    // A cancelled/error biometric is not authorization; the next
+                    // foreground event for the target app must show the PIN gate.
+                    unlockedTarget = null
+                    return
+                }
                 unlockedTarget = target
                 clearAttemptState(target)
                 attempts = 0
@@ -66,7 +72,10 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
         }
         biometricUnlockReceiver = receiver
-        val filter = IntentFilter(ACTION_BIOMETRIC_UNLOCKED)
+        val filter = IntentFilter().apply {
+            addAction(ACTION_BIOMETRIC_UNLOCKED)
+            addAction(ACTION_BIOMETRIC_FAILED)
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -691,6 +700,7 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     companion object {
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
+        const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
         const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
     }
 }
