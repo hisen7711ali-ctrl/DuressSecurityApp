@@ -1,9 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { FileText, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Eye, Download, X } from "lucide-react";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, type VaultFile } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { readEncryptedAttachment } from "@/lib/vault-crypto";
-import type { VaultFile } from "@/lib/store";
 
 export function FilesScreen() {
   const { t, lang } = useCopy();
