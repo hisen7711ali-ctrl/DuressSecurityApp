@@ -13,6 +13,7 @@ type SecurityAdminNative = {
   initializeSecureStorage(): Promise<NativeResult>; secureGet(options: { key: string }): Promise<SecureRead>; secureSet(options: { key: string; value: string }): Promise<NativeResult>; secureRemove(options: { key: string }): Promise<NativeResult>; secureClearOwned(): Promise<NativeResult>;
   setSelfUninstallBlocked(options: { blocked: boolean }): Promise<NativeResult>; setKioskMode(options: { enabled: boolean }): Promise<NativeResult>; setScreenCaptureAllowed(options: { allowed: boolean }): Promise<NativeResult>;
   completeAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
+  cancelAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
 };
 type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } };
 const NATIVE_CALL_TIMEOUT_MS = 2500;
@@ -46,6 +47,16 @@ export async function completeAppLockBiometric(packageName: string): Promise<boo
   if (!plugin || !packageName.trim()) return false;
   try {
     return (await withNativeTimeout(plugin.completeAppLockBiometric({ packageName }), { ok: false }, NATIVE_ACTIVITY_TIMEOUT_MS)).ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelAppLockBiometric(packageName: string): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin || !packageName.trim()) return false;
+  try {
+    return (await withNativeTimeout(plugin.cancelAppLockBiometric({ packageName }), { ok: false })).ok;
   } catch {
     return false;
   }
