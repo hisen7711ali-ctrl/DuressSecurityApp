@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { DEFAULT_CALCULATOR_COMMAND } from "@/lib/calculator-command";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
@@ -11,8 +12,6 @@ const ROWS = [
   ["±", ".", "0", "="],
 ] as const;
 
-const OWNER_TRIGGER = "20272006";
-const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
 type SecretCommandHandler = (sequence: string) => boolean;
 
 function evalExpr(raw: string): string {
@@ -90,7 +89,7 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   );
 }
 
-export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCommandHandler }) {
+export function FakeCalculator({ onSecretCommand, secretCommand = DEFAULT_CALCULATOR_COMMAND }: { onSecretCommand?: SecretCommandHandler; secretCommand?: string }) {
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
@@ -105,19 +104,19 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
       // The trigger is tracked from the actual button taps, not from the
       // calculator expression. This avoids React state batching/re-render
       // timing from losing the final digit before '=' is pressed.
-      const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
+      const sequenceMatches = ownerSequenceRef.current === secretCommand;
       if (!sequenceMatches) return false;
-      const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
+      const handled = onSecretCommand?.(`${secretCommand}=`) ?? false;
       if (handled) resetOwnerSequence();
       return handled;
     }
 
     if (/^\d$/.test(key)) {
       const next = `${ownerSequenceRef.current}${key}`;
-      if (OWNER_TRIGGER.startsWith(next)) ownerSequenceRef.current = next;
+      if (secretCommand.startsWith(next)) ownerSequenceRef.current = next;
       // On a mismatch the wrong digit may itself be the first digit of a new attempt
       // (e.g. "2" then "20272006"); never drop it, or the trigger needs repeated retries.
-      else ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
+      else ownerSequenceRef.current = secretCommand.startsWith(key) ? key : "";
       return false;
     }
 
