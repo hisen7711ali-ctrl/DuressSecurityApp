@@ -100,6 +100,45 @@ class SecurityAdminPlugin : Plugin() {
     @PluginMethod
     fun secureClearOwned(call: PluginCall) { secureStorageExecutor.execute { val ok = try { secureStore().removeOwned() } catch (_: Exception) { false }; call.resolve(JSObject().putCompat("ok", ok)) } }
     @PluginMethod
+    fun completeAppLockBiometric(call: PluginCall) {
+        val targetPackage = call.getString("packageName")?.takeIf { it.isNotBlank() && it != context.packageName }
+        if (targetPackage == null || !biometricAvailable() || !isConfiguredLockedPackage(targetPackage)) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        val targetIntent = try { context.packageManager.getLaunchIntentForPackage(targetPackage) } catch (_: Exception) { null }
+        if (targetIntent == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        try {
+            context.sendBroadcast(
+                Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_UNLOCKED)
+                    .setPackage(context.packageName)
+                    .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
+            )
+            targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            context.startActivity(targetIntent)
+            call.resolve(JSObject().putCompat("ok", true))
+        } catch (_: Exception) {
+            call.resolve(JSObject().putCompat("ok", false))
+        }
+    }
+
+    private fun isConfiguredLockedPackage(targetPackage: String): Boolean {
+        val raw = try { secureStore().get("duress-security-app") } catch (_: Exception) { null } ?: return false
+        return try {
+            val root = org.json.JSONObject(raw)
+            val state = root.optJSONObject("state") ?: root
+            val packages = state.optJSONArray("lockedPackages") ?: return false
+            state.optBoolean("appLockEnabled", false) && state.optBoolean("overlayEnabled", true) &&
+                (0 until packages.length()).any { packages.optString(it) == targetPackage }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @PluginMethod
     fun setSelfUninstallBlocked(call: PluginCall) { val blocked = call.getBoolean("blocked", false) ?: false; val ret = JSObject(); if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !dpm().isDeviceOwnerApp(context.packageName)) { call.resolve(ret.putCompat("ok", false)); return }; try { dpm().setUninstallBlocked(adminComponent(), context.packageName, blocked); ret.putCompat("ok", dpm().isUninstallBlocked(adminComponent(), context.packageName) == blocked) } catch (_: SecurityException) { ret.putCompat("ok", false) } catch (_: IllegalArgumentException) { ret.putCompat("ok", false) }; call.resolve(ret) }
     @PluginMethod
     fun setKioskMode(call: PluginCall) { val enabled = call.getBoolean("enabled", false) ?: false; if (!dpm().isDeviceOwnerApp(context.packageName)) { call.resolve(JSObject().putCompat("ok", false)); return }; val currentActivity = activity ?: run { call.resolve(JSObject().putCompat("ok", false)); return }; try { if (enabled) { dpm().setLockTaskPackages(adminComponent(), arrayOf(context.packageName)); if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) dpm().setLockTaskFeatures(adminComponent(), DevicePolicyManager.LOCK_TASK_FEATURE_HOME); currentActivity.runOnUiThread { val success = try { currentActivity.startLockTask(); true } catch (_: Exception) { try { dpm().setLockTaskPackages(adminComponent(), emptyArray()) } catch (_: Exception) {}; false }; call.resolve(JSObject().putCompat("ok", success)) } } else currentActivity.runOnUiThread { val success = try { currentActivity.stopLockTask(); dpm().setLockTaskPackages(adminComponent(), emptyArray()); true } catch (_: Exception) { try { dpm().setLockTaskPackages(adminComponent(), emptyArray()); true } catch (_: Exception) { false } }; call.resolve(JSObject().putCompat("ok", success)) } } catch (_: SecurityException) { call.resolve(JSObject().putCompat("ok", false)) } catch (_: IllegalStateException) { call.resolve(JSObject().putCompat("ok", false)) } }
