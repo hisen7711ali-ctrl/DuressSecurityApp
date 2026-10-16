@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# Every push creates a new run. Keep the newest branch revision in CI and
+# cancel stale builds so repeated documentation/fix commits do not queue many
+# Gradle builds in parallel and delay the artifact needed for testing.
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
