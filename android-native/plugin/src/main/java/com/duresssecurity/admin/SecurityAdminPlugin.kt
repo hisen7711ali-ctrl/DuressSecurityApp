@@ -2,6 +2,7 @@ package com.duresssecurity.admin
 
 import android.Manifest
 import android.app.ActivityManager
+import android.app.KeyguardManager
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -67,7 +68,7 @@ class SecurityAdminPlugin : Plugin() {
         val rows = JSArray(); matches.mapNotNull { info -> val packageName = info.activityInfo?.packageName ?: return@mapNotNull null; if (packageName == context.packageName) return@mapNotNull null; packageName to info.loadLabel(context.packageManager).toString() }.distinctBy { it.first }.sortedBy { it.second.lowercase() }.forEach { (packageName, label) -> rows.put(JSObject().putCompat("packageName", packageName).putCompat("label", label)) }; call.resolve(JSObject().putCompat("apps", rows))
     }
     @PluginMethod
-    fun getPermissionStatus(call: PluginCall) { val ret = JSObject(); ret.putCompat("overlayPermission", hasOverlayPermission()); ret.putCompat("usagePermission", hasUsageAccess()); ret.putCompat("accessibilityPermission", isOurAccessibilityServiceEnabled()); ret.putCompat("notificationPermission", hasNotificationPermission()); ret.putCompat("autostartPermission", false); ret.putCompat("deviceAdmin", dpm().isAdminActive(adminComponent())); ret.putCompat("deviceOwner", dpm().isDeviceOwnerApp(context.packageName)); ret.putCompat("biometricAvailable", biometricAvailable()); ret.putCompat("preventUninstall", isSelfUninstallBlocked()); ret.putCompat("dedicatedDeviceMode", isKioskActive()); call.resolve(ret) }
+    fun getPermissionStatus(call: PluginCall) { val ret = JSObject(); ret.putCompat("overlayPermission", hasOverlayPermission()); ret.putCompat("usagePermission", hasUsageAccess()); ret.putCompat("accessibilityPermission", isOurAccessibilityServiceEnabled()); ret.putCompat("notificationPermission", hasNotificationPermission()); ret.putCompat("autostartPermission", false); ret.putCompat("deviceAdmin", dpm().isAdminActive(adminComponent())); ret.putCompat("deviceOwner", dpm().isDeviceOwnerApp(context.packageName)); ret.putCompat("deviceSecure", (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure); ret.putCompat("biometricAvailable", biometricAvailable()); ret.putCompat("preventUninstall", isSelfUninstallBlocked()); ret.putCompat("dedicatedDeviceMode", isKioskActive()); call.resolve(ret) }
     @PluginMethod
     fun requestSystemPermission(call: PluginCall) {
         val kind = call.getString("permission") ?: ""; val result = JSObject(); val intent = when (kind) {
