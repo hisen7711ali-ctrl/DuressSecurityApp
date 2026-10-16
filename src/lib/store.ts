@@ -96,7 +96,7 @@ function hasLegacyVaultContent(value: unknown): value is VaultFile[] {
 type PersistedSlice = {
   lang: Lang; theme: ThemeName; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
   preventUninstall: boolean; dedicatedDeviceMode: boolean; deviceOwner: boolean; overlayPermission: boolean; usagePermission: boolean;
-  deviceAdmin: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
+  deviceAdmin: boolean; deviceSecure: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
   installedApps: DeviceApp[]; lockedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
   lockoutUntil: number; lockoutLevel: number; lastCheckAt: string; maxAttempts: number; lockTimeoutSec: number; biometricEnabled: boolean;
 };
@@ -131,7 +131,7 @@ export const useAppStore = create<AppStore>()(
     (set, get) => ({
       lang: "ar", theme: "dark", pins: { ...DEFAULT_PINS }, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
-      deviceAdmin: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
+      deviceAdmin: false, deviceSecure: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, lastCheckAt: nowIso(), maxAttempts: 3,
       lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", storageErrorCode: null, tab: "home", panel: "none", overlay: { kind: "unlock" },
       openedApp: null, vaultOpen: false, vaultCryptoReady: false, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: null,
@@ -166,9 +166,9 @@ export const useAppStore = create<AppStore>()(
 
       refreshNativePermissions: async () => {
         const status = await nativeBridge.getPermissionStatus();
-        if (!status) { set({ overlayPermission: false, usagePermission: false, accessibilityPermission: false, notificationPermission: false, autostartPermission: false, deviceAdmin: false, preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false }); return; }
+        if (!status) { set({ overlayPermission: false, usagePermission: false, accessibilityPermission: false, notificationPermission: false, autostartPermission: false, deviceAdmin: false, deviceSecure: false, preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false }); return; }
         set({ overlayPermission: status.overlayPermission, usagePermission: status.usagePermission, accessibilityPermission: status.accessibilityPermission, notificationPermission: status.notificationPermission,
-          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
+          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
       },
       setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }),
       setTab: (tab) => { const state = get(); if (state.tab === "files" && tab !== "files" && state.vaultCryptoReady) { lockEncryptedVaultSession(); set({ tab, panel: "none", vaultOpen: false, vaultCryptoReady: false, vault: [] }); return; } set({ tab, panel: "none" }); },
@@ -213,7 +213,34 @@ export const useAppStore = create<AppStore>()(
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
           set({ security, session: "extlocked", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 });
-          void saveSecurity(security).then((saved) => { if (!saved && nativeBridge.isNativeAndroid()) { const cleared = { ...INITIAL_SECURITY_STATE }; set({ security: cleared, session: "locked", overlay: { kind: "unlock" }, toast: get().lang === "ar" ? "تعذّر حفظ القفل في التخزين الآمن؛ لم يتم تفعيل القفل الممتد." : "Secure storage failed; the extended lock was not activated." }); return; } if (get().deviceAdmin) void nativeBridge.lockNow(); });
+          void saveSecurity(security).then(async (saved) => {
+            if (!saved && nativeBridge.isNativeAndroid()) {
+              const cleared = { ...INITIAL_SECURITY_STATE };
+              set({ security: cleared, session: "locked", overlay: { kind: "unlock" }, toast: get().lang === "ar" ? "تعذّر حفظ القفل في التخزين الآمن؛ لم يتم تفعيل القفل الممتد." : "Secure storage failed; the extended lock was not activated." });
+              return;
+            }
+            if (!nativeBridge.isNativeAndroid()) return;
+            const nativeStatus = await nativeBridge.getPermissionStatus();
+            const currentLang = get().lang;
+            if (!nativeStatus?.deviceAdmin) {
+              set({ toast: currentLang === "ar"
+                ? "تم تفعيل صيانة التطبيق، لكن قفل شاشة الهاتف يحتاج إلى تفعيل صلاحية مسؤول الجهاز أولاً."
+                : "App maintenance is active, but locking Android needs Device Admin to be enabled first." });
+              return;
+            }
+            if (!nativeStatus.deviceSecure) {
+              set({ toast: currentLang === "ar"
+                ? "تم تفعيل صيانة التطبيق، لكن الهاتف لا يملك قفل شاشة آمناً. اضبط PIN أو نمطاً من إعدادات أندرويد أولاً."
+                : "App maintenance is active, but Android has no secure screen lock. Set a PIN or pattern in Android Settings first." });
+              return;
+            }
+            const locked = await nativeBridge.lockNow();
+            if (!locked) {
+              set({ toast: get().lang === "ar"
+                ? "تعذّر طلب قفل شاشة أندرويد. تأكد من صلاحية مسؤول الجهاز وقفل الشاشة الآمن."
+                : "Android did not confirm the screen-lock request. Check Device Admin and the secure screen lock." });
+            }
+          });
           return "extended-lock";
         }
         if (action === "duress") { lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); return "duress"; }
