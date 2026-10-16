@@ -47,6 +47,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var biometricUnlockReceiver: BroadcastReceiver? = null
     private var pendingBiometricTarget: String? = null
     private var activeMaintenanceUntil: Long? = null
+    private var maintenanceRecoveryOpen = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -202,6 +203,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         dismissGate()
         currentTarget = targetPackage
         activeMaintenanceUntil = maintenanceUntil
+        maintenanceRecoveryOpen = false
         pinValue = ""
         val persistedAttempts = loadAttemptState(targetPackage)
         attempts = persistedAttempts.attempts
@@ -226,13 +228,18 @@ class AppLockAccessibilityService : AccessibilityService() {
         appHeader.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
         val appName = TextView(this).apply { text = appLabel; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setPadding(0, dp(7), 0, 0) }
         appHeader.addView(appName, matchWrap())
-        val shield = TextView(this).apply { text = "◈"; textSize = 30f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }
+        val shield = TextView(this).apply {
+            text = "▼"; textSize = 31f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(239, 68, 68)); gravity = Gravity.CENTER
+            contentDescription = if (isArabic) "قفل أمان" else "Security lock"
+            setPadding(0, dp(4), 0, 0)
+        }
         val title = TextView(this).apply {
             text = if (storageUnavailable) { if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable" } else if (maintenanceUntil != null) { if (isArabic) "التطبيق قيد الصيانة" else "App under maintenance" } else if (isArabic) "التطبيق محمي" else "App protected"
             textSize = 23f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER
         }
         val subtitle = TextView(this).apply {
-            text = if (storageUnavailable) { if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery." } else if (maintenanceUntil != null) { if (isArabic) "هذا التطبيق في وضع الصيانة لمدة 30 يوماً. أدخل الرمز الرئيسي لإلغاء الصيانة." else "This app is in maintenance for 30 days. Enter the master PIN to cancel maintenance." } else if (isArabic) "أدخل الرمز الرئيسي للمتابعة" else "Enter the master PIN to continue"
+            text = if (storageUnavailable) { if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery." } else if (maintenanceUntil != null) { if (isArabic) "الصيانة فعّالة. اضغط على هذا العنوان لإدخال رمز المالك والاسترداد." else "Maintenance is active. Tap this title to enter the owner PIN for recovery." } else if (isArabic) "أدخل الرمز الرئيسي للمتابعة" else "Enter the master PIN to continue"
             textSize = 14f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8))
         }
         val countdown = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(3), 0, dp(5)) }
@@ -269,12 +276,41 @@ class AppLockAccessibilityService : AccessibilityService() {
             setOnClickListener { dispatchBiometricRequest(targetPackage) }
         } else null
         val error = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "استعد التخزين الآمن من داخل التطبيق" else "Recover secure storage from inside the app" } else " "; textSize = 12f; setTextColor(Color.rgb(255, 105, 105)); gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(2)) }
-        val footer = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection" } else if (maintenanceUntil != null) { if (isArabic) "الرمز الرئيسي يلغي صيانة هذا التطبيق فقط" else "The master PIN cancels maintenance for this app only" } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"; textSize = 11f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, 0) }
+        val footer = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection" } else if (maintenanceUntil != null) { if (isArabic) "اضغط على عنوان الصيانة لفتح الاسترداد." else "Tap the maintenance title to open recovery." } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"; textSize = 11f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, 0) }
         root.addView(appHeader, matchWrap()); root.addView(shield, matchWrap()); root.addView(title, matchWrap()); root.addView(subtitle, matchWrap())
         if (maintenanceUntil != null) root.addView(countdown, matchWrap())
         root.addView(quoteView, matchWrap()); root.addView(dots, matchWrap()); root.addView(symbols, matchWrap()); root.addView(numberPad, matchWrap())
         if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) }); root.addView(error, matchWrap()); root.addView(footer, matchWrap())
         errorView = error; lockView = root; updatePinDots()
+        if (maintenanceUntil != null) {
+            dots.visibility = View.GONE
+            symbols.visibility = View.GONE
+            numberPad.visibility = View.GONE
+            error.visibility = View.GONE
+            title.isClickable = true
+            title.contentDescription = if (isArabic) "اضغط لإدخال رمز المالك وإلغاء الصيانة" else "Tap to enter the owner PIN and exit maintenance"
+            title.setOnClickListener {
+                maintenanceRecoveryOpen = !maintenanceRecoveryOpen
+                pinValue = ""
+                updatePinDots()
+                val visible = maintenanceRecoveryOpen
+                dots.visibility = if (visible) View.VISIBLE else View.GONE
+                symbols.visibility = if (visible) View.VISIBLE else View.GONE
+                numberPad.visibility = if (visible) View.VISIBLE else View.GONE
+                error.visibility = if (visible) View.VISIBLE else View.GONE
+                subtitle.text = if (visible) {
+                    if (isArabic) "ضع كلمة السر لإلغاء وضع الصيانة." else "Enter the owner PIN to cancel maintenance mode."
+                } else {
+                    if (isArabic) "الصيانة فعّالة. اضغط على هذا العنوان لإدخال رمز المالك والاسترداد." else "Maintenance is active. Tap this title to enter the owner PIN for recovery."
+                }
+                footer.text = if (visible) {
+                    if (isArabic) "المالك فقط: أدخل الرمز الرئيسي لإلغاء صيانة هذا التطبيق." else "Owner only: enter the master PIN to cancel this app's maintenance."
+                } else {
+                    if (isArabic) "اضغط على عنوان الصيانة لفتح الاسترداد." else "Tap the maintenance title to open recovery."
+                }
+                error.text = " "
+            }
+        }
         try {
             val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SECURE, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.CENTER }
             windowManager?.addView(root, params)
@@ -399,7 +435,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun setKeypadEnabled(enabled: Boolean) { keypadButtons.forEach { it.isEnabled = enabled } }
     private fun updatePinDots() { pinDotViews.forEachIndexed { index, dot -> dot.background = makeDotBackground(index < pinValue.length) } }
     private fun makeDotBackground(filled: Boolean) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (filled) Color.rgb(40, 220, 230) else Color.TRANSPARENT); setStroke(dp(2), if (filled) Color.rgb(40, 220, 230) else Color.rgb(125, 138, 154)) }
-    private fun dismissGate() { stopUiTickers(); val current = lockView; if (current != null) try { windowManager?.removeView(current) } catch (_: Exception) { }; lockView = null; errorView = null; maintenanceCountdownView = null; pinValue = ""; pinDotViews.clear(); keypadButtons.clear(); currentTarget = null; activeMaintenanceUntil = null }
+    private fun dismissGate() { stopUiTickers(); maintenanceRecoveryOpen = false; val current = lockView; if (current != null) try { windowManager?.removeView(current) } catch (_: Exception) { }; lockView = null; errorView = null; maintenanceCountdownView = null; pinValue = ""; pinDotViews.clear(); keypadButtons.clear(); currentTarget = null; activeMaintenanceUntil = null }
     private fun blockUntilStorageRecovers() { blockedUntil = Long.MAX_VALUE; setKeypadEnabled(false); errorView?.text = if (currentLanguage().equals("ar", true)) "تعذر حفظ سجل المحاولات؛ أُوقفت المحاولات حفاظًا على الحماية." else "Attempt state could not be saved; retries are blocked to preserve protection." }
     private fun normalizePin(value: String): String = value.map { ch -> when (ch) { in '\u0660'..'\u0669' -> ('0'.code + ch.code - 0x0660).toChar(); in '\u06f0'..'\u06f9' -> ('0'.code + ch.code - 0x06f0).toChar(); else -> ch } }.joinToString("")
     @Suppress("DEPRECATION") private fun currentLanguage(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) resources.configuration.locales[0]?.language ?: "en" else resources.configuration.locale?.language ?: "en"
