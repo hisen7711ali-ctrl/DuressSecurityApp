@@ -105,7 +105,10 @@ export function FakeCalculator({ onSecretCommand, secretCommand = DEFAULT_CALCUL
       // calculator expression. This avoids React state batching/re-render
       // timing from losing the final digit before '=' is pressed.
       const sequenceMatches = ownerSequenceRef.current === secretCommand;
-      if (!sequenceMatches) return false;
+      if (!sequenceMatches) {
+        resetOwnerSequence();
+        return false;
+      }
       const handled = onSecretCommand?.(`${secretCommand}=`) ?? false;
       if (handled) resetOwnerSequence();
       return handled;
