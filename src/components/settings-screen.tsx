@@ -148,9 +148,12 @@ export function SettingsScreen() {
           hint={preventUninstall
             ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.")
             : !deviceOwner
-              ? (lang === "ar" ? "يتطلب منع الإزالة صفة مالك الجهاز (Device Owner)؛ صلاحية مسؤول الجهاز العادية وحدها لا تكفي." : "Blocking uninstall requires Device Owner; ordinary Device Admin permission is not enough.")
+              ? (lang === "ar"
+                ? "غير مدعوم بعد: يلزم إعداد رسمي كمالك الجهاز (Device Owner). مسؤول الجهاز العادي والأذونات الإضافية لا تمنع الإزالة. للاختبار استخدم محاكيًا نظيفًا مخصصًا وProvisioning رسميًا أو adb dpm؛ لا تستخدم الأمر على هاتفك الأساسي."
+                : "Not supported yet: formal Device Owner provisioning is required. Device Admin and extra permissions cannot block uninstall. Use a clean dedicated test emulator with official provisioning or adb dpm; do not run it on your primary phone.")
               : (lang === "ar" ? "مالك الجهاز مفعّل، لكن أندرويد لم يؤكد سياسة منع الإزالة بعد." : "Device Owner is active, but Android has not confirmed the uninstall-block policy yet.")}
           on={preventUninstall}
+          disabled={!deviceOwner && !preventUninstall}
           onToggle={(value) =>
             openOverlay({
               kind: "confirm",
@@ -235,6 +238,12 @@ export function SettingsScreen() {
         />
         <p className="mt-3 text-xs leading-relaxed text-muted">{t.biometricNote}</p>
       </section>
+
+      <p className="px-1 text-xs leading-relaxed text-muted">
+        {lang === "ar"
+          ? "ملاحظة الصلاحيات: منع الإزالة يعتمد على Device Owner فقط؛ لا تعوّضه صلاحيات Accessibility أو تجاهل تحسين البطارية أو Foreground Service. قفل التطبيقات يحتاج تفعيل Accessibility يدويًا من شاشة أندرويد. لا يستطيع التطبيق منح نفسه هذه الصلاحيات."
+          : "Permission note: uninstall blocking depends on Device Owner; Accessibility, battery-optimization exemption, or a Foreground Service do not replace it. App Lock needs Accessibility enabled manually in Android Settings. The app cannot grant itself these permissions."}
+      </p>
 
       <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center justify-between gap-3">
