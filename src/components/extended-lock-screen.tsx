@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Lock } from "lucide-react";
+import { Moon } from "lucide-react";
 import { AndroidClock } from "@/components/android-clock";
 import { remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
@@ -91,14 +91,14 @@ export function ExtendedLockScreen() {
         <AndroidClock lang={lang} />
         <button
           type="button"
-          tabIndex={-1}
-          aria-hidden="true"
           onClick={openRecovery}
-          aria-label={lang === "ar" ? "استرداد الوصول من وضع الصيانة" : "Recover access from maintenance"}
-          className="absolute left-[15%] top-[3.5rem] z-10 size-20 rounded-full bg-transparent outline-none"
-        />
+          aria-label={lang === "ar" ? "استرداد المالك من وضع الصيانة" : "Owner recovery from maintenance"}
+          className="absolute left-5 top-5 z-10 grid size-9 place-items-center rounded-full text-white/70 outline-none"
+        >
+          <Moon className="size-5" />
+        </button>
         <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
-          <Lock className="size-7" />
+          <Moon className="size-7" />
         </span>
         <div>
           <button
