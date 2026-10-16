@@ -22,7 +22,7 @@ test("protected-app gate keeps configured PINs dynamic and routes only app-owned
   assert.match(service, /policy\.extendedLockPin/);
   assert.match(service, /policy\.duressPin/);
   assert.match(service, /policy\.wipePin/);
-  assert.doesNotMatch(service, /typed\s*==\s*\"5555\"|typed\s*==\s*\"4444\"|typed\s*==\s*\"7777\"/);
+  assert.doesNotMatch(service, /typed\s*==\s*"5555"|typed\s*==\s*"4444"|typed\s*==\s*"7777"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
 });
 
@@ -43,8 +43,8 @@ test("app-lock gate uses the same faith-quote source values as the home hints", 
     "قال ﷺ: «يَا مَعْشَرَ الشَّبَابِ مَنِ اسْتَطَاعَ مِنْكُمُ الْبَاءَةَ فَلْيَتَزَوَّجْ، فَإِنَّهُ أَغَضُّ لِلْبَصَرِ وَأَحْصَنُ لِلْفَرْجِ»",
   ];
   for (const quote of expected) {
-    assert.match(quotes, new RegExp(quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(service, new RegExp(quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(quotes.includes(quote), `home quote missing: ${quote}`);
+    assert.ok(service.includes(quote), `app-lock quote missing: ${quote}`);
   }
   assert.match(service, /5000L/);
 });
@@ -63,8 +63,8 @@ test("7777 wipe verifies the Android secure store was actually cleared before de
 test("PIN changes remain centralized in the encrypted policy and old literals are not accepted by the native gate", async () => {
   const store = await read("src/lib/store.ts");
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
-  assert.match(store, /action\.type === \"save-pin\"/);
+  assert.match(store, /action\.type === "save-pin"/);
   assert.match(store, /normalizePin\(action\.value\)/);
-  assert.match(service, /SecureStorage\(this\)\.get\(\"duress-security-app\"\)/);
-  assert.doesNotMatch(service, /\"5555\"|\"4444\"|\"7777\"/);
+  assert.match(service, /SecureStorage\(this\)\.get\("duress-security-app"\)/);
+  assert.doesNotMatch(service, /"5555"|"4444"|"7777"/);
 });
