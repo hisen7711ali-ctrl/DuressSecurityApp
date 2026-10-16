@@ -1,10 +1,14 @@
 package com.duresssecurity.app
 
+import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
 import com.getcapacitor.BridgeActivity
+import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Capacitor MainActivity with native security bridge and non-blocking secure-store warmup. */
@@ -28,6 +32,28 @@ class MainActivity : BridgeActivity() {
         // maintenance/calculator UI over the system lock screen or wake the
         // device automatically; DevicePolicyManager.lockNow() performs an
         // explicit device-lock request only after the owner enabled Device Admin.
+        deliverOwnerPinAction(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        deliverOwnerPinAction(intent)
+    }
+
+    private fun deliverOwnerPinAction(source: Intent?) {
+        val pin = source?.getStringExtra(EXTRA_OWNER_PIN_ACTION)?.takeIf { it.isNotBlank() } ?: return
+        source.removeExtra(EXTRA_OWNER_PIN_ACTION)
+        val webView = bridge?.webView ?: return
+        val quotedPin = JSONObject.quote(pin)
+        val script = "(function(pin) { var handler = window.__duressSecurityHandlePinAction; if (typeof handler === 'function') { window.__duressSecurityPendingPinAction = undefined; handler(pin); return 'handled'; } window.__duressSecurityPendingPinAction = pin; return 'pending'; })($quotedPin);"
+        // Wait for the bundled WebView document to exist; if React hasn't mounted
+        // yet, the pending value is consumed by AppShell after hydration.
+        webView.postDelayed({
+            if (!webView.url.isNullOrBlank() && webView.url != "about:blank") {
+                webView.evaluateJavascript(script, null)
+            }
+        }, 700L)
     }
 
     fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
@@ -39,6 +65,7 @@ class MainActivity : BridgeActivity() {
     }
 
     companion object {
+        const val EXTRA_OWNER_PIN_ACTION = "duress-security-owner-pin-action"
         private val SECURE_WARMUP_STARTED = AtomicBoolean(false)
     }
 }
