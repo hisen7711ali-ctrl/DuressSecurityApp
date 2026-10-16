@@ -260,15 +260,22 @@ export const useAppStore = create<AppStore>()(
               return;
             }
             if (!nativeBridge.isNativeAndroid()) return;
-            const nativeStatus = await nativeBridge.getPermissionStatus();
+            let nativeStatus = await nativeBridge.getPermissionStatus();
             const currentLang = get().lang;
             if (!nativeStatus?.deviceAdmin) {
-              set({ toast: currentLang === "ar"
-                ? "تم تفعيل صيانة التطبيق، لكن قفل شاشة الهاتف يحتاج إلى تفعيل صلاحية مسؤول الجهاز أولاً."
-                : "App maintenance is active, but locking Android needs Device Admin to be enabled first." });
-              return;
+              // 5555 explicitly requests Device Admin through Android's own
+              // consent screen. The owner must approve it; never self-grant.
+              const granted = await nativeBridge.requestDeviceAdmin();
+              await get().refreshNativePermissions();
+              nativeStatus = await nativeBridge.getPermissionStatus();
+              if (!granted || !nativeStatus?.deviceAdmin) {
+                set({ toast: currentLang === "ar"
+                  ? "بقيت صيانة التطبيق فعّالة، لكنك لم تمنح مسؤول الجهاز؛ لم يتم قفل شاشة الهاتف."
+                  : "App maintenance remains active, but Device Admin was not granted; Android's screen was not locked." });
+                return;
+              }
             }
-            if (!nativeStatus.deviceSecure) {
+            if (!nativeStatus?.deviceSecure) {
               set({ toast: currentLang === "ar"
                 ? "تم تفعيل صيانة التطبيق، لكن الهاتف لا يملك قفل شاشة آمناً. اضبط PIN أو نمطاً من إعدادات أندرويد أولاً."
                 : "App maintenance is active, but Android has no secure screen lock. Set a PIN or pattern in Android Settings first." });
@@ -284,7 +291,26 @@ export const useAppStore = create<AppStore>()(
           return "extended-lock";
         }
         if (action === "duress") { lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); return "duress"; }
-        if (action === "reject") { const attempts = state.failedAttempts + 1; const locked = attempts >= state.maxAttempts; const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel); set({ failedAttempts: locked ? 0 : attempts, lockoutUntil: locked ? Date.now() + delayMs : 0, lockoutLevel: locked ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel, toast: locked ? (state.lang === "ar" ? `تم إيقاف المحاولات مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `PIN attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`) : state.toast }); return locked ? "lockout" : "wrong"; }
+        if (action === "reject") {
+          const attempts = state.failedAttempts + 1;
+          const locked = attempts >= state.maxAttempts;
+          const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel);
+          set({
+            failedAttempts: locked ? 0 : attempts,
+            lockoutUntil: locked ? Date.now() + delayMs : 0,
+            lockoutLevel: locked ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel,
+            toast: locked ? (state.lang === "ar" ? `تم إيقاف المحاولات مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `PIN attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`) : state.toast,
+          });
+          // Repeated failed PINs may lock the phone only when the owner already
+          // granted Device Admin and configured a secure Android keyguard. Never
+          // open a system permission prompt in response to wrong PIN attempts.
+          if (locked && nativeBridge.isNativeAndroid()) {
+            void nativeBridge.getPermissionStatus().then((status) => {
+              if (status?.deviceAdmin && status.deviceSecure) void nativeBridge.lockNow();
+            });
+          }
+          return locked ? "lockout" : "wrong";
+        }
         if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return "ok"; }
         if (overlay.kind === "app") { set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
         if (overlay.kind === "confirm") { get().applyConfirm(overlay.action); set({ overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
