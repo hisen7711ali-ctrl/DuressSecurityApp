@@ -318,19 +318,21 @@ export function ToggleRow({
   hint,
   on,
   onToggle,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   on: boolean;
   onToggle: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-      <div>
+    <div className={`flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 ${disabled ? "opacity-75" : ""}`}>
+      <div className="min-w-0">
         <p className="text-sm font-semibold">{label}</p>
         {hint ? <p className="text-xs text-muted">{hint}</p> : null}
       </div>
-      <Switch checked={on} onChange={() => onToggle(!on)} />
+      <Switch checked={on} disabled={disabled} onChange={() => onToggle(!on)} />
     </div>
   );
 }
