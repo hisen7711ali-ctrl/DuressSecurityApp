@@ -32,16 +32,26 @@ test("fresh startup keeps the calculator visible while secure initialization ret
   assert.match(plugin, /secureStorageExecutor/);
 });
 
-test("calculator trigger is the exact 20272006= sequence and opens the security gate", async () => {
+test("calculator trigger is the exact 20272006= sequence and opens the normal PIN gate", async () => {
   const shell = await read("src/components/app-shell.tsx");
   const calculator = await read("src/components/fake-calculator.tsx");
   assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
-  assert.match(shell, /openSecurityGate\(\)/);
-  assert.match(shell, /setPendingSecurityGate\(true\)/);
-  assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
+  assert.match(shell, /openSecurityGate\(true\)/);
+  assert.match(shell, /setSettingsEntryRequested\(true\)/);
+  assert.match(shell, /setTab\("settings"\)/);
   assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
+  assert.doesNotMatch(shell, /session: "unlocked"/);
+  assert.doesNotMatch(shell, /useAppStore\.setState\(\{[^}]*session: "unlocked"/s);
   assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
   assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+});
+
+test("native plugin is registered synchronously so awaiting the Capacitor proxy cannot deadlock on then()", async () => {
+  const bridge = await read("src/lib/native-bridge.ts");
+  assert.match(bridge, /let nativePlugin: SecurityAdminNative \| null \| undefined/);
+  assert.match(bridge, /function getNativePlugin\(\): SecurityAdminNative \| null/);
+  assert.match(bridge, /nativePlugin \?\?= registerPlugin<SecurityAdminNative>\("SecurityAdmin"\)/);
+  assert.doesNotMatch(bridge, /Promise\.resolve\(registerPlugin<SecurityAdminNative>\("SecurityAdmin"\)\)/);
 });
