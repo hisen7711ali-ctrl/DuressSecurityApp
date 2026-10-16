@@ -267,12 +267,19 @@ export const useAppStore = create<AppStore>()(
       submitPin: (pin) => {
         const state = get();
         const overlay = state.overlay;
-        const action = serviceClassifyPin(pin, state.pins);
         if (state.session === "wiping" || state.session === "storage-error") return "lockout";
+        if (overlay?.kind === "set-pin") {
+          const normalizedPin = normalizePin(pin);
+          if (normalizedPin.length !== 4) return "wrong";
+          const candidate = { ...state.pins, [overlay.target]: normalizedPin };
+          if (validatePins(candidate) === "duplicate") return "duplicate";
+          set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } });
+          return "need-master";
+        }
+        const action = serviceClassifyPin(pin, state.pins);
         const privilegedRecovery = action === "wipe" || action === "duress";
-        if (overlay?.kind !== "set-pin" && state.session === "extlocked" && !privilegedRecovery) return "lockout";
+        if (state.session === "extlocked" && !privilegedRecovery) return "lockout";
         if (Date.now() < state.lockoutUntil && !privilegedRecovery) return "lockout";
-        if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== 4) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
         if (action === "wipe") { lockEncryptedVaultSession(); set({ session: "wiping", overlay: null, panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: [] }); return "wipe"; }
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
