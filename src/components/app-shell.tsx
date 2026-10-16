@@ -24,6 +24,11 @@ const STARTUP_MAX_RETRIES = 2;
 const STARTUP_HYDRATION_WATCHDOG_MS = 80000;
 const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "DEVICE_SECRET_INVALID", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
 
+type NativePinActionWindow = Window & {
+  __duressSecurityHandlePinAction?: (pin: string) => void;
+  __duressSecurityPendingPinAction?: string;
+};
+
 export function AppShell() {
   const [storageFailed, setStorageFailed] = useState(false);
   const [calculatorFront, setCalculatorFront] = useState(true);
@@ -33,6 +38,42 @@ export function AppShell() {
   const hydrateSession = useAppStore((s) => s.hydrateSession); const session = useAppStore((s) => s.session); const storageErrorCode = useAppStore((s) => s.storageErrorCode); const ready = useAppStore((s) => s.ready); const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions); const refreshSecurity = useAppStore((s) => s.refreshSecurity); const tab = useAppStore((s) => s.tab); const vaultOpen = useAppStore((s) => s.vaultOpen); const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired); const vault = useAppStore((s) => s.vault); const setTab = useAppStore((s) => s.setTab); const setVaultOpen = useAppStore((s) => s.setVaultOpen); const panel = useAppStore((s) => s.panel); const overlay = useAppStore((s) => s.overlay); const openedApp = useAppStore((s) => s.openedApp); const toast = useAppStore((s) => s.toast); const setToast = useAppStore((s) => s.setToast); const lockSession = useAppStore((s) => s.lockSession); const openOverlay = useAppStore((s) => s.openOverlay); const theme = useAppStore((s) => s.theme); const { lang, dir } = useCopy(); const protectedUi = !calculatorFront && ready && session !== "duress";
   const openSecurityGate = () => { if (unlockTransitionTimer.current !== null) { window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = null; } securityGateFlow.current = true; calculatorRestoreArmed.current = false; suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; setCalculatorFront(false); setPendingSecurityGate(true); openOverlay({ kind: "unlock" }); };
   const handleCalculatorCommand = (sequence: string): boolean => { if (sequence !== SECRET_CALCULATOR_COMMAND) return false; openSecurityGate(); return true; };
+
+  useEffect(() => {
+    const host = window as NativePinActionWindow;
+    const handleOwnerPinAction = (pin: string) => {
+      const state = useAppStore.getState();
+      if (!state.ready) {
+        host.__duressSecurityPendingPinAction = pin;
+        return;
+      }
+      // These are the same configured owner PIN actions used by the main login.
+      // Do not allow a relaunch to bypass a storage error or an active 30-day lock.
+      if (state.session === "storage-error" || state.session === "wiping" || state.session === "extlocked") return;
+      state.openOverlay({ kind: "unlock" });
+      state.submitPin(pin);
+    };
+    host.__duressSecurityHandlePinAction = handleOwnerPinAction;
+    if (host.__duressSecurityPendingPinAction) {
+      const pending = host.__duressSecurityPendingPinAction;
+      host.__duressSecurityPendingPinAction = undefined;
+      handleOwnerPinAction(pending);
+    }
+    return () => {
+      if (host.__duressSecurityHandlePinAction === handleOwnerPinAction) {
+        delete host.__duressSecurityHandlePinAction;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const host = window as NativePinActionWindow;
+    const pending = host.__duressSecurityPendingPinAction;
+    if (!pending) return;
+    host.__duressSecurityPendingPinAction = undefined;
+    host.__duressSecurityHandlePinAction?.(pending);
+  }, [ready]);
 
   useEffect(() => {
     installNetworkGuard();
