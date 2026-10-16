@@ -4,6 +4,7 @@ import { wipeAppData } from "@/lib/security-service";
 import { useAppStore } from "@/lib/store";
 import { isNativeAndroid, secureStorageClearOwned, secureStorageGet } from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
+import { resetCalculatorCommand } from "@/lib/calculator-command";
 
 const OWNED_SECURE_KEYS = [
   "duress-security-app",
@@ -41,6 +42,7 @@ export function WipeScreen() {
         }
       }
       await wipeAppData();
+      resetCalculatorCommand();
       // wipeLocal only recreates a clean default configuration after the old
       // app-owned records have been removed; no permission or confirmation UI is
       // requested by the 7777 emergency wipe flow.
