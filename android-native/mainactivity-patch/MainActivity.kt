@@ -1,6 +1,5 @@
 package com.duresssecurity.app
 
-import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
@@ -25,13 +24,10 @@ class MainActivity : BridgeActivity() {
         }
 
         setScreenCaptureAllowed(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
-        }
+        // Keep Android's real Keyguard in charge. The app must not show its
+        // maintenance/calculator UI over the system lock screen or wake the
+        // device automatically; DevicePolicyManager.lockNow() performs an
+        // explicit device-lock request only after the owner enabled Device Admin.
     }
 
     fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
