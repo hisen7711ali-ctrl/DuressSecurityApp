@@ -10,10 +10,11 @@ test("extended lock uses maintenance copy and hides normal recovery UI", async (
   const source = await read("src/components/extended-lock-screen.tsx");
   assert.match(source, /التطبيق قيد الصيانة/);
   assert.match(source, /30 يوماً/);
-  assert.match(source, /left-\[15%\] top-\[3\.5rem\]/);
-  assert.doesNotMatch(source, /ShieldCheck/);
+  assert.match(source, /<Moon className="size-5" \/>/);
   assert.match(source, /onClick=\{openRecovery\}/);
+  assert.match(source, /استرداد المالك من وضع الصيانة/);
   assert.match(source, /اضغط لإلغاء وضع الصيانة/);
+  assert.doesNotMatch(source, /aria-hidden="true"/);
   assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
   assert.match(source, /next.length === 4/);
 });
@@ -54,7 +55,9 @@ test("device-policy failures do not claim that this is a test-device-only featur
   assert.doesNotMatch(source, /تتطلب هذه الميزة إعداد الجهاز كـ Device Owner/);
   assert.doesNotMatch(source, /جهاز اختبار مُهيّأ كـ Device Owner/);
   const settings = await read("src/components/settings-screen.tsx");
-  assert.match(settings, /صلاحية مسؤول الجهاز العادية وحدها لا تكفي/);
+  assert.match(settings, /Device Owner/);
+  assert.match(settings, /الأذونات الإضافية لا تمنع الإزالة/);
+  assert.match(settings, /disabled=\{!deviceOwner && !preventUninstall\}/);
 });
 
 
@@ -67,7 +70,7 @@ test("Android system lock prerequisites are exposed and the real Keyguard remain
   assert.match(plugin, /KeyguardManager/);
   assert.match(plugin, /deviceSecure/);
   assert.match(bridge, /deviceSecure: boolean/);
-  assert.match(store, /!nativeStatus\.deviceSecure/);
+  assert.match(store, /!nativeStatus\?\.deviceSecure/);
   assert.match(settings, /اختبار قفل شاشة الهاتف الآن/);
   assert.doesNotMatch(activity, /setShowWhenLocked\(true\)|setTurnScreenOn\(true\)|FLAG_SHOW_WHEN_LOCKED|FLAG_TURN_SCREEN_ON/);
 });
@@ -167,7 +170,7 @@ test("Android asks the owner for only the permission needed by each explicit fea
   assert.match(extended, /nativeBridge\.requestDeviceAdmin\(\)/);
   assert.match(extended, /nativeBridge\.lockNow\(\)/);
   assert.match(extended, /nativeStatus\?\.deviceSecure/);
-  assert.match(settings, /تعذّر فتح إعدادات إمكانية الوصول/);
+  assert.match(store, /تعذّر فتح إعدادات إمكانية الوصول/);
   assert.doesNotMatch(plugin, /REQUEST_IGNORE_BATTERY_OPTIMIZATIONS/);
   assert.doesNotMatch(plugin, /QUERY_ALL_PACKAGES/);
 });
