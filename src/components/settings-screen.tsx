@@ -19,6 +19,7 @@ export function SettingsScreen() {
   const overlayPermission = useAppStore((s) => s.overlayPermission);
   const usagePermission = useAppStore((s) => s.usagePermission);
   const deviceAdmin = useAppStore((s) => s.deviceAdmin);
+  const deviceSecure = useAppStore((s) => s.deviceSecure);
   const accessibilityPermission = useAppStore((s) => s.accessibilityPermission);
   const autostartPermission = useAppStore((s) => s.autostartPermission);
   const notificationPermission = useAppStore((s) => s.notificationPermission);
@@ -37,7 +38,18 @@ export function SettingsScreen() {
     }
     const granted = await requestDeviceAdminNative();
     await refreshNativePermissions();
-    setToast(granted ? t.deviceAdminActive : t.wrongPin);
+    const latest = useAppStore.getState();
+    if (!granted) {
+      setToast(lang === "ar"
+        ? "لم يتم تفعيل صلاحية مسؤول الجهاز. وافق على شاشة أندرويد ثم ارجع إلى التطبيق."
+        : "Device Admin was not enabled. Approve Android's system prompt, then return to the app.");
+    } else if (!latest.deviceSecure) {
+      setToast(lang === "ar"
+        ? "تم تفعيل مسؤول الجهاز. لضمان قفل الشاشة، اضبط PIN أو نمطًا من إعدادات أندرويد."
+        : "Device Admin is active. Set a PIN or pattern in Android Settings for secure screen locking.");
+    } else {
+      setToast(t.deviceAdminActive);
+    }
   }
 
   const perms: { key: PermKey; label: string; hint: string; ok: boolean }[] = [
@@ -138,6 +150,11 @@ export function SettingsScreen() {
             </button>
           )}
         </div>
+        <p className={`mt-2 text-xs leading-relaxed ${deviceSecure ? "text-success" : "text-muted"}`}>
+          {deviceSecure
+            ? (lang === "ar" ? "قفل شاشة أندرويد الآمن: مفعّل." : "Android secure screen lock: configured.")
+            : (lang === "ar" ? "قفل شاشة الهاتف شيء مستقل: اضبط PIN أو نمطًا من إعدادات أندرويد. التطبيق لا يستطيع إنشاء كلمة مرور النظام بدلًا منك." : "The phone's secure screen lock is separate: set a PIN or pattern in Android Settings. The app cannot create the system password for you.")}
+        </p>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
