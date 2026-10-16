@@ -6,7 +6,7 @@ on:
     branches: [main, master, merged-fix, fix/maintenance-and-app-lock]
 
 permissions:
-  contents: read
+  contents: write
 
 # Every push creates a new run. Keep the newest branch revision in CI and
 # cancel stale builds so repeated documentation/fix commits do not queue many
@@ -35,12 +35,8 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Install npm dependencies
-        run: npm install --no-audit --no-fund
       - name: Resolve available dependency fixes without force or major upgrades
         run: npm audit fix --package-lock-only --no-fund
-      - name: Sync installed dependencies to the refreshed lockfile
-        run: npm install --no-audit --no-fund
       - name: Upload refreshed lockfile for review
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,6 +45,8 @@ jobs:
           path: package-lock.json
           if-no-files-found: error
           retention-days: 7
+      - name: Install from the refreshed lockfile
+        run: npm ci --no-audit --no-fund
       - name: Generate npm audit report
         if: always()
         shell: bash
@@ -83,6 +81,8 @@ jobs:
             npm-audit.json.summary
           if-no-files-found: warn
           retention-days: 7
+      - name: Fail CI when high or critical dependency advisories remain
+        run: npm audit --audit-level=high
       - name: Run tests
         shell: bash
         run: |
@@ -224,3 +224,16 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Commit reviewed semver-safe dependency lockfile fixes
+        if: success() && github.ref == 'refs/heads/fix/maintenance-and-app-lock'
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Dependency lockfile is already current; no commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: update vulnerable transitive dependency versions"
+          git push
