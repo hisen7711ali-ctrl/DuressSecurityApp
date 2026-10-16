@@ -41,19 +41,29 @@ class MainActivity : BridgeActivity() {
         deliverOwnerPinAction(intent)
     }
 
+    private var pendingOwnerPinAction: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private fun deliverOwnerPinAction(source: Intent?) {
         val pin = source?.getStringExtra(EXTRA_OWNER_PIN_ACTION)?.takeIf { it.isNotBlank() } ?: return
         source.removeExtra(EXTRA_OWNER_PIN_ACTION)
-        val webView = bridge?.webView ?: return
+        pendingOwnerPinAction = pin
+        dispatchPendingOwnerPinAction(0)
+    }
+
+    private fun dispatchPendingOwnerPinAction(attempt: Int) {
+        val pin = pendingOwnerPinAction ?: return
+        val webView = bridge?.webView
+        if (webView == null || webView.url.isNullOrBlank() || webView.url == "about:blank") {
+            if (attempt < 40) mainHandler.postDelayed({ dispatchPendingOwnerPinAction(attempt + 1) }, 250L)
+            return
+        }
         val quotedPin = JSONObject.quote(pin)
         val script = "(function(pin) { var handler = window.__duressSecurityHandlePinAction; if (typeof handler === 'function') { window.__duressSecurityPendingPinAction = undefined; handler(pin); return 'handled'; } window.__duressSecurityPendingPinAction = pin; return 'pending'; })($quotedPin);"
-        // Wait for the bundled WebView document to exist; if React hasn't mounted
-        // yet, the pending value is consumed by AppShell after hydration.
-        webView.postDelayed({
-            if (!webView.url.isNullOrBlank() && webView.url != "about:blank") {
-                webView.evaluateJavascript(script, null)
-            }
-        }, 700L)
+        // If React hasn't mounted, the PIN remains in a page-global pending slot;
+        // AppShell consumes it after hydration. Do not persist PINs to disk.
+        webView.evaluateJavascript(script, null)
+        pendingOwnerPinAction = null
     }
 
     fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
