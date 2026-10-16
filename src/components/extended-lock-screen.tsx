@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Moon } from "lucide-react";
 import { AndroidClock } from "@/components/android-clock";
 import { remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
@@ -96,22 +95,14 @@ export function ExtendedLockScreen() {
     <div className="bg-mountains flex min-h-svh flex-col select-none">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
-        <button
-          type="button"
-          onClick={openRecovery}
-          aria-label={lang === "ar" ? "استرداد المالك من وضع الصيانة" : "Owner recovery from maintenance"}
-          className="absolute left-5 top-5 z-10 grid size-9 place-items-center rounded-full text-white/70 outline-none"
-        >
-          <Moon className="size-5" />
-        </button>
-        <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
-          <Moon className="size-7" />
-        </span>
+        <div className="grid size-14 place-items-center bg-red-500 text-xl font-black text-white [clip-path:polygon(0_0,100%_0,50%_100%)]" aria-hidden="true">
+          <span className="-translate-y-1">!</span>
+        </div>
         <div>
           <button
             type="button"
-            onClick={openRecovery}
-            className="text-2xl font-bold text-white outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan"
+            onClick={() => { if (recoveryOpen) { setRecoveryOpen(false); setRecoveryPin(""); setRecoveryError(""); } else { openRecovery(); } }}
+            className="text-2xl font-bold text-white underline decoration-white/25 underline-offset-8 outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan"
             aria-label={lang === "ar" ? "اضغط لإلغاء وضع الصيانة" : "Tap to exit maintenance"}
           >
             {lang === "ar" ? "التطبيق قيد الصيانة" : "App maintenance"}
