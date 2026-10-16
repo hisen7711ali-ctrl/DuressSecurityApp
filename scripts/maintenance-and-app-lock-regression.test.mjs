@@ -21,6 +21,16 @@ test("device-level controls are not blocked by a test-device UI check", async ()
   assert.doesNotMatch(source, /if \(!deviceOwner\) \{\s*setToast\(t\.deviceOwnerOnly/);
 });
 
+test("native app-lock gate uses an on-screen keypad instead of the system keyboard", async () => {
+  const source = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  assert.match(source, /listOf\("أ", "ي", "ع"\)/);
+  assert.match(source, /listOf\("1", "2", "3"\)/);
+  assert.match(source, /listOf\("back", "0", "ok"\)/);
+  assert.match(source, /pinValue.length == 4/);
+  assert.match(source, /attempts >= 5/);
+  assert.doesNotMatch(source, /EditText|InputMethodManager/);
+});
+
 test("native app-lock gate does not dismiss on its own overlay package event", async () => {
   const source = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(source, /if \(lockView == null\) \{\s*currentTarget = null/);
@@ -29,8 +39,11 @@ test("native app-lock gate does not dismiss on its own overlay package event", a
 
 test("device-policy failures do not claim that this is a test-device-only feature", async () => {
   const source = await read("src/lib/store.ts");
-  assert.match(source, /أندرويد لم يسمح بتطبيق سياسة منع الإزالة/);
+  assert.match(source, /لم يُفعّل منع الإزالة/);
+  assert.match(source, /مالك الجهاز \(Device Owner\)/);
   assert.match(source, /أندرويد لم يسمح بتفعيل وضع الجهاز المخصص/);
   assert.doesNotMatch(source, /تتطلب هذه الميزة إعداد الجهاز كـ Device Owner/);
   assert.doesNotMatch(source, /جهاز اختبار مُهيّأ كـ Device Owner/);
+  const settings = await read("src/components/settings-screen.tsx");
+  assert.match(settings, /صلاحية مسؤول الجهاز العادية وحدها لا تكفي/);
 });
