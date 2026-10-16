@@ -7,6 +7,8 @@ import { useCopy } from "@/lib/use-copy";
 
 const OWNED_SECURE_KEYS = [
   "duress-security-app",
+  "duress-security-app:calculator-command",
+  "duress-security-app-lock-background-image",
   "duress-security-state",
   "duress-security-app-lock-maintenance",
   "duress-security-vault-device-secret",
