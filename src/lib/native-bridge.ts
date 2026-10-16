@@ -1,7 +1,7 @@
 import { registerPlugin } from "@capacitor/core";
 
 export type NativePermissionKey = "overlayPermission" | "usagePermission" | "accessibilityPermission" | "notificationPermission" | "autostartPermission";
-export type NativePermissionStatus = { overlayPermission: boolean; usagePermission: boolean; accessibilityPermission: boolean; notificationPermission: boolean; autostartPermission: boolean; deviceAdmin: boolean; deviceOwner: boolean; biometricAvailable: boolean; preventUninstall: boolean; dedicatedDeviceMode: boolean };
+export type NativePermissionStatus = { overlayPermission: boolean; usagePermission: boolean; accessibilityPermission: boolean; notificationPermission: boolean; autostartPermission: boolean; deviceAdmin: boolean; deviceOwner: boolean; deviceSecure: boolean; biometricAvailable: boolean; preventUninstall: boolean; dedicatedDeviceMode: boolean };
 type NativeResult = { ok: boolean };
 export type SecureStorageReason = "NATIVE_PLUGIN_UNAVAILABLE" | "NATIVE_TIMEOUT" | "NATIVE_CALL_FAILED" | "KEY_MISSING" | "DECRYPTION_FAILED" | "KEYSTORE_ERROR" | "READ_FAILED" | "DEVICE_SECRET_INVALID";
 type SecureRead = { available: boolean; found: boolean; value: string | null; reason?: SecureStorageReason | null };
