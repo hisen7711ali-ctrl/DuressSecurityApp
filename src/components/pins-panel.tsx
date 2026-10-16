@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, Hash, LockKeyhole, ShieldAlert, Trash2 } from "lucide-react";
 import { useAppStore, type PinKind } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { copy } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { getCalculatorCommand, loadCalculatorCommand, normalizeCalculatorCommand, setCalculatorCommand } from "@/lib/calculator-command";
 
 const KINDS: PinKind[] = ["master", "lock", "duress", "format"];
 
@@ -15,13 +16,29 @@ const ICONS: Record<PinKind, typeof LockKeyhole> = {
 };
 
 export function PinsPanel() {
-  const { t } = useCopy();
+  const { t, lang } = useCopy();
   const [active, setActive] = useState<PinKind>("master");
+  const [calculatorCommand, setCalculatorCommandState] = useState("");
+  const [masterCheck, setMasterCheck] = useState("");
+  const [newCalculatorCommand, setNewCalculatorCommand] = useState("");
+  const [calculatorBusy, setCalculatorBusy] = useState(false);
   const pins = useAppStore((s) => s.pins);
   const maxAttempts = useAppStore((s) => s.maxAttempts);
   const lockTimeoutSec = useAppStore((s) => s.lockTimeoutSec);
   const openOverlay = useAppStore((s) => s.openOverlay);
   const setPanel = useAppStore((s) => s.setPanel);
+  const setToast = useAppStore((s) => s.setToast);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCalculatorCommand().then((value) => {
+      if (!cancelled) {
+        setCalculatorCommandState(value);
+        setNewCalculatorCommand(value);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const labels: Record<PinKind, { title: string; hint: string }> = {
     master: { title: t.masterPin, hint: t.masterPinHint },
@@ -32,6 +49,34 @@ export function PinsPanel() {
 
   const Icon = ICONS[active];
   const set = pins[active].length === 4;
+
+  async function saveCalculatorCommand() {
+    const normalizedMaster = normalizeCalculatorCommand(masterCheck);
+    const normalizedNew = normalizeCalculatorCommand(newCalculatorCommand);
+    if (normalizedMaster !== normalizeCalculatorCommand(pins.master)) {
+      setToast(lang === "ar" ? "رمز المالك غير صحيح." : "The master PIN is incorrect.");
+      return;
+    }
+    if (!/^\d{8}$/.test(normalizedNew)) {
+      setToast(lang === "ar" ? "رمز الحاسبة يجب أن يتكون من 8 أرقام." : "The calculator command must contain exactly 8 digits.");
+      return;
+    }
+    const securityPins = Object.values(pins).map(normalizeCalculatorCommand);
+    if (securityPins.includes(normalizedNew)) {
+      setToast(lang === "ar" ? "لا تستخدم رمزاً مطابقاً لأحد رموز الحماية الأربعة." : "Do not reuse one of the four security PINs.");
+      return;
+    }
+    setCalculatorBusy(true);
+    const saved = await setCalculatorCommand(normalizedNew);
+    setCalculatorBusy(false);
+    if (!saved) {
+      setToast(lang === "ar" ? "تعذّر حفظ رمز الحاسبة في التخزين الآمن." : "The calculator command could not be saved to secure storage.");
+      return;
+    }
+    setCalculatorCommandState(normalizedNew);
+    setMasterCheck("");
+    setToast(lang === "ar" ? "تم تغيير رمز فتح الحاسبة، والرمز القديم لم يعد صالحاً." : "The calculator command was changed; the old command is no longer valid.");
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-4">
@@ -92,6 +137,48 @@ export function PinsPanel() {
       >
         {set ? t.changePin : t.setNow}
       </button>
+
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "رمز فتح الحاسبة" : "Calculator unlock command"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          {lang === "ar"
+            ? "هذا هو الرمز الذي تدخله من شاشة الحاسبة ثم تضغط = لفتح شاشة الحماية. يتكون من 8 أرقام ويُحفظ في التخزين الآمن. تغيير الرمز يلغي الرمز القديم فوراً."
+            : "This is the 8-digit command entered on the calculator followed by = to open the security gate. It is stored in secure storage, and changing it immediately invalidates the old command."}
+        </p>
+        <p className="mt-3 font-mono text-sm tracking-[0.35em] text-cyan">{calculatorCommand ? `${calculatorCommand.slice(0, 2)}••••••` : "••••••••"}</p>
+        <label className="mt-4 block text-xs text-muted">
+          {lang === "ar" ? "رمز المالك للتأكيد" : "Master PIN for confirmation"}
+          <input
+            inputMode="numeric"
+            type="password"
+            maxLength={4}
+            value={masterCheck}
+            onChange={(event) => setMasterCheck(normalizeCalculatorCommand(event.target.value).replace(/\D/g, "").slice(0, 4))}
+            className="mt-1 h-11 w-full rounded-md border border-line bg-navy px-3 font-mono text-sm tracking-[0.35em] outline-none focus:border-cyan"
+            placeholder="••••"
+          />
+        </label>
+        <label className="mt-3 block text-xs text-muted">
+          {lang === "ar" ? "الرمز الجديد (8 أرقام)" : "New command (8 digits)"}
+          <input
+            inputMode="numeric"
+            type="password"
+            maxLength={8}
+            value={newCalculatorCommand}
+            onChange={(event) => setNewCalculatorCommand(normalizeCalculatorCommand(event.target.value).replace(/\D/g, "").slice(0, 8))}
+            className="mt-1 h-11 w-full rounded-md border border-line bg-navy px-3 font-mono text-sm tracking-[0.35em] outline-none focus:border-cyan"
+            placeholder="••••••••"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={calculatorBusy}
+          onClick={() => { void saveCalculatorCommand(); }}
+          className="mt-4 h-11 w-full rounded-md bg-cyan font-semibold text-night disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {calculatorBusy ? (lang === "ar" ? "جارٍ الحفظ…" : "Saving…") : (lang === "ar" ? "تغيير رمز الحاسبة" : "Change calculator command")}
+        </button>
+      </section>
 
       <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm leading-relaxed text-muted">{t.pinKeepSafe}</p>
     </div>

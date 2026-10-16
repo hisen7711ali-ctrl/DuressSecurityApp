@@ -3,10 +3,17 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, merged-fix]
+    branches: [main, master, merged-fix, fix/maintenance-and-app-lock]
 
 permissions:
-  contents: read
+  contents: write
+
+# Every push creates a new run. Keep the newest branch revision in CI and
+# cancel stale builds so repeated documentation/fix commits do not queue many
+# Gradle builds in parallel and delay the artifact needed for testing.
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-debug-apk:
@@ -28,8 +35,54 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Install npm dependencies
-        run: npm install --no-audit --no-fund
+      - name: Resolve available dependency fixes without force or major upgrades
+        run: npm audit fix --package-lock-only --no-fund
+      - name: Upload refreshed lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-refreshed-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Install from the refreshed lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Generate npm audit report
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit.json
+          audit_exit=$?
+          set -e
+          echo "npm audit exit code: $audit_exit" >> npm-audit.json.summary
+          node --input-type=module -e '
+            import fs from "node:fs";
+            try {
+              const report = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
+              const v = report.metadata?.vulnerabilities ?? {};
+              const line = "npm audit: " + (v.total ?? "unknown") + " findings — critical " + (v.critical ?? 0) + ", high " + (v.high ?? 0) + ", moderate " + (v.moderate ?? 0) + ", low " + (v.low ?? 0);
+              console.log(line);
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + "\n");
+              for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+                console.log("- " + name + ": " + item.severity + "; direct=" + item.isDirect + "; fixAvailable=" + JSON.stringify(item.fixAvailable));
+              }
+            } catch {
+              console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and npm install output.");
+            }
+          '
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-npm-audit-report
+          path: |
+            npm-audit.json
+            npm-audit.json.summary
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fail CI when high or critical dependency advisories remain
+        run: npm audit --audit-level=high
       - name: Run tests
         shell: bash
         run: |
@@ -171,3 +224,16 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Commit reviewed semver-safe dependency lockfile fixes
+        if: success() && github.ref == 'refs/heads/fix/maintenance-and-app-lock'
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Dependency lockfile is already current; no commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: update vulnerable transitive dependency versions"
+          git push

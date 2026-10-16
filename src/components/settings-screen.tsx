@@ -3,7 +3,7 @@ import { Fingerprint, ShieldCheck } from "lucide-react";
 import { ToggleRow } from "@/components/apps-screen";
 import { useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
-import { isNativeAndroid } from "@/lib/native-bridge";
+import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
@@ -19,6 +19,7 @@ export function SettingsScreen() {
   const overlayPermission = useAppStore((s) => s.overlayPermission);
   const usagePermission = useAppStore((s) => s.usagePermission);
   const deviceAdmin = useAppStore((s) => s.deviceAdmin);
+  const deviceSecure = useAppStore((s) => s.deviceSecure);
   const accessibilityPermission = useAppStore((s) => s.accessibilityPermission);
   const autostartPermission = useAppStore((s) => s.autostartPermission);
   const notificationPermission = useAppStore((s) => s.notificationPermission);
@@ -37,7 +38,45 @@ export function SettingsScreen() {
     }
     const granted = await requestDeviceAdminNative();
     await refreshNativePermissions();
-    setToast(granted ? t.deviceAdminActive : t.wrongPin);
+    const latest = useAppStore.getState();
+    if (!granted) {
+      setToast(lang === "ar"
+        ? "لم يتم تفعيل صلاحية مسؤول الجهاز. وافق على شاشة أندرويد ثم ارجع إلى التطبيق."
+        : "Device Admin was not enabled. Approve Android's system prompt, then return to the app.");
+    } else if (!latest.deviceSecure) {
+      setToast(lang === "ar"
+        ? "تم تفعيل مسؤول الجهاز. لضمان قفل الشاشة، اضبط PIN أو نمطًا من إعدادات أندرويد."
+        : "Device Admin is active. Set a PIN or pattern in Android Settings for secure screen locking.");
+    } else {
+      setToast(t.deviceAdminActive);
+    }
+  }
+
+  async function onLockPhoneNow() {
+    if (!native) {
+      setToast(t.nativeOnlyToast);
+      return;
+    }
+    await refreshNativePermissions();
+    const latest = useAppStore.getState();
+    if (!latest.deviceAdmin) {
+      setToast(lang === "ar"
+        ? "فعّل صلاحية مسؤول الجهاز أولاً."
+        : "Enable Device Admin first.");
+      return;
+    }
+    if (!latest.deviceSecure) {
+      setToast(lang === "ar"
+        ? "اضبط PIN أو نمطًا لقفل شاشة أندرويد أولاً؛ من دونه قد ينام الهاتف دون قفله."
+        : "Set an Android screen PIN or pattern first; without one, the device may sleep without locking.");
+      return;
+    }
+    const ok = await requestSystemLock();
+    if (!ok) {
+      setToast(lang === "ar"
+        ? "أندرويد لم يؤكد طلب قفل الشاشة. تحقق من صلاحية الإدارة وإعدادات القفل."
+        : "Android did not confirm the lock request. Check admin permission and screen-lock settings.");
+    }
   }
 
   const perms: { key: PermKey; label: string; hint: string; ok: boolean }[] = [
@@ -105,20 +144,23 @@ export function SettingsScreen() {
           }
         />
         <ToggleRow
-          label={t.preventUninstall}
-          hint={preventUninstall ? t.uninstallProtected : undefined}
+          label={lang === "ar" ? "منع الإزالة" : "Block uninstall"}
+          hint={preventUninstall
+            ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.")
+            : !deviceOwner
+              ? (lang === "ar"
+                ? "غير مدعوم بعد: يلزم إعداد رسمي كمالك الجهاز (Device Owner). مسؤول الجهاز العادي والأذونات الإضافية لا تمنع الإزالة. للاختبار فقط على محاكي جديد ونظيف بعد تثبيت التطبيق: adb shell dpm set-device-owner com.duresssecurity.app/com.duresssecurity.admin.AdminReceiver أو استخدم QR Provisioning رسميًا. لا تنفّذ الأمر على هاتفك الأساسي؛ قد يفشل إذا كان الجهاز مُعدًا بالفعل."
+                : "Not supported yet: formal Device Owner provisioning is required. Device Admin and extra permissions cannot block uninstall. Use a clean dedicated test emulator with official provisioning or adb dpm; do not run it on your primary phone.")
+              : (lang === "ar" ? "مالك الجهاز مفعّل، لكن أندرويد لم يؤكد سياسة منع الإزالة بعد." : "Device Owner is active, but Android has not confirmed the uninstall-block policy yet.")}
           on={preventUninstall}
-          onToggle={(value) => {
-            if (!deviceOwner) {
-              setToast(t.deviceOwnerOnly);
-              return;
-            }
+          disabled={!deviceOwner && !preventUninstall}
+          onToggle={(value) =>
             openOverlay({
               kind: "confirm",
               action: { type: "toggle-prevent", value },
               title: t.enterMasterConfirm,
-            });
-          }}
+            })
+          }
         />
       </section>
 
@@ -138,32 +180,41 @@ export function SettingsScreen() {
             </button>
           )}
         </div>
+        <p className={`mt-2 text-xs leading-relaxed ${deviceSecure ? "text-success" : "text-muted"}`}>
+          {deviceSecure
+            ? (lang === "ar" ? "قفل شاشة أندرويد الآمن: مفعّل." : "Android secure screen lock: configured.")
+            : (lang === "ar" ? "قفل شاشة الهاتف شيء مستقل: اضبط PIN أو نمطًا من إعدادات أندرويد. التطبيق لا يستطيع إنشاء كلمة مرور النظام بدلًا منك." : "The phone's secure screen lock is separate: set a PIN or pattern in Android Settings. The app cannot create the system password for you.")}
+        </p>
+        <button
+          type="button"
+          onClick={() => { void onLockPhoneNow(); }}
+          disabled={!native || !deviceAdmin || !deviceSecure}
+          className="mt-3 h-10 w-full rounded-lg border border-cyan/40 bg-cyan/10 text-xs font-semibold text-cyan disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {lang === "ar" ? "اختبار قفل شاشة الهاتف الآن" : "Test Android screen lock now"}
+        </button>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold text-cyan">{t.kioskMode}</h2>
-        <p className="mt-2 text-xs leading-relaxed text-muted">{t.kioskModeHint}</p>
-        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-danger"}`}>
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">{lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}</p>
+        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-muted"}`}>
           {deviceOwner
-            ? (lang === "ar" ? "حالة الجهاز: Device Owner مفعّل" : "Device status: Device Owner active")
-            : (lang === "ar" ? "حالة الجهاز: هاتف عادي، ليس Device Owner" : "Device status: regular phone, not Device Owner")}
+            ? (lang === "ar" ? "حالة إدارة الجهاز: مفعّلة" : "Device management: active")
+            : (lang === "ar" ? "حالة إدارة الجهاز: غير مفعّلة" : "Device management: not active")}
         </p>
         <div className="mt-3">
           <ToggleRow
-            label={t.kioskMode}
-            hint={t.kioskModeHint}
+            label={lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}
+            hint={lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}
             on={dedicatedDeviceMode}
-            onToggle={(value) => {
-              if (!deviceOwner) {
-                setToast(t.deviceOwnerOnly);
-                return;
-              }
+            onToggle={(value) =>
               openOverlay({
                 kind: "confirm",
                 action: { type: "toggle-kiosk", value },
                 title: t.enterMasterConfirm,
-              });
-            }}
+              })
+            }
           />
         </div>
       </section>
@@ -187,6 +238,12 @@ export function SettingsScreen() {
         />
         <p className="mt-3 text-xs leading-relaxed text-muted">{t.biometricNote}</p>
       </section>
+
+      <p className="px-1 text-xs leading-relaxed text-muted">
+        {lang === "ar"
+          ? "ملاحظة الصلاحيات: منع الإزالة يعتمد على Device Owner فقط؛ لا تعوّضه صلاحيات Accessibility أو تجاهل تحسين البطارية أو Foreground Service. قفل التطبيقات يحتاج تفعيل Accessibility يدويًا من شاشة أندرويد. لا يستطيع التطبيق منح نفسه هذه الصلاحيات."
+          : "Permission note: uninstall blocking depends on Device Owner; Accessibility, battery-optimization exemption, or a Foreground Service do not replace it. App Lock needs Accessibility enabled manually in Android Settings. The app cannot grant itself these permissions."}
+      </p>
 
       <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center justify-between gap-3">

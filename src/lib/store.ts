@@ -96,7 +96,7 @@ function hasLegacyVaultContent(value: unknown): value is VaultFile[] {
 type PersistedSlice = {
   lang: Lang; theme: ThemeName; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
   preventUninstall: boolean; dedicatedDeviceMode: boolean; deviceOwner: boolean; overlayPermission: boolean; usagePermission: boolean;
-  deviceAdmin: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
+  deviceAdmin: boolean; deviceSecure: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
   installedApps: DeviceApp[]; lockedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
   lockoutUntil: number; lockoutLevel: number; lastCheckAt: string; maxAttempts: number; lockTimeoutSec: number; biometricEnabled: boolean;
 };
@@ -131,26 +131,20 @@ export const useAppStore = create<AppStore>()(
     (set, get) => ({
       lang: "ar", theme: "dark", pins: { ...DEFAULT_PINS }, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
-      deviceAdmin: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
+      deviceAdmin: false, deviceSecure: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, lastCheckAt: nowIso(), maxAttempts: 3,
       lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", storageErrorCode: null, tab: "home", panel: "none", overlay: { kind: "unlock" },
       openedApp: null, vaultOpen: false, vaultCryptoReady: false, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: null,
       security: { ...INITIAL_SECURITY_STATE },
 
       hydrateSession: async () => {
-        // Permission probing is useful UI metadata, not a prerequisite for secure startup.
-        // Keep slow DevicePolicyManager calls from serializing session hydration.
         void get().refreshNativePermissions().catch(() => undefined);
-        // Zustand persistence already verifies "duress-security-app". Read the separate
-        // security record exactly once below instead of probing and immediately re-reading it.
         const homeLock = get().homeLockEnabled;
         const installed = get().installedApps ?? [];
         const allowed = new Set(installed.map((a) => a.packageName));
         const loadedSecurity = await loadSecurity();
         if (loadedSecurity === null) { set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false }); return; }
         const security = reconcile(loadedSecurity);
-        // A normal startup must not perform an unnecessary Keystore write. Persist only
-        // when reconciliation actually changes an expired/invalidated lock record.
         if (security !== loadedSecurity) {
           const securitySaved = await saveSecurity(security);
           if (!securitySaved && nativeBridge.isNativeAndroid()) {
@@ -172,9 +166,9 @@ export const useAppStore = create<AppStore>()(
 
       refreshNativePermissions: async () => {
         const status = await nativeBridge.getPermissionStatus();
-        if (!status) { set({ overlayPermission: false, usagePermission: false, accessibilityPermission: false, notificationPermission: false, autostartPermission: false, deviceAdmin: false, preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false }); return; }
+        if (!status) { set({ overlayPermission: false, usagePermission: false, accessibilityPermission: false, notificationPermission: false, autostartPermission: false, deviceAdmin: false, deviceSecure: false, preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false }); return; }
         set({ overlayPermission: status.overlayPermission, usagePermission: status.usagePermission, accessibilityPermission: status.accessibilityPermission, notificationPermission: status.notificationPermission,
-          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
+          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
       },
       setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }),
       setTab: (tab) => { const state = get(); if (state.tab === "files" && tab !== "files" && state.vaultCryptoReady) { lockEncryptedVaultSession(); set({ tab, panel: "none", vaultOpen: false, vaultCryptoReady: false, vault: [] }); return; } set({ tab, panel: "none" }); },
@@ -182,16 +176,87 @@ export const useAppStore = create<AppStore>()(
       lockSession: () => { const prior = get(); lockEncryptedVaultSession(); set({ session: "locked", overlay: { kind: "unlock" }, tab: "home", panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); },
       setToast: (toast) => set({ toast }),
       refreshSecurity: () => { const current = get().security; const next = reconcile(current); if (next !== current) { void saveSecurity(next); set({ security: next }); } if (get().session === "extlocked" && !isExtendedLockActive(next)) set({ session: "locked", overlay: { kind: "unlock" }, failedAttempts: 0, lockoutUntil: 0 }); },
-      recoverExtendedLock: async (masterPin) => { const state = get(); if (state.session !== "extlocked" || normalizePin(masterPin) !== normalizePin(state.pins.master)) return false; const cleared = { ...INITIAL_SECURITY_STATE }; const saved = await saveSecurity(cleared); if (!saved && nativeBridge.isNativeAndroid()) { set({ toast: state.lang === "ar" ? "تعذّر تحديث سجل القفل الآمن؛ لم يتم الاسترداد." : "Secure lock state could not be updated; recovery was not completed." }); return false; } set({ security: cleared, session: "unlocked", overlay: null, tab: "home", panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: state.lang === "ar" ? "تم استرداد الوصول بواسطة الرمز الرئيسي" : "Owner recovery completed with the master PIN" }); if (state.dedicatedDeviceMode) await nativeBridge.setKioskMode(false); if (state.preventUninstall) await nativeBridge.setSelfUninstallBlocked(false); await get().refreshNativePermissions(); return true; },
+      recoverExtendedLock: async (masterPin) => {
+        const state = get();
+        if (state.session !== "extlocked") return false;
+        const now = Date.now();
+        if (now < state.lockoutUntil) return false;
+        if (normalizePin(masterPin) !== normalizePin(state.pins.master)) {
+          const nextAttempts = state.failedAttempts + 1;
+          const shouldLockOut = nextAttempts >= state.maxAttempts;
+          const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel);
+          set({
+            failedAttempts: shouldLockOut ? 0 : nextAttempts,
+            lockoutUntil: shouldLockOut ? now + delayMs : 0,
+            lockoutLevel: shouldLockOut ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel,
+            toast: shouldLockOut
+              ? (state.lang === "ar" ? `تم إيقاف محاولات الاسترداد مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `Recovery attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`)
+              : null,
+          });
+          return false;
+        }
+        const cleared = { ...INITIAL_SECURITY_STATE };
+        const saved = await saveSecurity(cleared);
+        if (!saved && nativeBridge.isNativeAndroid()) {
+          set({ toast: state.lang === "ar" ? "تعذّر تحديث سجل القفل الآمن؛ لم يتم الاسترداد." : "Secure lock state could not be updated; recovery was not completed." });
+          return false;
+        }
+        // Recovery ends the app-level maintenance lock only. It must not silently
+        // disable separately configured Kiosk or uninstall-block policies.
+        set({
+          security: cleared,
+          session: "unlocked",
+          overlay: null,
+          tab: "home",
+          panel: "none",
+          failedAttempts: 0,
+          lockoutUntil: 0,
+          lockoutLevel: 0,
+          toast: state.lang === "ar" ? "تم استرداد الوصول بواسطة الرمز الرئيسي" : "Owner recovery completed with the master PIN",
+        });
+        await get().refreshNativePermissions();
+        return true;
+      },
 
       openOverlay: (overlay) => set({ overlay }),
       closeOverlay: () => { if (get().session === "locked" || get().session === "wiping") return; set({ overlay: null }); },
       applyConfirm: (action) => {
         if (action.type === "toggle-home-lock") set({ homeLockEnabled: action.value });
-        if (action.type === "toggle-app-lock") set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
+        if (action.type === "toggle-app-lock") {
+          set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
+          // Enabling App Lock immediately guides the owner to Android's
+          // Accessibility settings when the required service is not enabled.
+          // Android still requires the owner to grant it explicitly.
+          if (action.value && nativeBridge.isNativeAndroid()) {
+            void (async () => {
+              await get().refreshNativePermissions();
+              if (get().accessibilityPermission) return;
+              const opened = await nativeBridge.requestSystemPermission("accessibilityPermission");
+              await get().refreshNativePermissions();
+              set({ toast: get().lang === "ar"
+                ? (opened.opened
+                  ? "فعّل خدمة Duress Security من إعدادات إمكانية الوصول ثم ارجع إلى التطبيق."
+                  : "تعذّر فتح إعدادات إمكانية الوصول؛ افتحها يدويًا وفعّل خدمة Duress Security.")
+                : (opened.opened
+                  ? "Enable the Duress Security service in Android Accessibility settings, then return to the app."
+                  : "Could not open Accessibility settings; open them manually and enable the Duress Security service.") });
+            })();
+          }
+        }
         if (action.type === "toggle-overlay") set({ overlayEnabled: action.value });
-        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "تتطلب هذه الميزة إعداد الجهاز كـ Device Owner؛ لم يتم تغيير سياسة الإزالة." : "This requires Device Owner provisioning; uninstall policy was not changed." }); });
-        if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "وضع الكشك يتطلب جهاز اختبار مُهيّأ كـ Device Owner." : "Kiosk mode requires a test device provisioned as Device Owner." }); });
+        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => {
+          await get().refreshNativePermissions();
+          if (!ok && action.value) {
+            const state = get();
+            const message = !nativeBridge.isNativeAndroid()
+              ? (state.lang === "ar" ? "منع الإزالة متاح فقط داخل نسخة Android المثبّتة." : "Uninstall protection is only available in the installed Android app.")
+              : !state.deviceOwner
+                ? (state.lang === "ar" ? "لم يُفعّل منع الإزالة: يجب إعداد التطبيق كمالك الجهاز (Device Owner). صلاحية مسؤول الجهاز وحدها لا تكفي." : "Uninstall protection was not enabled: this app must be provisioned as Device Owner. Device Admin alone is not enough.")
+                : (state.lang === "ar" ? "أندرويد لم يؤكد تفعيل سياسة منع الإزالة؛ لم يتم تفعيلها." : "Android did not confirm the uninstall-block policy; it was not enabled.");
+            set({ toast: message });
+          }
+        });
+        if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتفعيل وضع الجهاز المخصص على هذا الجهاز." : "Android did not allow dedicated-device mode on this device." }); });
         if (action.type === "save-pin") set((s) => ({ pins: { ...s.pins, [action.target]: normalizePin(action.value) }, lastCheckAt: nowIso() }));
         if (action.type === "delete-file") { const state = get(); if (!state.vaultCryptoReady) { set({ toast: state.lang === "ar" ? "افتح الخزنة المشفّرة أولاً." : "Unlock the encrypted vault first." }); return; } const nextVault = state.vault.filter((f) => f.id !== action.id); void persistEncryptedVault(nextVault).then(() => set({ vault: nextVault })).catch(() => set({ toast: get().lang === "ar" ? "تعذّر حفظ التغيير المشفّر." : "Encrypted vault change could not be saved." })); }
         if (action.type === "open-vault") set({ vaultOpen: true });
@@ -208,11 +273,64 @@ export const useAppStore = create<AppStore>()(
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
           set({ security, session: "extlocked", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 });
-          void saveSecurity(security).then((saved) => { if (!saved && nativeBridge.isNativeAndroid()) { const cleared = { ...INITIAL_SECURITY_STATE }; set({ security: cleared, session: "locked", overlay: { kind: "unlock" }, toast: get().lang === "ar" ? "تعذّر حفظ القفل في التخزين الآمن؛ لم يتم تفعيل القفل الممتد." : "Secure storage failed; the extended lock was not activated." }); return; } if (get().deviceAdmin) void nativeBridge.lockNow(); });
+          void saveSecurity(security).then(async (saved) => {
+            if (!saved && nativeBridge.isNativeAndroid()) {
+              const cleared = { ...INITIAL_SECURITY_STATE };
+              set({ security: cleared, session: "locked", overlay: { kind: "unlock" }, toast: get().lang === "ar" ? "تعذّر حفظ القفل في التخزين الآمن؛ لم يتم تفعيل القفل الممتد." : "Secure storage failed; the extended lock was not activated." });
+              return;
+            }
+            if (!nativeBridge.isNativeAndroid()) return;
+            let nativeStatus = await nativeBridge.getPermissionStatus();
+            const currentLang = get().lang;
+            if (!nativeStatus?.deviceAdmin) {
+              // 5555 explicitly requests Device Admin through Android's own
+              // consent screen. The owner must approve it; never self-grant.
+              const granted = await nativeBridge.requestDeviceAdmin();
+              await get().refreshNativePermissions();
+              nativeStatus = await nativeBridge.getPermissionStatus();
+              if (!granted || !nativeStatus?.deviceAdmin) {
+                set({ toast: currentLang === "ar"
+                  ? "بقيت صيانة التطبيق فعّالة، لكنك لم تمنح مسؤول الجهاز؛ لم يتم قفل شاشة الهاتف."
+                  : "App maintenance remains active, but Device Admin was not granted; Android's screen was not locked." });
+                return;
+              }
+            }
+            if (!nativeStatus?.deviceSecure) {
+              set({ toast: currentLang === "ar"
+                ? "تم تفعيل صيانة التطبيق، لكن الهاتف لا يملك قفل شاشة آمناً. اضبط PIN أو نمطاً من إعدادات أندرويد أولاً."
+                : "App maintenance is active, but Android has no secure screen lock. Set a PIN or pattern in Android Settings first." });
+              return;
+            }
+            const locked = await nativeBridge.lockNow();
+            if (!locked) {
+              set({ toast: get().lang === "ar"
+                ? "تعذّر طلب قفل شاشة أندرويد. تأكد من صلاحية مسؤول الجهاز وقفل الشاشة الآمن."
+                : "Android did not confirm the screen-lock request. Check Device Admin and the secure screen lock." });
+            }
+          });
           return "extended-lock";
         }
         if (action === "duress") { lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); return "duress"; }
-        if (action === "reject") { const attempts = state.failedAttempts + 1; const locked = attempts >= state.maxAttempts; const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel); set({ failedAttempts: locked ? 0 : attempts, lockoutUntil: locked ? Date.now() + delayMs : 0, lockoutLevel: locked ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel, toast: locked ? (state.lang === "ar" ? `تم إيقاف المحاولات مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `PIN attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`) : state.toast }); return locked ? "lockout" : "wrong"; }
+        if (action === "reject") {
+          const attempts = state.failedAttempts + 1;
+          const locked = attempts >= state.maxAttempts;
+          const delayMs = nextLockoutDelayMs(state.lockTimeoutSec, state.lockoutLevel);
+          set({
+            failedAttempts: locked ? 0 : attempts,
+            lockoutUntil: locked ? Date.now() + delayMs : 0,
+            lockoutLevel: locked ? Math.min(state.lockoutLevel + 1, 13) : state.lockoutLevel,
+            toast: locked ? (state.lang === "ar" ? `تم إيقاف المحاولات مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `PIN attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`) : state.toast,
+          });
+          // Repeated failed PINs may lock the phone only when the owner already
+          // granted Device Admin and configured a secure Android keyguard. Never
+          // open a system permission prompt in response to wrong PIN attempts.
+          if (locked && nativeBridge.isNativeAndroid()) {
+            void nativeBridge.getPermissionStatus().then((status) => {
+              if (status?.deviceAdmin && status.deviceSecure) void nativeBridge.lockNow();
+            });
+          }
+          return locked ? "lockout" : "wrong";
+        }
         if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return "ok"; }
         if (overlay.kind === "app") { set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
         if (overlay.kind === "confirm") { get().applyConfirm(overlay.action); set({ overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
@@ -247,9 +365,6 @@ export const useAppStore = create<AppStore>()(
         const vaultMigrationRequired = old.vaultMigrationRequired === true || (old.vaultEncrypted !== true && hasLegacyVaultContent(vault));
         return { ...old, pins, vault, vaultEncrypted: old.vaultEncrypted === true, vaultMigrationRequired, lockoutLevel: Math.max(0, Math.min(13, Math.floor(Number(old.lockoutLevel) || 0))) } as PersistedSlice;
       },
-      // New installations start with an empty vault and never save user files before encryption.
-      // During a detected legacy migration only, preserve the old files until the forced
-      // passphrase flow encrypts them; successful encryption then removes this plaintext field.
       partialize: (s) => ({ lang: s.lang, theme: s.theme, pins: s.pins, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
     },
   ),

@@ -1,7 +1,7 @@
 import { registerPlugin } from "@capacitor/core";
 
 export type NativePermissionKey = "overlayPermission" | "usagePermission" | "accessibilityPermission" | "notificationPermission" | "autostartPermission";
-export type NativePermissionStatus = { overlayPermission: boolean; usagePermission: boolean; accessibilityPermission: boolean; notificationPermission: boolean; autostartPermission: boolean; deviceAdmin: boolean; deviceOwner: boolean; biometricAvailable: boolean; preventUninstall: boolean; dedicatedDeviceMode: boolean };
+export type NativePermissionStatus = { overlayPermission: boolean; usagePermission: boolean; accessibilityPermission: boolean; notificationPermission: boolean; autostartPermission: boolean; deviceAdmin: boolean; deviceOwner: boolean; deviceSecure: boolean; biometricAvailable: boolean; preventUninstall: boolean; dedicatedDeviceMode: boolean };
 type NativeResult = { ok: boolean };
 export type SecureStorageReason = "NATIVE_PLUGIN_UNAVAILABLE" | "NATIVE_TIMEOUT" | "NATIVE_CALL_FAILED" | "KEY_MISSING" | "DECRYPTION_FAILED" | "KEYSTORE_ERROR" | "READ_FAILED" | "DEVICE_SECRET_INVALID";
 type SecureRead = { available: boolean; found: boolean; value: string | null; reason?: SecureStorageReason | null };
@@ -12,9 +12,13 @@ type SecurityAdminNative = {
   requestSystemPermission(options: { permission: NativePermissionKey }): Promise<{ opened: boolean; supported: boolean }>;
   initializeSecureStorage(): Promise<NativeResult>; secureGet(options: { key: string }): Promise<SecureRead>; secureSet(options: { key: string; value: string }): Promise<NativeResult>; secureRemove(options: { key: string }): Promise<NativeResult>; secureClearOwned(): Promise<NativeResult>;
   setSelfUninstallBlocked(options: { blocked: boolean }): Promise<NativeResult>; setKioskMode(options: { enabled: boolean }): Promise<NativeResult>; setScreenCaptureAllowed(options: { allowed: boolean }): Promise<NativeResult>;
+  setImmersiveMode(options: { enabled: boolean }): Promise<NativeResult>;
+  completeAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
+  cancelAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
 };
 type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } };
 const NATIVE_CALL_TIMEOUT_MS = 2500;
+const NATIVE_ACTIVITY_TIMEOUT_MS = 30000;
 const NATIVE_STORAGE_TIMEOUT_MS = 5000;
 const NATIVE_INITIALIZE_TIMEOUT_MS = 10000;
 function withNativeTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs = NATIVE_CALL_TIMEOUT_MS): Promise<T> { return new Promise((resolve) => { let settled = false; const finish = (value: T) => { if (settled) return; settled = true; resolve(value); }; const timer = window.setTimeout(() => finish(fallback), timeoutMs); promise.then((value) => { window.clearTimeout(timer); finish(value); }).catch(() => { window.clearTimeout(timer); finish(fallback); }); }); }
@@ -24,8 +28,17 @@ function getNativePlugin(): SecurityAdminNative | null { if (!isNativeRuntime())
 export function isNativeAndroid(): boolean { return isNativeRuntime() && (window as CapacitorWindow).Capacitor?.getPlatform?.() === "android"; }
 export async function setScreenCaptureAllowed(allowed: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setScreenCaptureAllowed({ allowed }), { ok: false })).ok; } catch { return false; } }
 export async function isDeviceAdminActive(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.isDeviceAdminActive(), { active: false })).active; } catch { return false; } }
-export async function requestDeviceAdmin(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.requestDeviceAdmin(), { granted: false })).granted; } catch { return false; } }
+export async function requestDeviceAdmin(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.requestDeviceAdmin(), { granted: false }, NATIVE_ACTIVITY_TIMEOUT_MS)).granted; } catch { return false; } }
 export async function lockNow(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.lockNow(), { ok: false })).ok; } catch { return false; } }
+export async function setImmersiveMode(enabled: boolean): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin) return false;
+  try {
+    return (await withNativeTimeout(plugin.setImmersiveMode({ enabled }), { ok: false })).ok;
+  } catch {
+    return false;
+  }
+}
 export const nativeLockNow = lockNow;
 export async function isBiometricAvailable(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.isBiometricAvailable(), { available: false })).available; } catch { return false; } }
 export async function authenticateBiometric(reason: string): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.authenticateBiometric({ reason }), { success: false })).success; } catch { return false; } }
@@ -39,3 +52,22 @@ export async function secureStorageRemove(key: string): Promise<boolean> { const
 export async function secureStorageClearOwned(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok; } catch { return false; } }
 export async function setSelfUninstallBlocked(blocked: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setSelfUninstallBlocked({ blocked }), { ok: false })).ok; } catch { return false; } }
 export async function setKioskMode(enabled: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setKioskMode({ enabled }), { ok: false })).ok; } catch { return false; } }
+export async function completeAppLockBiometric(packageName: string): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin || !packageName.trim()) return false;
+  try {
+    return (await withNativeTimeout(plugin.completeAppLockBiometric({ packageName }), { ok: false }, NATIVE_ACTIVITY_TIMEOUT_MS)).ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelAppLockBiometric(packageName: string): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin || !packageName.trim()) return false;
+  try {
+    return (await withNativeTimeout(plugin.cancelAppLockBiometric({ packageName }), { ok: false })).ok;
+  } catch {
+    return false;
+  }
+}

@@ -110,8 +110,14 @@ function main(argv) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const root = projectRoot();
+  const env = mergeAppEnv(readAppEnv(root), process.env);
+  // On Windows, spawning the "vite" .cmd shim with shell=false causes ENOENT.
+  // Invoke Vite's JavaScript CLI through Node directly on every platform, which
+  // also avoids shell quoting problems when the project or Node path has spaces.
+  const childCommand = command === "vite" ? process.execPath : command;
+  const childArgs = command === "vite" ? [join(root, "node_modules", "vite", "bin", "vite.js"), ...args] : args;
+  const child = spawn(childCommand, childArgs, { stdio: "inherit", env, cwd: root });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

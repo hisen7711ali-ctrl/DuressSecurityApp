@@ -7,7 +7,15 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const androidDir = path.join(root, "android");
 const run = (cmd, args) => new Promise((resolve, reject) => {
-  const p = spawn(cmd, args, { cwd: root, env: process.env, stdio: "inherit", shell: process.platform === "win32" });
+  // Node's executable path often contains "Program Files". Do not pass it
+  // through cmd.exe, which splits it at the first space. Only use the Windows
+  // shell for npx's command shim; the process.execPath invocation is direct.
+  const p = spawn(cmd, args, {
+    cwd: root,
+    env: process.env,
+    stdio: "inherit",
+    shell: process.platform === "win32" && cmd !== process.execPath,
+  });
   p.on("error", reject);
   p.on("exit", code => code === 0 ? resolve() : reject(new Error(`${cmd} exited with ${code}`)));
 });
