@@ -130,13 +130,15 @@ class SecurityAdminPlugin : Plugin() {
                         return
                     }
                     try {
+                        targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        context.startActivity(targetIntent)
+                        // Only release the native gate after Android accepts the target
+                        // launch; a launch exception must never unlock the package.
                         context.sendBroadcast(
                             Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_UNLOCKED)
                                 .setPackage(context.packageName)
                                 .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
                         )
-                        targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        context.startActivity(targetIntent)
                         call.resolve(JSObject().putCompat("ok", true))
                     } catch (_: Exception) {
                         call.resolve(JSObject().putCompat("ok", false))
@@ -161,7 +163,7 @@ class SecurityAdminPlugin : Plugin() {
             },
         )
         val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(if (currentLanguage().equals("ar", true)) "فتح التطبيق المحمي" else "Unlock protected app")
+            .setTitle(if (java.util.Locale.getDefault().language.equals("ar", true)) "فتح التطبيق المحمي" else "Unlock protected app")
             .setSubtitle(if (currentLanguage().equals("ar", true)) "تحقّق بالبصمة للمتابعة" else "Verify your biometric to continue")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setNegativeButtonText(if (currentLanguage().equals("ar", true)) "إلغاء" else "Cancel")
