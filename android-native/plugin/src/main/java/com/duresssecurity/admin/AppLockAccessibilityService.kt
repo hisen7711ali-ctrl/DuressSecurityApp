@@ -378,7 +378,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             isEnabled = true
             setOnClickListener { view ->
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 handleKey(targetPackage, key)
             }
         }
