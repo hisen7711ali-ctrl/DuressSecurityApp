@@ -102,17 +102,24 @@ class SecurityAdminPlugin : Plugin() {
     @PluginMethod
     fun completeAppLockBiometric(call: PluginCall) {
         val targetPackage = call.getString("packageName")?.takeIf { it.isNotBlank() && it != context.packageName }
-        if (targetPackage == null || !biometricAvailable() || !isConfiguredLockedPackage(targetPackage)) {
+        if (targetPackage == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        if (!biometricAvailable() || !isConfiguredLockedPackage(targetPackage)) {
+            notifyAppLockBiometricFailed(targetPackage)
             call.resolve(JSObject().putCompat("ok", false))
             return
         }
         val fragmentActivity = activity as? androidx.fragment.app.FragmentActivity
         if (fragmentActivity == null) {
+            notifyAppLockBiometricFailed(targetPackage)
             call.resolve(JSObject().putCompat("ok", false))
             return
         }
         val targetIntent = try { context.packageManager.getLaunchIntentForPackage(targetPackage) } catch (_: Exception) { null }
         if (targetIntent == null) {
+            notifyAppLockBiometricFailed(targetPackage)
             call.resolve(JSObject().putCompat("ok", false))
             return
         }
@@ -126,6 +133,7 @@ class SecurityAdminPlugin : Plugin() {
                     // Re-check the encrypted policy after biometric verification so a
                     // removed/disabled package cannot be unlocked by a stale prompt.
                     if (!isConfiguredLockedPackage(targetPackage)) {
+                        notifyAppLockBiometricFailed(targetPackage)
                         call.resolve(JSObject().putCompat("ok", false))
                         return
                     }
@@ -141,18 +149,13 @@ class SecurityAdminPlugin : Plugin() {
                         )
                         call.resolve(JSObject().putCompat("ok", true))
                     } catch (_: Exception) {
+                        notifyAppLockBiometricFailed(targetPackage)
                         call.resolve(JSObject().putCompat("ok", false))
                     }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    try {
-                        context.sendBroadcast(
-                            Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_FAILED)
-                                .setPackage(context.packageName)
-                                .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
-                        )
-                    } catch (_: Exception) { }
+                    notifyAppLockBiometricFailed(targetPackage)
                     call.resolve(JSObject().putCompat("ok", false))
                 }
 
@@ -169,6 +172,27 @@ class SecurityAdminPlugin : Plugin() {
             .setNegativeButtonText(if (java.util.Locale.getDefault().language.equals("ar", true)) "إلغاء" else "Cancel")
             .build()
         fragmentActivity.runOnUiThread { prompt.authenticate(info) }
+    }
+
+    @PluginMethod
+    fun cancelAppLockBiometric(call: PluginCall) {
+        val targetPackage = call.getString("packageName")?.takeIf { it.isNotBlank() && it != context.packageName }
+        if (targetPackage == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
+        notifyAppLockBiometricFailed(targetPackage)
+        call.resolve(JSObject().putCompat("ok", true))
+    }
+
+    private fun notifyAppLockBiometricFailed(targetPackage: String) {
+        try {
+            context.sendBroadcast(
+                Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_FAILED)
+                    .setPackage(context.packageName)
+                    .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
+            )
+        } catch (_: Exception) { }
     }
 
     private fun isConfiguredLockedPackage(targetPackage: String): Boolean {
