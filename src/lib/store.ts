@@ -184,7 +184,18 @@ export const useAppStore = create<AppStore>()(
         if (action.type === "toggle-home-lock") set({ homeLockEnabled: action.value });
         if (action.type === "toggle-app-lock") set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
         if (action.type === "toggle-overlay") set({ overlayEnabled: action.value });
-        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتطبيق سياسة منع الإزالة على هذا الجهاز؛ لم تتغير سياسة الإزالة." : "Android did not allow the uninstall policy on this device; the uninstall policy was not changed." }); });
+        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => {
+          await get().refreshNativePermissions();
+          if (!ok && action.value) {
+            const state = get();
+            const message = !nativeBridge.isNativeAndroid()
+              ? (state.lang === "ar" ? "منع الإزالة متاح فقط داخل نسخة Android المثبّتة." : "Uninstall protection is only available in the installed Android app.")
+              : !state.deviceOwner
+                ? (state.lang === "ar" ? "لم يُفعّل منع الإزالة: يجب إعداد التطبيق كمالك الجهاز (Device Owner). صلاحية مسؤول الجهاز وحدها لا تكفي." : "Uninstall protection was not enabled: this app must be provisioned as Device Owner. Device Admin alone is not enough.")
+                : (state.lang === "ar" ? "أندرويد لم يؤكد تفعيل سياسة منع الإزالة؛ لم يتم تفعيلها." : "Android did not confirm the uninstall-block policy; it was not enabled.");
+            set({ toast: message });
+          }
+        });
         if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتفعيل وضع الجهاز المخصص على هذا الجهاز." : "Android did not allow dedicated-device mode on this device." }); });
         if (action.type === "save-pin") set((s) => ({ pins: { ...s.pins, [action.target]: normalizePin(action.value) }, lastCheckAt: nowIso() }));
         if (action.type === "delete-file") { const state = get(); if (!state.vaultCryptoReady) { set({ toast: state.lang === "ar" ? "افتح الخزنة المشفّرة أولاً." : "Unlock the encrypted vault first." }); return; } const nextVault = state.vault.filter((f) => f.id !== action.id); void persistEncryptedVault(nextVault).then(() => set({ vault: nextVault })).catch(() => set({ toast: get().lang === "ar" ? "تعذّر حفظ التغيير المشفّر." : "Encrypted vault change could not be saved." })); }
