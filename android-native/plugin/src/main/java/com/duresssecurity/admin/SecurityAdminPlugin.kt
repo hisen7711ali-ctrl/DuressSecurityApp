@@ -131,7 +131,9 @@ class SecurityAdminPlugin : Plugin() {
             val root = org.json.JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
             val packages = state.optJSONArray("lockedPackages") ?: return false
-            state.optBoolean("appLockEnabled", false) && state.optBoolean("overlayEnabled", true) &&
+            state.optBoolean("appLockEnabled", false) &&
+                state.optBoolean("overlayEnabled", true) &&
+                state.optBoolean("biometricEnabled", false) &&
                 (0 until packages.length()).any { packages.optString(it) == targetPackage }
         } catch (_: Exception) {
             false
