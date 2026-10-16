@@ -10,6 +10,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.content.Intent
+import com.duresssecurity.app.MainActivity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -97,6 +100,9 @@ class AppLockAccessibilityService : AccessibilityService() {
         val overlayEnabled: Boolean,
         val lockedPackages: Set<String>,
         val masterPin: String,
+        val duressPin: String?,
+        val extendedLockPin: String?,
+        val wipePin: String?,
     )
 
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
@@ -120,6 +126,9 @@ class AppLockAccessibilityService : AccessibilityService() {
                 overlayEnabled = state.optBoolean("overlayEnabled", true),
                 lockedPackages = locked,
                 masterPin = master,
+                duressPin = pins.optString("duress").takeIf { it.isNotBlank() },
+                extendedLockPin = pins.optString("lock").takeIf { it.isNotBlank() },
+                wipePin = pins.optString("format").takeIf { it.isNotBlank() },
             )
         } catch (_: Exception) {
             null
@@ -368,7 +377,10 @@ class AppLockAccessibilityService : AccessibilityService() {
                 else -> key
             }
             isEnabled = true
-            setOnClickListener { handleKey(targetPackage, key) }
+            setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                handleKey(targetPackage, key)
+            }
         }
     }
 
@@ -426,6 +438,20 @@ class AppLockAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Keep the same special PIN actions as the primary login. These PINs
+        // are handed to the app's existing submitPin flow rather than reimplemented
+        // in this service, so wipe remains limited to app-owned data and the
+        // normal 30-day lock/recovery logic is reused.
+        val isOwnerAction = typed.isNotEmpty() && (
+            policy.duressPin?.let { typed == normalizePin(it) } == true ||
+            policy.extendedLockPin?.let { typed == normalizePin(it) } == true ||
+            policy.wipePin?.let { typed == normalizePin(it) } == true
+        )
+        if (isOwnerAction) {
+            dispatchOwnerPinAction(targetPackage, typed)
+            return
+        }
+
         attempts = (attempts + 1).coerceAtMost(1_000_000)
         pinValue = ""
         updatePinDots()
@@ -444,6 +470,30 @@ class AppLockAccessibilityService : AccessibilityService() {
                 return
             }
             errorView?.text = if (currentLanguage().equals("ar", true)) "الرمز غير صحيح" else "Incorrect PIN"
+        }
+    }
+
+    private fun dispatchOwnerPinAction(targetPackage: String, pin: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent == null) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) {
+                "تعذّر فتح بوابة الحماية الرئيسية لتنفيذ الرمز."
+            } else {
+                "Could not open the main security gate to process this PIN."
+            }
+            return
+        }
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        launchIntent.putExtra(MainActivity.EXTRA_OWNER_PIN_ACTION, pin)
+        try {
+            startActivity(launchIntent)
+            dismissGate()
+        } catch (_: Exception) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) {
+                "تعذّر فتح التطبيق الرئيسي؛ بقي التطبيق الهدف محميًا."
+            } else {
+                "Could not open the main app; the target app remains protected."
+            }
         }
     }
 
