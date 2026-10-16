@@ -30,6 +30,40 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Install npm dependencies
         run: npm install --no-audit --no-fund
+      - name: Generate npm audit report
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit.json
+          audit_exit=$?
+          set -e
+          echo "npm audit exit code: $audit_exit" >> npm-audit.json.summary
+          node --input-type=module -e '
+            import fs from "node:fs";
+            try {
+              const report = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
+              const v = report.metadata?.vulnerabilities ?? {};
+              const line = "npm audit: " + (v.total ?? "unknown") + " findings — critical " + (v.critical ?? 0) + ", high " + (v.high ?? 0) + ", moderate " + (v.moderate ?? 0) + ", low " + (v.low ?? 0);
+              console.log(line);
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + "\n");
+              for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+                console.log("- " + name + ": " + item.severity + "; direct=" + item.isDirect + "; fixAvailable=" + JSON.stringify(item.fixAvailable));
+              }
+            } catch {
+              console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and npm install output.");
+            }
+          '
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-npm-audit-report
+          path: |
+            npm-audit.json
+            npm-audit.json.summary
+          if-no-files-found: warn
+          retention-days: 7
       - name: Run tests
         shell: bash
         run: |
