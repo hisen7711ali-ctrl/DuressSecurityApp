@@ -2,6 +2,8 @@ package com.duresssecurity.admin
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -22,6 +24,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.biometric.BiometricManager
 
 /**
  * Explicitly enabled Accessibility service used only to observe the foreground
@@ -44,10 +47,36 @@ class AppLockAccessibilityService : AccessibilityService() {
     private val keypadButtons = mutableListOf<Button>()
     private val uiHandler = Handler(Looper.getMainLooper())
     private var retryTicker: Runnable? = null
+    private var biometricUnlockReceiver: BroadcastReceiver? = null
+    private var pendingBiometricTarget: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val target = intent?.getStringExtra(EXTRA_TARGET_PACKAGE) ?: return
+                if (target != pendingBiometricTarget) return
+                pendingBiometricTarget = null
+                unlockedTarget = target
+                clearAttemptState(target)
+                attempts = 0
+                blockedUntil = 0L
+                dismissGate()
+            }
+        }
+        biometricUnlockReceiver = receiver
+        val filter = IntentFilter(ACTION_BIOMETRIC_UNLOCKED)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, filter)
+            }
+        } catch (_: Exception) {
+            biometricUnlockReceiver = null
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -92,6 +121,8 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         dismissGate()
+        biometricUnlockReceiver?.let { receiver -> try { unregisterReceiver(receiver) } catch (_: Exception) { } }
+        biometricUnlockReceiver = null
         super.onDestroy()
     }
 
@@ -103,6 +134,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         val duressPin: String?,
         val extendedLockPin: String?,
         val wipePin: String?,
+        val biometricEnabled: Boolean,
     )
 
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
@@ -129,6 +161,7 @@ class AppLockAccessibilityService : AccessibilityService() {
                 duressPin = pins.optString("duress").takeIf { it.isNotBlank() },
                 extendedLockPin = pins.optString("lock").takeIf { it.isNotBlank() },
                 wipePin = pins.optString("format").takeIf { it.isNotBlank() },
+                biometricEnabled = state.optBoolean("biometricEnabled", false),
             )
         } catch (_: Exception) {
             null
@@ -287,6 +320,24 @@ class AppLockAccessibilityService : AccessibilityService() {
             numberPad.addView(row, LinearLayout.LayoutParams(-2, -2))
         }
 
+        val biometricAvailable = !storageUnavailable &&
+            readPolicy()?.biometricEnabled == true &&
+            BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+        val biometricButton = if (biometricAvailable) {
+            Button(this).apply {
+                text = if (isArabic) "استخدام البصمة" else "Use fingerprint"
+                isAllCaps = false
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(Color.argb(26, 255, 255, 255))
+                    setStroke(dp(1), Color.rgb(55, 76, 98))
+                }
+                setOnClickListener { dispatchBiometricRequest(targetPackage) }
+            }
+        } else null
+
         val error = TextView(this).apply {
             text = if (storageUnavailable) {
                 if (isArabic) "استعد التخزين الآمن من داخل التطبيق" else "Recover secure storage from inside the app"
@@ -312,6 +363,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         root.addView(dots, matchWrap())
         root.addView(symbols, matchWrap())
         root.addView(numberPad, matchWrap())
+        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
         root.addView(error, matchWrap())
         root.addView(footer, matchWrap())
 
@@ -473,6 +525,43 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun dispatchBiometricRequest(targetPackage: String) {
+        val policy = readPolicy()
+        val canAuthenticate = BiometricManager.from(this)
+            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+        if (policy?.biometricEnabled != true || !canAuthenticate) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) {
+                "البصمة غير مفعّلة أو لا توجد بصمة جاهزة على الجهاز."
+            } else {
+                "Biometric unlock is disabled or no biometric is enrolled."
+            }
+            return
+        }
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent == null) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) {
+                "تعذّر فتح بوابة البصمة."
+            } else {
+                "Could not open the biometric verification screen."
+            }
+            return
+        }
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        launchIntent.putExtra(MainActivity.EXTRA_APP_LOCK_BIOMETRIC_TARGET, targetPackage)
+        try {
+            pendingBiometricTarget = targetPackage
+            startActivity(launchIntent)
+            dismissGate()
+        } catch (_: Exception) {
+            pendingBiometricTarget = null
+            errorView?.text = if (currentLanguage().equals("ar", true)) {
+                "تعذّر فتح التحقق بالبصمة؛ بقي التطبيق الهدف محميًا."
+            } else {
+                "Could not open biometric verification; the target app remains protected."
+            }
+        }
+    }
+
     private fun dispatchOwnerPinAction(targetPackage: String, pin: String) {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent == null) {
@@ -599,4 +688,9 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
+
+    companion object {
+        const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
+        const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
+    }
 }
