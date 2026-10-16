@@ -222,7 +222,27 @@ export const useAppStore = create<AppStore>()(
       closeOverlay: () => { if (get().session === "locked" || get().session === "wiping") return; set({ overlay: null }); },
       applyConfirm: (action) => {
         if (action.type === "toggle-home-lock") set({ homeLockEnabled: action.value });
-        if (action.type === "toggle-app-lock") set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
+        if (action.type === "toggle-app-lock") {
+          set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
+          // Enabling App Lock immediately guides the owner to Android's
+          // Accessibility settings when the required service is not enabled.
+          // Android still requires the owner to grant it explicitly.
+          if (action.value && nativeBridge.isNativeAndroid()) {
+            void (async () => {
+              await get().refreshNativePermissions();
+              if (get().accessibilityPermission) return;
+              const opened = await nativeBridge.requestSystemPermission("accessibilityPermission");
+              await get().refreshNativePermissions();
+              set({ toast: get().lang === "ar"
+                ? (opened.opened
+                  ? "فعّل خدمة Duress Security من إعدادات إمكانية الوصول ثم ارجع إلى التطبيق."
+                  : "تعذّر فتح إعدادات إمكانية الوصول؛ افتحها يدويًا وفعّل خدمة Duress Security.")
+                : (opened.opened
+                  ? "Enable the Duress Security service in Android Accessibility settings, then return to the app."
+                  : "Could not open Accessibility settings; open them manually and enable the Duress Security service.") });
+            })();
+          }
+        }
         if (action.type === "toggle-overlay") set({ overlayEnabled: action.value });
         if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => {
           await get().refreshNativePermissions();
