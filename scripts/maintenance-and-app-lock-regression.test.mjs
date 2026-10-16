@@ -119,7 +119,10 @@ test("native App Lock biometric flow requires configured package and enabled bio
   assert.match(plugin, /onAuthenticationSucceeded/);
   assert.match(plugin, /ACTION_BIOMETRIC_FAILED/);
   assert.match(bridge, /completeAppLockBiometric/);
+  assert.match(bridge, /cancelAppLockBiometric/);
   assert.match(shell, /nativeBridge\.completeAppLockBiometric/);
+  assert.match(shell, /nativeBridge\.cancelAppLockBiometric/);
+  assert.match(plugin, /fun cancelAppLockBiometric/);
   assert.doesNotMatch(shell, /nativeBridge\.authenticateBiometric/);
   const biometricMethod = plugin.slice(plugin.indexOf("fun completeAppLockBiometric"), plugin.indexOf("private fun isConfiguredLockedPackage"));
   const success = biometricMethod.slice(biometricMethod.indexOf("override fun onAuthenticationSucceeded"), biometricMethod.indexOf("override fun onAuthenticationError"));
