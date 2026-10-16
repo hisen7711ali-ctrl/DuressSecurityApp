@@ -106,23 +106,67 @@ class SecurityAdminPlugin : Plugin() {
             call.resolve(JSObject().putCompat("ok", false))
             return
         }
+        val fragmentActivity = activity as? androidx.fragment.app.FragmentActivity
+        if (fragmentActivity == null) {
+            call.resolve(JSObject().putCompat("ok", false))
+            return
+        }
         val targetIntent = try { context.packageManager.getLaunchIntentForPackage(targetPackage) } catch (_: Exception) { null }
         if (targetIntent == null) {
             call.resolve(JSObject().putCompat("ok", false))
             return
         }
-        try {
-            context.sendBroadcast(
-                Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_UNLOCKED)
-                    .setPackage(context.packageName)
-                    .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
-            )
-            targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            context.startActivity(targetIntent)
-            call.resolve(JSObject().putCompat("ok", true))
-        } catch (_: Exception) {
-            call.resolve(JSObject().putCompat("ok", false))
-        }
+
+        val executor = ContextCompat.getMainExecutor(context)
+        val prompt = BiometricPrompt(
+            fragmentActivity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    // Re-check the encrypted policy after biometric verification so a
+                    // removed/disabled package cannot be unlocked by a stale prompt.
+                    if (!isConfiguredLockedPackage(targetPackage)) {
+                        call.resolve(JSObject().putCompat("ok", false))
+                        return
+                    }
+                    try {
+                        context.sendBroadcast(
+                            Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_UNLOCKED)
+                                .setPackage(context.packageName)
+                                .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
+                        )
+                        targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        context.startActivity(targetIntent)
+                        call.resolve(JSObject().putCompat("ok", true))
+                    } catch (_: Exception) {
+                        call.resolve(JSObject().putCompat("ok", false))
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    try {
+                        context.sendBroadcast(
+                            Intent(AppLockAccessibilityService.ACTION_BIOMETRIC_FAILED)
+                                .setPackage(context.packageName)
+                                .putExtra(AppLockAccessibilityService.EXTRA_TARGET_PACKAGE, targetPackage),
+                        )
+                    } catch (_: Exception) { }
+                    call.resolve(JSObject().putCompat("ok", false))
+                }
+
+                override fun onAuthenticationFailed() {
+                    // Keep the system biometric prompt open; never treat a failed scan
+                    // as authorization to launch the protected app.
+                }
+            },
+        )
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(if (currentLanguage().equals("ar", true)) "فتح التطبيق المحمي" else "Unlock protected app")
+            .setSubtitle(if (currentLanguage().equals("ar", true)) "تحقّق بالبصمة للمتابعة" else "Verify your biometric to continue")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .setNegativeButtonText(if (currentLanguage().equals("ar", true)) "إلغاء" else "Cancel")
+            .build()
+        fragmentActivity.runOnUiThread { prompt.authenticate(info) }
     }
 
     private fun isConfiguredLockedPackage(targetPackage: String): Boolean {
