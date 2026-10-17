@@ -87,7 +87,7 @@ export function AppShell() {
       }
       // 4444 is a calculator-facade shortcut in every lock context. It does not
       // unlock the protected app and does not enter a duress data-changing flow.
-      if (normalizePin(pin) === normalizePin(state.pins.duress)) {
+      if (state.session !== "extlocked" && normalizePin(pin) === normalizePin(state.pins.duress)) {
         openCalculatorFacade();
         return;
       }
@@ -99,7 +99,12 @@ export function AppShell() {
         }
         const typed = normalizePin(pin);
         if (typed === normalizePin(state.pins.format)) { state.setToast(state.lang === "ar" ? "تم منع الحذف التلقائي من وضع القفل الممتد." : "Automatic deletion is blocked from extended-lock recovery."); return; }
-        if (typed === normalizePin(state.pins.duress)) { state.activateDuressMode(); return; }
+        if (typed === normalizePin(state.pins.duress)) {
+          state.setToast(state.lang === "ar"
+            ? "القفل الممتد ما زال فعالًا؛ لم يتم تجاوزه من اختصار الحاسبة."
+            : "Extended lock remains active; the calculator shortcut cannot bypass it.");
+          return;
+        }
         if (typed === normalizePin(state.pins.lock)) return;
         if (typed === normalizePin(state.pins.master)) { void state.recoverExtendedLock(pin); return; }
         return;
