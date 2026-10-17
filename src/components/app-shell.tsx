@@ -269,7 +269,12 @@ export function AppShell() {
   useEffect(() => { if (securityGateFlow.current && session === "unlocked") { suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; calculatorRestoreArmed.current = true; setPendingSecurityGate(false); setCalculatorFront(false); useAppStore.getState().setTab("home"); previousSession.current = "unlocked"; if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = window.setTimeout(() => { securityGateFlow.current = false; unlockTransitionTimer.current = null; }, CALCULATOR_GATE_TRANSITION_MS); return; } if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") { calculatorRestoreArmed.current = false; setCalculatorFront(true); } previousSession.current = session; }, [session]);
   useEffect(() => { if (session !== "unlocked" || !vaultMigrationRequired || vault.length === 0) return; if (tab !== "files") setTab("files"); if (!vaultOpen) setVaultOpen(true); }, [session, vaultMigrationRequired, vault.length, tab, vaultOpen, setTab, setVaultOpen]);
   useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; root.dataset.customBackground = backgroundImage ? "true" : "false"; if (backgroundImage) root.style.setProperty("--custom-app-background", `linear-gradient(180deg, rgba(6,18,31,.22) 0%, rgba(6,18,31,.70) 100%), url("${backgroundImage}")`); else root.style.removeProperty("--custom-app-background"); }, [lang, dir, theme, backgroundImage]);
-  useEffect(() => { void nativeBridge.setScreenCaptureAllowed(!protectedUi); }, [protectedUi]);
+  useEffect(() => {
+    const syncScreenCapturePolicy = () => { void nativeBridge.setScreenCaptureAllowed(!protectedUi); };
+    syncScreenCapturePolicy();
+    window.addEventListener("duress-security-native-foreground", syncScreenCapturePolicy);
+    return () => window.removeEventListener("duress-security-native-foreground", syncScreenCapturePolicy);
+  }, [protectedUi]);
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
