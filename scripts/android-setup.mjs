@@ -156,6 +156,17 @@ if (await exists(gradlePath)) {
   if (!gradle.includes("compileOptions")) gradle = gradle.replace(/android\s*\{/, m => `${m}\n    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }`);
   if (!gradle.includes("androidx.biometric:biometric")) gradle = gradle.replace(/dependencies\s*\{/, m => `${m}\n    implementation "androidx.biometric:biometric:1.1.0"`);
   if (!gradle.includes("jvmToolchain")) gradle += `\n\nkotlin { jvmToolchain(21) }\n`;
+  gradle += `
+android {
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+`;
   await writeFile(gradlePath, gradle);
 }
 
