@@ -109,7 +109,6 @@ export function FakeCalculator(_props: { onSecretCommand?: SecretCommandHandler 
       return;
     }
 
-
     if (key === "±") {
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
       setExpr(next);
@@ -146,7 +145,10 @@ export function FakeCalculator(_props: { onSecretCommand?: SecretCommandHandler 
       return;
     }
 
-    const next = expr === "0" && !operator ? key : expr + key;
+    // Keep repeated leading zeros visible. This matters for calculator-only
+    // command sequences such as 00000000 while preserving normal number entry
+    // for every other digit.
+    const next = expr === "0" && key !== "0" && !operator ? key : expr + key;
     setExpr(next);
     setDisplay(next);
   }
