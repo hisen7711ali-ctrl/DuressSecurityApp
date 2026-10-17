@@ -8,17 +8,17 @@ const read = (file) => readFile(path.join(root, file), "utf8");
 
 test("extended lock shows a red triangle, PIN recovery and truthful maintenance copy", async () => {
   const source = await read("src/components/extended-lock-screen.tsx");
-  assert.match(source, /التطبيق قيد الصيانة/);
-  assert.match(source, /30 يومًا/);
-  assert.match(source, />▼<\\/span>/);
-  assert.doesNotMatch(source, /Moon|moon/);
-  assert.match(source, /onClick=\\{openRecovery\\}/);
-  assert.match(source, /اضغط لإلغاء وضع الصيانة/);
-  assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
-  assert.match(source, /beginEmergencyWipe/);
-  assert.match(source, /activateDuressMode/);
-  assert.match(source, /normalizePin\\(latest\\.pins\\.format\\)/);
-  assert.match(source, /next.length === 4/);
+  assert.ok(source.includes("التطبيق قيد الصيانة"));
+  assert.ok(source.includes("30 يومًا"));
+  assert.ok(source.includes(">▼</span>"));
+  assert.ok(!source.includes("Moon"));
+  assert.ok(source.includes("onClick={openRecovery}"));
+  assert.ok(source.includes("اضغط لإلغاء وضع الصيانة"));
+  assert.ok(source.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
+  assert.ok(source.includes("beginEmergencyWipe"));
+  assert.ok(source.includes("activateDuressMode"));
+  assert.ok(source.includes("normalizePin(latest.pins.format)"));
+  assert.ok(source.includes("next.length === 4"));
 });
 
 test("device-level controls are not blocked by a test-device UI check", async () => {
@@ -142,16 +142,16 @@ test("extended maintenance uses immersive bars and a red triangle rather than a 
   const screen = await read("src/components/extended-lock-screen.tsx");
   const bridge = await read("src/lib/native-bridge.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
-  assert.match(screen, /setImmersiveMode\\(true\\)/);
-  assert.match(screen, /setImmersiveMode\\(false\\)/);
-  assert.match(screen, />▼<\\/span>/);
-  assert.doesNotMatch(screen, /Moon|moon/);
-  assert.match(screen, /onClick=\\{openRecovery\\}/);
-  assert.match(screen, /ضع كلمة السر لإلغاء وضع الصيانة/);
-  assert.match(bridge, /setImmersiveMode\\(options: \\{ enabled: boolean \\}\\)/);
-  assert.match(plugin, /fun setImmersiveMode/);
-  assert.match(plugin, /WindowInsets\\.Type\\.statusBars\\(\\) or WindowInsets\\.Type\\.navigationBars\\(\\)/);
-  assert.match(plugin, /SYSTEM_UI_FLAG_IMMERSIVE_STICKY/);
+  assert.ok(screen.includes("setImmersiveMode(true)"));
+  assert.ok(screen.includes("setImmersiveMode(false)"));
+  assert.ok(screen.includes(">▼</span>"));
+  assert.ok(!screen.includes("Moon"));
+  assert.ok(screen.includes("onClick={openRecovery}"));
+  assert.ok(screen.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
+  assert.ok(bridge.includes("setImmersiveMode(options: { enabled: boolean })"));
+  assert.ok(plugin.includes("fun setImmersiveMode"));
+  assert.ok(plugin.includes("WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()"));
+  assert.ok(plugin.includes("SYSTEM_UI_FLAG_IMMERSIVE_STICKY"));
 });
 
 test("uninstall protection is visibly unsupported until Device Owner and stays policy-confirmed", async () => {

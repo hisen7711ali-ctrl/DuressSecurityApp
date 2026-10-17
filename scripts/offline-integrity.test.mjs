@@ -108,17 +108,17 @@ test("calculator branding is a real calculator icon and does not change the secu
 
 test("calculator screen remains a calculator-only presentation layer", async () => {
   const source = await read("src/components/fake-calculator.tsx");
+  const wrapper = await read("src/components/fullscreen-calculator.tsx");
   includes(source, "الآلة الحاسبة");
   includes(source, "Calculator");
   includes(source, "evalExpr");
-  includes(source, "onSecretCommand");
-  includes(source, 'OWNER_TRIGGER = "20272006"');
-  includes(source, "onSecretCommand?.(OWNER_TRIGGER_FULL)");
-  includes(source, "const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`");
-  includes(source, 'ownerSequenceRef = useRef("")');
   includes(source, 'if (key === "⌫")');
   includes(source, 'if (key === "±")');
-  excludes(source, "onOpenOwner");
+  excludes(source, "OWNER_TRIGGER");
+  excludes(source, "20272006");
+  includes(wrapper, "getCalculatorCommand()");
+  includes(wrapper, "sequenceRef.current === calculatorCommand");
+  includes(wrapper, "props.onSecretCommand");
   excludes(source, "fetch(");
   excludes(source, "XMLHttpRequest");
 });

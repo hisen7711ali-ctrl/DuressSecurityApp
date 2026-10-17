@@ -6,26 +6,27 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (p) => readFile(path.join(root, p), 'utf8');
 
-test('calculator is the ordinary startup screen and owner entry uses the exact numeric trigger', async () => {
+test('calculator remains the ordinary startup screen and its secret command follows saved settings', async () => {
   const shell = await read('src/components/app-shell.tsx');
   const calculator = await read('src/components/fake-calculator.tsx');
+  const wrapper = await read('src/components/fullscreen-calculator.tsx');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
-  assert.match(shell, /calculatorFront, setCalculatorFront\] = useState\(true\)/);
-  assert.match(shell, /getCalculatorCommand\(\)/);
-  assert.match(shell, /sequence !== `\$\{getCalculatorCommand\(\)\}=`/);
-  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /securityGateFlow\.current = true/);
-  assert.match(shell, /setCalculatorFront\(false\)/);
-  assert.match(shell, /setPendingSecurityGate\(true\)/);
-  assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
-  assert.match(shell, /if \(!ready\) return <FakeCalculator/);
-  assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
-  assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
-  assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
-  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
-  assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /ownerSequenceRef/);
-  assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.match(shell, /calculatorFront, setCalculatorFront\\] = useState\\(true\\)/);
+  assert.ok(shell.includes('getCalculatorCommand()'));
+  assert.ok(shell.includes('sequence !== `${getCalculatorCommand()}=`'));
+  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND/);
+  assert.match(shell, /securityGateFlow\\.current = true/);
+  assert.match(shell, /setCalculatorFront\\(false\\)/);
+  assert.match(shell, /setPendingSecurityGate\\(true\\)/);
+  assert.match(shell, /openOverlay\\(\\{ kind: "unlock" \\}\\)/);
+  assert.match(shell, /if \\(!ready\\) return <FakeCalculator/);
+  assert.match(shell, /if \\(session === "locked" && calculatorFront\\) return <FakeCalculator/);
+  assert.match(shell, /if \\(pendingSecurityGate\\) return <LockGate \\/>/);
+  assert.match(shell, /if \\(overlay\\?\\.kind === "unlock"\\) return <LockGate \\/>/);
+  assert.ok(wrapper.includes('sequenceRef.current === calculatorCommand'));
+  assert.ok(wrapper.includes('props.onSecretCommand?.(`${calculatorCommand}=`)'));
+  assert.ok(!calculator.includes('OWNER_TRIGGER'));
+  assert.ok(!calculator.includes('20272006'));
   assert.match(activity, /FLAG_SECURE/);
 });
 

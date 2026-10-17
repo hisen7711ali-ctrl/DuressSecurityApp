@@ -35,12 +35,13 @@ test("fresh startup keeps the calculator visible while secure initialization ret
 test("calculator trigger follows the configured command and opens the security gate", async () => {
   const shell = await read("src/components/app-shell.tsx");
   const calculator = await read("src/components/fake-calculator.tsx");
-  assert.match(shell, /getCalculatorCommand\\(\\)/);
-  assert.match(shell, /sequence !== `\\$\\{getCalculatorCommand\\(\\)\\}=`/);
-  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND/);
-  assert.match(shell, /openSecurityGate\\(\\)/);
-  assert.match(shell, /setPendingSecurityGate\\(true\\)/);
-  assert.match(shell, /openOverlay\\(\\{ kind: "unlock" \\}\\)/);
-  assert.match(shell, /if \\(pendingSecurityGate\\) return <LockGate \\/>/);
-  assert.doesNotMatch(calculator, /OWNER_TRIGGER|20272006/);
+  assert.ok(shell.includes("getCalculatorCommand()"));
+  assert.ok(shell.includes("sequence !== `${getCalculatorCommand()}=`"));
+  assert.ok(!shell.includes("SECRET_CALCULATOR_COMMAND"));
+  assert.ok(shell.includes("openSecurityGate()"));
+  assert.ok(shell.includes("setPendingSecurityGate(true)"));
+  assert.ok(shell.includes('openOverlay({ kind: "unlock" })'));
+  assert.ok(shell.includes('if (pendingSecurityGate) return <LockGate />'));
+  assert.ok(!calculator.includes("OWNER_TRIGGER"));
+  assert.ok(!calculator.includes("20272006"));
 });

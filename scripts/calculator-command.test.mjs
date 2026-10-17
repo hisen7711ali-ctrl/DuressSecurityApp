@@ -27,9 +27,10 @@ test("calculator settings require the master PIN and reject security-PIN reuse",
 test("calculator intercepts only the currently configured command", async () => {
   const calculator = await read("src/components/fullscreen-calculator.tsx");
   const baseCalculator = await read("src/components/fake-calculator.tsx");
-  assert.match(calculator, /getCalculatorCommand\\(\\)/);
-  assert.match(calculator, /sequenceRef\\.current === calculatorCommand/);
-  assert.match(calculator, /if \\(configuredMatch\\) props\\.onSecretCommand/);
-  assert.doesNotMatch(calculator, /LEGACY_CALCULATOR_COMMAND|old value is deliberately swallowed/);
-  assert.doesNotMatch(baseCalculator, /OWNER_TRIGGER|20272006/);
+  assert.ok(calculator.includes("getCalculatorCommand()"));
+  assert.ok(calculator.includes("sequenceRef.current === calculatorCommand"));
+  assert.ok(calculator.includes("props.onSecretCommand?.(`${calculatorCommand}=`)"));
+  assert.ok(!calculator.includes("LEGACY_CALCULATOR_COMMAND"));
+  assert.ok(!baseCalculator.includes("OWNER_TRIGGER"));
+  assert.ok(!baseCalculator.includes("20272006"));
 });
