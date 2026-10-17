@@ -38,7 +38,12 @@ export function SettingsScreen() {
 
   async function onBackgroundImageSelected(input: HTMLInputElement) {
     clearDocumentPicker();
-    const file = input.files?.[0]; input.value = ""; if (!file) return;
+    const file = input.files?.[0]; input.value = "";
+    if (!file) {
+      const current = useAppStore.getState();
+      if (current.session === "unlocked") current.lockSession();
+      return;
+    }
     if (!file.type.startsWith("image/")) { setToast(lang === "ar" ? "اختر ملف صورة فقط." : "Select an image file."); return; }
     if (file.size > 20 * 1024 * 1024) { setToast(lang === "ar" ? "الصورة الأصلية أكبر من 20 ميغابايت." : "The source image exceeds 20 MB."); return; }
     try {
