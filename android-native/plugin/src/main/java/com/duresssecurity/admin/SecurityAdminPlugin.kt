@@ -255,7 +255,89 @@ class SecurityAdminPlugin : Plugin() {
     @PluginMethod
     fun setSelfUninstallBlocked(call: PluginCall) { val blocked = call.getBoolean("blocked", false) ?: false; val ret = JSObject(); if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !dpm().isDeviceOwnerApp(context.packageName)) { call.resolve(ret.putCompat("ok", false)); return }; try { dpm().setUninstallBlocked(adminComponent(), context.packageName, blocked); ret.putCompat("ok", dpm().isUninstallBlocked(adminComponent(), context.packageName) == blocked) } catch (_: SecurityException) { ret.putCompat("ok", false) } catch (_: IllegalArgumentException) { ret.putCompat("ok", false) }; call.resolve(ret) }
     @PluginMethod
-    fun setKioskMode(call: PluginCall) { val enabled = call.getBoolean("enabled", false) ?: false; if (!dpm().isDeviceOwnerApp(context.packageName)) { call.resolve(JSObject().putCompat("ok", false)); return }; val currentActivity = activity ?: run { call.resolve(JSObject().putCompat("ok", false)); return }; try { if (enabled) { dpm().setLockTaskPackages(adminComponent(), arrayOf(context.packageName)); if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) dpm().setLockTaskFeatures(adminComponent(), DevicePolicyManager.LOCK_TASK_FEATURE_HOME); currentActivity.runOnUiThread { val success = try { currentActivity.startLockTask(); true } catch (_: Exception) { try { dpm().setLockTaskPackages(adminComponent(), emptyArray()) } catch (_: Exception) {}; false }; call.resolve(JSObject().putCompat("ok", success)) } } else currentActivity.runOnUiThread { val success = try { currentActivity.stopLockTask(); dpm().setLockTaskPackages(adminComponent(), emptyArray()); true } catch (_: Exception) { try { dpm().setLockTaskPackages(adminComponent(), emptyArray()); true } catch (_: Exception) { false } }; call.resolve(JSObject().putCompat("ok", success)) } } catch (_: SecurityException) { call.resolve(JSObject().putCompat("ok", false)) } catch (_: IllegalStateException) { call.resolve(JSObject().putCompat("ok", false)) } }
+    fun setKioskMode(call: PluginCall) {
+        val enabled = call.getBoolean("enabled", false) ?: false
+        if (!dpm().isDeviceOwnerApp(context.packageName)) {
+            call.resolve(JSObject().putCompat("ok", false)); return
+        }
+        val currentActivity = activity ?: run {
+            call.resolve(JSObject().putCompat("ok", false)); return
+        }
+        try {
+            if (enabled) {
+                val requested = call.getArray("allowedPackages") ?: JSArray()
+                val candidates = linkedSetOf<String>()
+                for (index in 0 until requested.length()) {
+                    val candidate = try { requested.getString(index).trim() } catch (_: Exception) { "" }
+                    if (candidate.isBlank() || candidate == context.packageName) continue
+                    if (!candidate.matches(Regex("^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+$"))) continue
+                    // Only packages with a real launch activity may enter the OS-enforced allowlist.
+                    val installed = try { context.packageManager.getLaunchIntentForPackage(candidate) != null } catch (_: Exception) { false }
+                    if (installed) candidates.add(candidate)
+                }
+                val allowed = (candidates + context.packageName).toList()
+                val stored = try {
+                    secureStore().put(KIOSK_ALLOWED_PACKAGES_KEY, org.json.JSONArray(allowed).toString())
+                } catch (_: Exception) { false }
+                if (!stored) { call.resolve(JSObject().putCompat("ok", false)); return }
+                dpm().setLockTaskPackages(adminComponent(), allowed.toTypedArray())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    dpm().setLockTaskFeatures(adminComponent(), DevicePolicyManager.LOCK_TASK_FEATURE_HOME)
+                }
+                if (isKioskActive()) { call.resolve(JSObject().putCompat("ok", true)); return }
+                currentActivity.runOnUiThread {
+                    val success = try {
+                        currentActivity.startLockTask()
+                        true
+                    } catch (_: Exception) {
+                        try { dpm().setLockTaskPackages(adminComponent(), emptyArray()) } catch (_: Exception) { }
+                        false
+                    }
+                    call.resolve(JSObject().putCompat("ok", success))
+                }
+            } else {
+                currentActivity.runOnUiThread {
+                    val success = try {
+                        if (isKioskActive()) currentActivity.stopLockTask()
+                        dpm().setLockTaskPackages(adminComponent(), emptyArray())
+                        true
+                    } catch (_: Exception) {
+                        try { dpm().setLockTaskPackages(adminComponent(), emptyArray()); true } catch (_: Exception) { false }
+                    }
+                    call.resolve(JSObject().putCompat("ok", success))
+                }
+            }
+        } catch (_: SecurityException) {
+            call.resolve(JSObject().putCompat("ok", false))
+        } catch (_: IllegalStateException) {
+            call.resolve(JSObject().putCompat("ok", false))
+        }
+    }
+
+    @PluginMethod
+    fun launchKioskApp(call: PluginCall) {
+        val target = call.getString("packageName")?.trim().orEmpty()
+        if (target.isBlank() || target == context.packageName ||
+            !dpm().isDeviceOwnerApp(context.packageName) || !isKioskActive()) {
+            call.resolve(JSObject().putCompat("ok", false)); return
+        }
+        val allowed = try {
+            val raw = secureStore().get(KIOSK_ALLOWED_PACKAGES_KEY) ?: "[]"
+            val list = org.json.JSONArray(raw)
+            (0 until list.length()).map { list.optString(it) }.toSet()
+        } catch (_: Exception) { emptySet<String>() }
+        if (target !in allowed) { call.resolve(JSObject().putCompat("ok", false)); return }
+        val intent = try { context.packageManager.getLaunchIntentForPackage(target) } catch (_: Exception) { null }
+        if (intent == null) { call.resolve(JSObject().putCompat("ok", false)); return }
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve(JSObject().putCompat("ok", true))
+        } catch (_: Exception) {
+            call.resolve(JSObject().putCompat("ok", false))
+        }
+    }
+
     private fun hasOverlayPermission(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
     private fun hasUsageAccess(): Boolean { val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager; @Suppress("DEPRECATION") return appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED }
     private fun isOurAccessibilityServiceEnabled(): Boolean { val services = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; val expected = ComponentName(context, AppLockAccessibilityService::class.java).flattenToString(); return services.split(':').any { it.equals(expected, ignoreCase = true) } }
@@ -263,4 +345,6 @@ class SecurityAdminPlugin : Plugin() {
     private fun isSelfUninstallBlocked(): Boolean { if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !dpm().isDeviceOwnerApp(context.packageName)) return false; return try { dpm().isUninstallBlocked(adminComponent(), context.packageName) } catch (_: Exception) { false } }
     private fun isKioskActive(): Boolean { val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager; return manager.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_LOCKED }
 }
+private const val KIOSK_ALLOWED_PACKAGES_KEY = "duress-security-kiosk-allowed-packages"
+
 private fun JSObject.putCompat(key: String, value: Any?): JSObject { put(key, value); return this }
