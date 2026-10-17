@@ -363,14 +363,19 @@ class AppLockAccessibilityService : AccessibilityService() {
             if (maintenanceUntil != null && !clearTargetMaintenance(targetPackage)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."; return }
             unlockedTarget = targetPackage; clearAttemptState(targetPackage); attempts = 0; blockedUntil = 0L; dismissGate(); return
         }
-        // All owner actions share the primary app's PIN policy. In particular,
-        // 5555 must create the same persisted app-wide maintenance lock as the
-        // calculator/main gate, not a second per-target maintenance state.
-        val isOwnerAction = typed.isNotEmpty() && (
-            policy.duressPin?.let { typed == normalizePin(it) } == true ||
-            policy.wipePin?.let { typed == normalizePin(it) } == true ||
-            (maintenanceUntil == null && policy.extendedLockPin?.let { typed == normalizePin(it) } == true)
-        )
+        // The maintenance PIN applies to the currently protected target only.
+        val wantsTargetMaintenance = maintenanceUntil == null && policy.extendedLockPin?.let { typed == normalizePin(it) } == true
+        if (wantsTargetMaintenance) {
+            val until = now + 30L * 24L * 60L * 60L * 1000L
+            if (!writeTargetMaintenance(targetPackage, until)) {
+                errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ حالة حماية هذا التطبيق؛ بقي القفل فعّالًا." else "Could not save this app protection state; the lock remains active."
+                pinValue = ""; updatePinDots(); return
+            }
+            pinValue = ""; updatePinDots()
+            showGate(targetPackage, maintenanceUntil = until)
+            return
+        }
+        val isOwnerAction = typed.isNotEmpty() && policy.duressPin?.let { typed == normalizePin(it) } == true
         if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
         if (maintenanceUntil != null) {
             // Re-entering the maintenance PIN leaves the countdown visible rather
