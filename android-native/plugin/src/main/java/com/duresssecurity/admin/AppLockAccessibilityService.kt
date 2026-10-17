@@ -28,6 +28,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONArray
+import org.json.JSONArray
 import org.json.JSONObject
 import androidx.biometric.BiometricManager
 import com.duresssecurity.app.MainActivity
@@ -386,13 +387,33 @@ class AppLockAccessibilityService : AccessibilityService() {
                 maintenanceRecoveryButton?.visibility = View.VISIBLE
                 return
             }
-            recordFailedAttempt(targetPackage, now); return
+            recordFailedAttempt(targetPackage, now, typed.length); return
         }
-        recordFailedAttempt(targetPackage, now)
+        recordFailedAttempt(targetPackage, now, typed.length)
     }
 
-    private fun recordFailedAttempt(targetPackage: String, now: Long) {
+    private fun appendAttemptHistory(targetPackage: String, attemptedLength: Int, attemptNumber: Int, at: Long, outcome: String) {
+        try {
+            val secure = SecureStorage(this)
+            val raw = secure.get(FAILED_ATTEMPT_HISTORY_KEY)
+            val history = if (raw.isNullOrBlank()) JSONArray() else JSONArray(raw)
+            history.put(JSONObject()
+                .put("at", at)
+                .put("packageName", targetPackage.take(240))
+                .put("context", "app")
+                .put("attemptedLength", attemptedLength.coerceIn(0, 10))
+                .put("attemptNumber", attemptNumber.coerceAtLeast(1))
+                .put("outcome", outcome))
+            while (history.length() > 200) history.remove(0)
+            secure.put(FAILED_ATTEMPT_HISTORY_KEY, history.toString())
+        } catch (_: Exception) {
+            // Logging is best-effort; normal attempt throttling stays in force.
+        }
+    }
+
+    private fun recordFailedAttempt(targetPackage: String, now: Long, attemptedLength: Int) {
         attempts = (attempts + 1).coerceAtMost(1_000_000); pinValue = ""; updatePinDots()
+        appendAttemptHistory(targetPackage, attemptedLength, attempts, now, if (attempts >= 5) "rate-limited" else "rejected")
         if (attempts >= 5) {
             blockedUntil = now + 15_000L
             if (!saveAttemptState(targetPackage, AttemptState(attempts, blockedUntil))) { blockUntilStorageRecovers(); return }
@@ -536,6 +557,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         )
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
         const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
+        const val FAILED_ATTEMPT_HISTORY_KEY = "duress-security-failed-attempt-history"
         const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
     }
 }
