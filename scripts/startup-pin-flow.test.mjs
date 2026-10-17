@@ -6,12 +6,13 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (p) => readFile(path.join(root, p), "utf8");
 
-test("default 0000 PIN auto-submits immediately after the fourth digit", async () => {
+test("default 0000 auto-submits immediately while configured PIN lengths remain supported", async () => {
   const security = await read("src/lib/security-service.ts");
   const gate = await read("src/components/lock-gate.tsx");
   assert.match(security, /master: "0000"/);
   assert.match(security, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
-  assert.match(gate, /if \(next\.length === 4\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
+  assert.match(gate, /if \(next\.length > value\.length && shouldAutoSubmit\(next\)\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
+  assert.match(gate, /return candidate\.length === pinLength \|\| matchesExistingPin\(candidate\)/);
 });
 
 test("fresh startup keeps the calculator visible while secure initialization retries in the background", async () => {
