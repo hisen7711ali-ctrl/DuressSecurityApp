@@ -242,7 +242,11 @@ test("main lock failure count is restored from encrypted journal without storing
   assert.ok(audit.includes("recordSuccessfulMainUnlock"));
   assert.ok(audit.includes("secureStorageGet(SECURITY_AUDIT_STORAGE_KEY)"));
   assert.ok(audit.includes("secureStorageSet("));
+  assert.ok(audit.includes("MAIN_ATTEMPT_COUNTER_STORAGE_KEY"));
+  assert.ok(audit.includes("attemptNumber = previous + 1"));
   assert.ok(store.includes("await loadConsecutiveMainFailedAttempts()"));
+  const wipeScreen = await read("src/components/wipe-screen.tsx");
+  assert.ok(wipeScreen.includes("duress-security-main-failed-attempt-count"));
   assert.ok(gate.includes("await recordFailedAttempt("));
   assert.ok(gate.includes("await recordSuccessfulMainUnlock()"));
   assert.ok(settings.includes("Entered PIN: redacted"));
