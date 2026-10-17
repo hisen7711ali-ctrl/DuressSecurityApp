@@ -6,7 +6,7 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("protected-app gate is target-aware and routes 5555 to the shared maintenance flow", async () => {
+test("protected-app gate is target-aware and routes 5555 to target-only maintenance", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /getApplicationLabel\(packageManager\.getApplicationInfo\(targetPackage/);
   assert.match(service, /getApplicationIcon\(targetPackage\)/);
@@ -18,18 +18,23 @@ test("protected-app gate is target-aware and routes 5555 to the shared maintenan
   assert.ok(service.includes("title.setOnClickListener"));
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
   assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
-  assert.ok(verify.includes("dispatchOwnerPinAction(targetPackage, typed)"));
-  assert.ok(!verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
+  assert.ok(verify.includes("dispatchOwnerPinAction(targetPackage, typed)"), "4444 routes to the app calculator/owner flow");
   assert.match(service, /30-day maintenance/);
 });
 
-test("protected-app gate routes configured maintenance, duress and wipe PINs through the owner flow", async () => {
+test("protected-app gate routes maintenance per target, routes duress to the owner flow and never wipes another app", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /policy\.extendedLockPin/);
   assert.match(service, /policy\.duressPin/);
   assert.match(service, /policy\.wipePin/);
   assert.doesNotMatch(service, /typed\s*==\s*"5555"|typed\s*==\s*"4444"|typed\s*==\s*"7777"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+  const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
+  assert.doesNotMatch(verify, /policy\.wipePin\?\.let/);
+  assert.match(verify, /wantsTargetMaintenance/);
+  assert.match(verify, /did not delete any files|لم تُحذف ملفات/);
 });
 
 test("legacy per-app maintenance records remain readable and recoverable", async () => {

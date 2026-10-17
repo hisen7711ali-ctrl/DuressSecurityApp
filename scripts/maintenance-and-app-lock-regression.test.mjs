@@ -204,15 +204,16 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
 });
 
 
-test("App Lock owner PINs reuse the primary duress, wipe, and extended-maintenance actions", async () => {
+test("App Lock 4444 returns to the owner flow while 5555 maintains only the target app", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   const shell = await read("src/components/app-shell.tsx");
   const store = await read("src/lib/store.ts");
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
   assert.ok(verify.includes("policy.duressPin?.let"));
-  assert.ok(verify.includes("policy.wipePin?.let"));
+  assert.ok(!verify.includes("policy.wipePin?.let"), "7777 must not erase another app's private data");
   assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
-  assert.ok(!verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
   assert.ok(verify.includes("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }"));
   assert.ok(shell.includes("state.submitPin(pin)"));
   assert.ok(shell.includes("state.activateDuressMode()"));
