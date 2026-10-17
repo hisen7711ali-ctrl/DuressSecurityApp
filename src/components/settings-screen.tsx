@@ -53,6 +53,7 @@ export function SettingsScreen() {
   const appLockBackgroundX = useAppStore((s) => s.appLockBackgroundX);
   const appLockBackgroundY = useAppStore((s) => s.appLockBackgroundY);
   const setLockBackground = useAppStore((s) => s.setLockBackground);
+  const lockSession = useAppStore((s) => s.lockSession);
   const setTheme = useAppStore((s) => s.setTheme);
   const setLang = useAppStore((s) => s.setLang);
   const setPanel = useAppStore((s) => s.setPanel);
@@ -113,7 +114,11 @@ export function SettingsScreen() {
     clearDocumentPicker();
     const file = input.files?.[0];
     input.value = "";
-    if (!file) return;
+    if (!file) {
+      const current = useAppStore.getState();
+      if (current.session === "unlocked") current.lockSession();
+      return;
+    }
     if (!file.type.startsWith("image/")) { setToast(lang === "ar" ? "اختر ملف صورة فقط." : "Select an image file."); return; }
     if (file.size > 20 * 1024 * 1024) { setToast(lang === "ar" ? "الصورة الأصلية أكبر من 20 ميغابايت." : "The source image exceeds 20 MB."); return; }
     try {

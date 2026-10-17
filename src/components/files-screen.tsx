@@ -83,7 +83,11 @@ export function FilesScreen() {
     clearDocumentPicker();
     const picked = input.files?.[0];
     input.value = "";
-    if (!picked) return;
+    if (!picked) {
+      const current = useAppStore.getState();
+      if (current.session === "unlocked") current.lockSession();
+      return;
+    }
     if (!vaultCryptoReady) {
       setAttachmentError(lang === "ar" ? "انتهت جلسة الخزانة أو لم تُفتح بعد. افتح الخزانة مجددًا قبل الاستيراد." : "The vault session expired or is not open. Reopen the vault before importing.");
       return;
