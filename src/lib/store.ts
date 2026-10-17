@@ -369,8 +369,8 @@ export const useAppStore = create<AppStore>()(
           // clear security state. The explicit event keeps presentation logic
           // out of the persistent store.
           if ((overlay?.kind === "unlock" || overlay?.kind === "app") &&
-              state.session !== "extlocked" && state.session !== "storage-error" &&
-              state.session !== "wiping" && typeof window !== "undefined") {
+              state.session !== "storage-error" && state.session !== "wiping" &&
+              typeof window !== "undefined") {
             window.dispatchEvent(new Event("duress-security-open-calculator"));
             return "duress";
           }
