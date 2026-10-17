@@ -81,8 +81,8 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.ok(store.includes('homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true'));
   const wipeScreen = await read('src/components/wipe-screen.tsx');
   const secureStorage = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt');
-  assert.match(wipeScreen, /result\\.reason === "KEY_MISSING"/);
-  assert.match(wipeScreen, /if \\(!result\\.available \\|\\| result\\.found\\) return false/);
-  assert.match(secureStorage, /preferences\\.edit\\(\\)\\.clear\\(\\)\\.commit\\(\\)/);
-  assert.match(secureStorage, /deleteEntry\\(KEY_ALIAS\\)/);
+  assert.match(wipeScreen, /result\.reason === "KEY_MISSING"/);
+  assert.match(wipeScreen, /if \(!result\.available \|\| result\.found\) return false/);
+  assert.match(secureStorage, /preferences\\.edit\\(\)\\.clear\\(\)\\.commit\\(\)/);
+  assert.match(secureStorage, /deleteEntry\\(KEY_ALIAS\)/);
 });
