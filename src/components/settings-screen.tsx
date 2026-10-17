@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Fingerprint, ShieldCheck } from "lucide-react";
 import { ToggleRow } from "@/components/apps-screen";
-import { useAppStore, type PermKey } from "@/lib/store";
+import { appName, useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
 import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
@@ -44,6 +44,7 @@ function imageFileToDataUrl(file: File): Promise<string> {
 export function SettingsScreen() {
   const { t, lang } = useCopy();
   const theme = useAppStore((s) => s.theme);
+  const installedApps = useAppStore((s) => s.installedApps);
   const mainLockBackgroundImage = useAppStore((s) => s.mainLockBackgroundImage);
   const appLockBackgroundImage = useAppStore((s) => s.appLockBackgroundImage);
   const mainLockBackgroundPresetId = useAppStore((s) => s.mainLockBackgroundPresetId);
@@ -407,8 +408,8 @@ export function SettingsScreen() {
 
       <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "تاريخ المحاولات الفاشلة المحلي والمشفّر" : "Local encrypted failed-attempt history"}</h2><button type="button" className="rounded-md border border-line px-3 py-2 text-xs" onClick={() => { void loadFailedAttemptHistory().then(setFailedHistory); }}>{lang === "ar" ? "تحديث" : "Refresh"}</button></div>
-        <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar" ? "يحفظ التطبيق وقت المحاولة واسم الحزمة وعدد المحاولات وطول الإدخال فقط داخل التخزين الآمن في أندرويد. لا نحفظ أرقام PIN نفسها حتى لا تتحول السجلات إلى سجل كلمات سر." : "Android secure storage keeps the time, app package, attempt count and entered length only. PIN digits are never logged."}</p>
-        {failedHistory === null ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "السجل المشفّر متاح داخل نسخة أندرويد فقط." : "The encrypted journal is available only in the Android app."}</p> : failedHistory.length === 0 ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "لا توجد محاولات مسجلة." : "No attempts recorded."}</p> : <div className="mt-3 max-h-64 space-y-2 overflow-auto">{failedHistory.slice(-10).reverse().map((entry, index) => <div key={entry.at + "-" + entry.packageName + "-" + index} className="rounded-lg border border-line px-3 py-2"><p className="break-all text-xs font-semibold">{entry.packageName}</p><p className="mt-1 text-[11px] text-muted">{new Date(entry.at).toLocaleString(lang === "ar" ? "ar" : "en-US")} · {lang === "ar" ? "المحاولة" : "Attempt"} {entry.attemptNumber} · {lang === "ar" ? "طول الإدخال" : "Input length"} {entry.attemptedLength}</p><p className="mt-1 text-[11px] text-muted">{entry.outcome === "rate-limited" ? (lang === "ar" ? "تم تفعيل الإيقاف المؤقت" : "Rate limited") : (lang === "ar" ? "رمز غير صحيح" : "Rejected")}</p></div>)}</div>}
+        <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar" ? "يحفظ التطبيق وقت المحاولة واسم التطبيق وعدد المحاولات وطول الإدخال فقط داخل التخزين الآمن في أندرويد. الأرقام التي كتبتها محجوبة ولا تُخزّن إطلاقًا حتى لا يتحول سجل الحماية إلى سجل كلمات سر." : "Android secure storage keeps the time, app package, attempt count and entered length only. PIN digits are never logged."}</p>
+        {failedHistory === null ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "السجل المشفّر متاح داخل نسخة أندرويد فقط." : "The encrypted journal is available only in the Android app."}</p> : failedHistory.length === 0 ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "لا توجد محاولات مسجلة." : "No attempts recorded."}</p> : <div className="mt-3 max-h-64 space-y-2 overflow-auto">{failedHistory.slice(-10).reverse().map((entry, index) => <div key={entry.at + "-" + entry.packageName + "-" + index} className="rounded-lg border border-line px-3 py-2"><p className="break-all text-xs font-semibold">{appName(lang, entry.packageName, installedApps)}</p><p className="mt-1 break-all text-[10px] text-muted">{entry.packageName}</p><p className="mt-1 text-[11px] text-muted">{new Date(entry.at).toLocaleString(lang === "ar" ? "ar" : "en-US")} · {lang === "ar" ? "المحاولة" : "Attempt"} {entry.attemptNumber} · {lang === "ar" ? "الإدخال: محجوب" : "Entered PIN: redacted"} ({entry.attemptedLength} {lang === "ar" ? "أرقام" : "digits"})</p><p className="mt-1 text-[11px] text-muted">{entry.context === "app" ? (lang === "ar" ? "سياق قفل تطبيق" : "App-lock context") : (lang === "ar" ? "سياق القفل الرئيسي" : "Main-lock context")} · {entry.outcome === "rate-limited" ? (lang === "ar" ? "تم تفعيل الإيقاف المؤقت" : "Rate limited") : (lang === "ar" ? "رمز غير صحيح" : "Rejected")}</p></div>)}</div>}
       </section>
 
       <p className="px-1 text-xs leading-relaxed text-muted">
