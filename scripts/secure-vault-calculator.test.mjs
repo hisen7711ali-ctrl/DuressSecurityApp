@@ -143,3 +143,21 @@ test('native app-lock language follows the selected app language and onboarding 
   assert.match(permissions, /Set up required permissions/);
   assert.match(permissions, /تهيئة الأذونات المطلوبة/);
 });
+
+
+test('standalone Kiosk keeps a separate app allowlist and enforces Device Owner before launching apps', async () => {
+  const store = await read('src/lib/store.ts');
+  const screen = await read('src/components/kiosk-screen.tsx');
+  const bridge = await read('src/lib/native-bridge.ts');
+  const plugin = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt');
+  const shell = await read('src/components/app-shell.tsx');
+  assert.match(store, /kioskAllowedPackages/);
+  assert.match(store, /setKioskAllowedPackages/);
+  assert.match(screen, /Standalone Kiosk/);
+  assert.match(screen, /Allowed apps/);
+  assert.match(bridge, /launchKioskApp/);
+  assert.match(plugin, /KIOSK_ALLOWED_PACKAGES_KEY/);
+  assert.match(plugin, /if \(target !in allowed\)/);
+  assert.match(plugin, /!dpm\(\)\.isDeviceOwnerApp\(context\.packageName\)/);
+  assert.match(shell, /panel === "kiosk" \? <KioskScreen \/>/);
+});
