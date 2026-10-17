@@ -20,6 +20,7 @@ import { installNetworkGuard } from "@/lib/network-guard";
 import { getCalculatorCommand } from "@/lib/calculator-command";
 import { normalizePin } from "@/lib/security-service";
 import { clearDocumentPicker, hasDocumentPickerMarker, isDocumentPickerPending } from "@/lib/document-picker-guard";
+import { recordSuccessfulMainUnlock } from "@/lib/security-audit";
 
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
 const STARTUP_RETRY_DELAY_MS = 3000;
@@ -107,6 +108,29 @@ export function AppShell() {
         }
         if (typed === normalizePin(state.pins.lock)) return;
         if (typed === normalizePin(state.pins.master)) { void state.recoverExtendedLock(pin); return; }
+        return;
+      }
+      if (nativeBridge.isNativeAndroid() && normalizePin(pin) === normalizePin(state.pins.master)) {
+        void recordSuccessfulMainUnlock().then((saved) => {
+          const latest = useAppStore.getState();
+          if (!saved) {
+            useAppStore.setState({
+              ready: true,
+              session: "storage-error",
+              storageErrorCode: "FAILED_ATTEMPT_HISTORY_WRITE_FAILED",
+              overlay: null,
+              openedApp: null,
+              vaultOpen: false,
+              vaultCryptoReady: false,
+            });
+            latest.setToast(latest.lang === "ar"
+              ? "تعذّر حفظ إعادة ضبط عدّاد المحاولات في التخزين المشفّر؛ أُوقف الدخول."
+              : "Could not save the secure attempt-counter reset; access is paused.");
+            return;
+          }
+          latest.openOverlay({ kind: "unlock" });
+          latest.submitPin(pin);
+        });
         return;
       }
       state.openOverlay({ kind: "unlock" });
