@@ -230,3 +230,20 @@ test("App Lock 4444 returns to the locked calculator while 5555 maintains only t
   assert.ok(store.includes('session: "extlocked"'));
   assert.ok(store.includes("startExtendedLock(Date.now(), lockDurationMs())"));
 });
+
+test("main lock failure count is restored from encrypted journal without storing PIN digits", async () => {
+  const audit = await read("src/lib/security-audit.ts");
+  const store = await read("src/lib/store.ts");
+  const gate = await read("src/components/lock-gate.tsx");
+  const settings = await read("src/components/settings-screen.tsx");
+  assert.ok(audit.includes("loadConsecutiveMainFailedAttempts"));
+  assert.ok(audit.includes("recordSuccessfulMainUnlock"));
+  assert.ok(audit.includes("secureStorageGet(SECURITY_AUDIT_STORAGE_KEY)"));
+  assert.ok(audit.includes("secureStorageSet("));
+  assert.ok(store.includes("await loadConsecutiveMainFailedAttempts()"));
+  assert.ok(gate.includes("await recordFailedAttempt("));
+  assert.ok(gate.includes("await recordSuccessfulMainUnlock()"));
+  assert.ok(settings.includes("Entered PIN: redacted"));
+  assert.ok(settings.includes("appName(lang, entry.packageName, installedApps)"));
+  assert.doesNotMatch(audit, /attemptedPin|pinValue|typedPin/i);
+});
