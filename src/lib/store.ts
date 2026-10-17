@@ -441,7 +441,39 @@ export const useAppStore = create<AppStore>()(
       configuredPinCount: () => { const { pins, pinLength } = get(); return (Object.keys(pins) as PinKind[]).filter((k) => pins[k].length === pinLength).length; },
       requestDeviceAdminNative: async () => { const granted = await nativeBridge.requestDeviceAdmin(); if (granted) set({ deviceAdmin: true }); return granted; },
       setBiometricEnabled: (value) => set({ biometricEnabled: value }),
-      tryBiometricUnlock: async () => { const state = get(); if (!state.biometricEnabled || state.session === "extlocked" || Date.now() < state.lockoutUntil) return false; const overlay = state.overlay; if (overlay && overlay.kind !== "unlock" && overlay.kind !== "app") return false; const ok = await nativeBridge.authenticateBiometric(get().lang === "ar" ? "افتح التطبيق" : "Unlock the app"); if (!ok) return false; if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return true; } if (overlay.kind === "app") { set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return true; } return false; },
+      tryBiometricUnlock: async () => {
+        const state = get();
+        if (!state.biometricEnabled || state.session === "extlocked" || Date.now() < state.lockoutUntil) return false;
+        const overlay = state.overlay;
+        if (overlay && overlay.kind !== "unlock" && overlay.kind !== "app") return false;
+        const ok = await nativeBridge.authenticateBiometric(get().lang === "ar" ? "افتح التطبيق" : "Unlock the app");
+        if (!ok) return false;
+        const isMainUnlock = !overlay || overlay.kind === "unlock";
+        if (isMainUnlock && nativeBridge.isNativeAndroid() && !(await recordSuccessfulMainUnlock())) {
+          set({
+            ready: true,
+            session: "storage-error",
+            storageErrorCode: "FAILED_ATTEMPT_HISTORY_WRITE_FAILED",
+            overlay: null,
+            openedApp: null,
+            vaultOpen: false,
+            vaultCryptoReady: false,
+            toast: state.lang === "ar"
+              ? "تعذّر حفظ إعادة ضبط عدّاد المحاولات؛ بقيت الحماية مفعّلة."
+              : "Could not save the attempt-counter reset; protection remains enabled.",
+          });
+          return false;
+        }
+        if (isMainUnlock) {
+          set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() });
+          return true;
+        }
+        if (overlay?.kind === "app") {
+          set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 });
+          return true;
+        }
+        return false;
+      },
     }),
     {
       name: "duress-security-app", storage: createJSONStorage(() => appStorage), version: 9,
