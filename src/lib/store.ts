@@ -336,7 +336,20 @@ export const useAppStore = create<AppStore>()(
           });
           return "extended-lock";
         }
-        if (action === "duress") { get().activateDuressMode(); return "duress"; }
+        if (action === "duress") {
+          // On the main/app lock keypad, 4444 returns to the locked calculator
+          // facade. It is not an unlock, does not open the vault, and must not
+          // clear security state. The explicit event keeps presentation logic
+          // out of the persistent store.
+          if ((overlay?.kind === "unlock" || overlay?.kind === "app") &&
+              state.session !== "extlocked" && state.session !== "storage-error" &&
+              state.session !== "wiping" && typeof window !== "undefined") {
+            window.dispatchEvent(new Event("duress-security-open-calculator"));
+            return "duress";
+          }
+          get().activateDuressMode();
+          return "duress";
+        }
         if (action === "reject") {
           const attempts = state.failedAttempts + 1;
           const locked = attempts >= state.maxAttempts;
