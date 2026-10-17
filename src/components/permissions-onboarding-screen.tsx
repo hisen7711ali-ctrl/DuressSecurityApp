@@ -97,6 +97,11 @@ export function PermissionsOnboardingScreen({ onComplete }: { onComplete: () => 
       // Device Admin uses an Activity result callback, so it can resolve after
       // the permission screen closes. Advance the guided flow if it was granted.
       if (guided && row.id === "deviceAdmin") await refresh(true);
+    } catch {
+      guidedSetupRef.current = false;
+      promptedPermissionRef.current = null;
+      setGuidedSetup(false);
+      setSetupMessage(lang === "ar" ? "تعذّر فتح شاشة الإذن. افتح الإذن من قائمته وحاول مجددًا." : "Could not open the permission screen. Try granting it from its row.");
     } finally { setBusy(false); }
   }
 
