@@ -32,7 +32,8 @@ test("protected-app gate routes maintenance per target, routes duress to the own
   assert.doesNotMatch(service, /typed\s*==\s*"5555"|typed\s*==\s*"4444"|typed\s*==\s*"7777"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
-  assert.doesNotMatch(verify, /policy\.wipePin\?\.let/);
+  assert.match(verify, /policy\.wipePin\?\.let/);
+  assert.doesNotMatch(verify, /wipeData\(|clearApplicationUserData|beginEmergencyWipe|deleteRecursively/);
   assert.match(verify, /wantsTargetMaintenance/);
   assert.match(verify, /wantsTargetQuarantine/);
   assert.match(verify, /لم تُحذف ملفات/);

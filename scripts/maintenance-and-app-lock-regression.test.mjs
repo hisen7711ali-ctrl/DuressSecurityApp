@@ -212,7 +212,9 @@ test("App Lock 4444 returns to the owner flow while 5555 maintains only the targ
   const store = await read("src/lib/store.ts");
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
   assert.ok(verify.includes("policy.duressPin?.let"));
-  assert.ok(!verify.includes("policy.wipePin?.let"), "7777 must not erase another app's private data");
+  assert.ok(verify.includes("policy.wipePin?.let"), "7777 enters a target-only quarantine state");
+  assert.ok(verify.includes("wantsTargetQuarantine"));
+  assert.ok(!verify.includes("wipeData(") && !verify.includes("clearApplicationUserData"), "the lock keypad must not erase another package");
   assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
   assert.ok(verify.includes("writeTargetMaintenance(targetPackage, until)"));
   assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
