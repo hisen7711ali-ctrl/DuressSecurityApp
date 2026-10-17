@@ -20,8 +20,11 @@ test("v3 vault uses Argon2id with authenticated parameters and stores no plainte
   assert.equal(VAULT_MIN_PASSPHRASE_LENGTH, 1); assert.ok(VAULT_RECOMMENDED_PASSPHRASE_LENGTH >= 12);
 });
 
-test("v2 vault locks and reopens; wrong passphrase fails closed", async () => {
-  lockEncryptedVaultSession(); await assert.rejects(unlockOrCreateEncryptedVault("Wrong passphrase 2026!", [], false), /VAULT_PASSPHRASE_OR_INTEGRITY_ERROR/); const opened = await unlockOrCreateEncryptedVault(passphrase, [], false); assert.deepEqual(opened, sample);
+test("v3 vault locks and reopens; wrong passphrase fails closed", async () => {
+  values.clear(); lockEncryptedVaultSession(); await unlockOrCreateEncryptedVault(passphrase, sample);
+  lockEncryptedVaultSession();
+  await assert.rejects(unlockOrCreateEncryptedVault("Wrong passphrase 2026!", [], false), /VAULT_PASSPHRASE_OR_INTEGRITY_ERROR/);
+  const opened = await unlockOrCreateEncryptedVault(passphrase, [], false); assert.deepEqual(opened, sample);
 });
 
 test("tampering with authenticated header fails closed", async () => {
