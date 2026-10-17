@@ -36,7 +36,15 @@ export function FilesScreen() {
     clearDocumentPicker();
     const picked = input.files?.[0];
     input.value = "";
-    if (!picked || !vaultCryptoReady) return;
+    if (!picked) {
+      const current = useAppStore.getState();
+      if (current.session === "unlocked") current.lockSession();
+      return;
+    }
+    if (!vaultCryptoReady) {
+      setAttachmentError(lang === "ar" ? "انتهت جلسة الخزانة أو لم تُفتح بعد. افتح الخزانة مجددًا قبل الاستيراد." : "The vault session expired or is not open. Reopen the vault before importing.");
+      return;
+    }
     if (picked.size === 0) { setAttachmentError(lang === "ar" ? "الملف فارغ." : "The selected file is empty."); return; }
     if (picked.size > 512 * 1024 * 1024) { setAttachmentError(lang === "ar" ? "حجم الملف يتجاوز الحد المدعوم (512 ميغابايت)." : "The file exceeds the supported 512 MB limit."); return; }
     setAttachmentBusy(true);
