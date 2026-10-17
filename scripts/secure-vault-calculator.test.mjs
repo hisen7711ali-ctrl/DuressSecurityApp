@@ -95,7 +95,7 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.ok(wipeScreen.includes('result.reason === "KEY_MISSING"'));
   assert.ok(wipeScreen.includes("if (result.available)"));
   assert.ok(wipeScreen.includes("if (result.found) return false"));
-  assert.ok(wipeScreen.includes("if (!acknowledged || wipeBusy) return"));
+  assert.ok(wipeScreen.includes("if (!acknowledged || wipeInProgress.current) return"));
   assert.ok(wipeScreen.includes("disabled={!acknowledged || wipeBusy}"));
   assert.ok(wipeScreen.includes("wipeInProgress.current = true"));
   assert.ok(store.includes('type: "begin-emergency-wipe"'));
