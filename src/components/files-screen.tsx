@@ -28,6 +28,7 @@ export function FilesScreen() {
   const [preview, setPreview] = useState<{ title: string; url: string; mimeType: string } | null>(null);
 
   useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview?.url]);
+  useEffect(() => { if (!vaultOpen && preview) setPreview(null); }, [vaultOpen, preview]);
 
   async function importPickedFile(input: HTMLInputElement) {
     const picked = input.files?.[0];

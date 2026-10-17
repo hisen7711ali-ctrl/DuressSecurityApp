@@ -6,16 +6,18 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("extended lock uses maintenance copy and hides normal recovery UI", async () => {
+test("extended lock shows a red triangle, PIN recovery and truthful maintenance copy", async () => {
   const source = await read("src/components/extended-lock-screen.tsx");
   assert.match(source, /التطبيق قيد الصيانة/);
-  assert.match(source, /30 يوماً/);
-  assert.match(source, /<Moon className="size-5" \/>/);
-  assert.match(source, /onClick=\{openRecovery\}/);
-  assert.match(source, /استرداد المالك من وضع الصيانة/);
+  assert.match(source, /30 يومًا/);
+  assert.match(source, />▼<\\/span>/);
+  assert.doesNotMatch(source, /Moon|moon/);
+  assert.match(source, /onClick=\\{openRecovery\\}/);
   assert.match(source, /اضغط لإلغاء وضع الصيانة/);
-  assert.doesNotMatch(source, /aria-hidden="true"/);
   assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
+  assert.match(source, /beginEmergencyWipe/);
+  assert.match(source, /activateDuressMode/);
+  assert.match(source, /normalizePin\\(latest\\.pins\\.format\\)/);
   assert.match(source, /next.length === 4/);
 });
 
@@ -80,7 +82,9 @@ test("native special PINs are handed to the same primary submitPin flow", async 
   const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
   const shell = await read("src/components/app-shell.tsx");
   assert.match(service, /EXTRA_OWNER_PIN_ACTION/);
-  assert.match(service, /special PINs must reach the same central policy/);
+  const specialPinRoute = service.indexOf("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }");
+  const maintenanceGuard = service.indexOf("if (maintenanceUntil != null)", specialPinRoute);
+  assert.ok(specialPinRoute >= 0 && maintenanceGuard > specialPinRoute, "duress and format PINs must be routed before maintenance rejects ordinary PINs");
   assert.match(activity, /__duressSecurityPendingPinAction/);
   assert.match(shell, /state\.submitPin\(pin\)/);
   assert.match(shell, /__duressSecurityHandlePinAction/);
@@ -134,18 +138,19 @@ test("native App Lock biometric flow requires configured package and enabled bio
 });
 
 
-test("extended maintenance uses native immersive bars and a visible owner recovery moon", async () => {
+test("extended maintenance uses immersive bars and a red triangle rather than a moon", async () => {
   const screen = await read("src/components/extended-lock-screen.tsx");
   const bridge = await read("src/lib/native-bridge.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
-  assert.match(screen, /setImmersiveMode\(true\)/);
-  assert.match(screen, /setImmersiveMode\(false\)/);
-  assert.match(screen, /<Moon className="size-5" \/>/);
-  assert.match(screen, /onClick=\{openRecovery\}/);
+  assert.match(screen, /setImmersiveMode\\(true\\)/);
+  assert.match(screen, /setImmersiveMode\\(false\\)/);
+  assert.match(screen, />▼<\\/span>/);
+  assert.doesNotMatch(screen, /Moon|moon/);
+  assert.match(screen, /onClick=\\{openRecovery\\}/);
   assert.match(screen, /ضع كلمة السر لإلغاء وضع الصيانة/);
-  assert.match(bridge, /setImmersiveMode\(options: \{ enabled: boolean \}\)/);
+  assert.match(bridge, /setImmersiveMode\\(options: \\{ enabled: boolean \\}\\)/);
   assert.match(plugin, /fun setImmersiveMode/);
-  assert.match(plugin, /WindowInsets\.Type\.statusBars\(\) or WindowInsets\.Type\.navigationBars\(\)/);
+  assert.match(plugin, /WindowInsets\\.Type\\.statusBars\\(\\) or WindowInsets\\.Type\\.navigationBars\\(\\)/);
   assert.match(plugin, /SYSTEM_UI_FLAG_IMMERSIVE_STICKY/);
 });
 

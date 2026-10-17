@@ -135,7 +135,7 @@ export function ExtendedLockScreen() {
           <p className="mt-2 text-sm text-white/70">
             {lang === "ar"
               ? "تم تفعيل قفل صيانة التطبيق لمدة 30 يومًا. هذا القفل خاص بالتطبيق ولا يستبدل قفل شاشة أندرويد."
-              : "The app is performing self-maintenance to address accumulated errors under a company maintenance procedure. The maintenance lasts 30 days."}
+              : "App-level maintenance is active for 30 days. This does not replace the Android screen lock."}
           </p>
         </div>
         <div className="w-full rounded-3xl bg-white/10 p-4 backdrop-blur">

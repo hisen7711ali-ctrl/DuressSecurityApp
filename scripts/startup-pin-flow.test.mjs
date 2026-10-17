@@ -32,16 +32,15 @@ test("fresh startup keeps the calculator visible while secure initialization ret
   assert.match(plugin, /secureStorageExecutor/);
 });
 
-test("calculator trigger is the exact 20272006= sequence and opens the security gate", async () => {
+test("calculator trigger follows the configured command and opens the security gate", async () => {
   const shell = await read("src/components/app-shell.tsx");
   const calculator = await read("src/components/fake-calculator.tsx");
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
-  assert.match(shell, /openSecurityGate\(\)/);
-  assert.match(shell, /setPendingSecurityGate\(true\)/);
-  assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
-  assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
-  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
-  assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.match(shell, /getCalculatorCommand\\(\\)/);
+  assert.match(shell, /sequence !== `\\$\\{getCalculatorCommand\\(\\)\\}=`/);
+  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND/);
+  assert.match(shell, /openSecurityGate\\(\\)/);
+  assert.match(shell, /setPendingSecurityGate\\(true\\)/);
+  assert.match(shell, /openOverlay\\(\\{ kind: "unlock" \\}\\)/);
+  assert.match(shell, /if \\(pendingSecurityGate\\) return <LockGate \\/>/);
+  assert.doesNotMatch(calculator, /OWNER_TRIGGER|20272006/);
 });
