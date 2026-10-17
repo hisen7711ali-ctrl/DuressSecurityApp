@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
-import { FileText, LockKeyhole, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { useAppStore } from "@/lib/store";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { FileText, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Eye, Download, X } from "lucide-react";
+import { useAppStore, type VaultFile } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
+import { readEncryptedAttachment } from "@/lib/vault-crypto";
 
 export function FilesScreen() {
   const { t, lang } = useCopy();
@@ -14,6 +15,8 @@ export function FilesScreen() {
   const setVaultOpen = useAppStore((s) => s.setVaultOpen);
   const openOverlay = useAppStore((s) => s.openOverlay);
   const addFile = useAppStore((s) => s.addFile);
+  const addAttachment = useAppStore((s) => s.addAttachment);
+  const setToast = useAppStore((s) => s.setToast);
   const updateFile = useAppStore((s) => s.updateFile);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -22,6 +25,38 @@ export function FilesScreen() {
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [passphraseError, setPassphraseError] = useState("");
   const [passphraseBusy, setPassphraseBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [preview, setPreview] = useState<{ name: string; type: string; url: string } | null>(null);
+
+  useEffect(() => {
+    const url = preview?.url;
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [preview?.url]);
+
+  async function importAttachment(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setAttachmentBusy(true);
+    try {
+      await addAttachment(file);
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  async function openAttachment(file: VaultFile) {
+    if (!file.attachment || !vaultCryptoReady) return;
+    try {
+      const blob = await readEncryptedAttachment(file.attachment);
+      const url = URL.createObjectURL(blob);
+      setPreview({ name: file.attachment.name, type: file.attachment.type || "application/octet-stream", url });
+    } catch {
+      setToast(lang === "ar"
+        ? "تعذّر فك تشفير الملف أو فشل التحقق من سلامته؛ لم نعرضه."
+        : "The file could not be decrypted or its integrity check failed; it was not displayed.");
+    }
+  }
 
   if (!vaultOpen) {
     return (
@@ -139,6 +174,21 @@ export function FilesScreen() {
       </header>
 
       <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "استيراد ملف إلى الخزنة المشفّرة" : "Import a file into the encrypted vault"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          {lang === "ar"
+            ? "يمكنك اختيار صورة أو مستند أو أي ملف من الجهاز. نخزّن نسخة مشفّرة داخل الخزنة ولا نشغّل الملفات تلقائيًا. يبقى الأصل في مكانه؛ احذفه بنفسك من مدير الملفات إذا رغبت."
+            : "Choose an image, document, or any file. An encrypted copy is stored in the vault; files are never executed automatically. The original remains in place and can be removed manually in your file manager."}
+        </p>
+        <label className="mt-3 flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-cyan px-3 text-sm font-semibold text-night">
+          <Upload className="size-4" />
+          {attachmentBusy ? (lang === "ar" ? "جارٍ التشفير والاستيراد…" : "Encrypting and importing…") : (lang === "ar" ? "اختيار ملف من الجهاز" : "Choose a file from device")}
+          <input type="file" disabled={attachmentBusy || !vaultCryptoReady} onChange={(event) => void importAttachment(event)} className="sr-only" />
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold text-cyan">{lang === "ar" ? "إضافة ملاحظة نصية" : "Add a text note"}</h2>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -166,16 +216,29 @@ export function FilesScreen() {
             <div className="flex items-start justify-between gap-3">
               <button
                 type="button"
-                className="text-start"
+                className="min-w-0 flex-1 text-start"
                 onClick={() => {
-                  setEditing(file.id);
-                  setTitle(file.title);
-                  setBody(file.body);
+                  if (file.attachment) {
+                    void openAttachment(file);
+                  } else {
+                    setEditing(file.id);
+                    setTitle(file.title);
+                    setBody(file.body);
+                  }
                 }}
               >
-                <h2 className="font-semibold">{file.title}</h2>
-                <p className="mt-1 line-clamp-3 text-sm text-muted">{file.body}</p>
+                <h2 className="break-words font-semibold">{file.title}</h2>
+                {file.attachment ? (
+                  <p className="mt-1 text-xs text-muted">
+                    {file.attachment.type || "application/octet-stream"} · {(file.attachment.size / 1024).toFixed(1)} KB
+                  </p>
+                ) : <p className="mt-1 line-clamp-3 text-sm text-muted">{file.body}</p>}
               </button>
+              {file.attachment ? (
+                <button type="button" className="grid size-10 shrink-0 place-items-center rounded-lg bg-cyan/10 text-cyan" onClick={() => void openAttachment(file)} aria-label={lang === "ar" ? "عرض الملف داخل الخزنة" : "View file inside vault"}>
+                  <Eye className="size-4" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="grid size-10 place-items-center text-danger"
@@ -194,6 +257,29 @@ export function FilesScreen() {
           </article>
         ))
       )}
+
+      {preview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label={preview.name}>
+          <div className="flex max-h-[90svh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line bg-night p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="break-all text-sm font-semibold">{preview.name}</p>
+              <button type="button" onClick={() => setPreview(null)} className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface" aria-label={lang === "ar" ? "إغلاق العرض" : "Close preview"}><X className="size-4" /></button>
+            </div>
+            {preview.type.startsWith("image/") ? (
+              <img src={preview.url} alt={preview.name} className="mt-4 max-h-[65svh] w-full rounded-lg object-contain" />
+            ) : (
+              <div className="mt-4 rounded-xl bg-surface p-4 text-center">
+                <FileText className="mx-auto size-8 text-cyan" />
+                <p className="mt-2 text-xs leading-relaxed text-muted">
+                  {lang === "ar" ? "حُفظ الملف مشفّرًا. لتنزيل نسخة مفكوكة التشفير وفتحها، اضغط الزر أدناه؛ لا نشغّل الملف داخل التطبيق." : "The file is encrypted at rest. Explicitly download a decrypted copy to open it; it is not executed inside the app."}
+                </p>
+                <a href={preview.url} download={preview.name} className="mt-4 flex h-11 items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night"><Download className="size-4" />{lang === "ar" ? "تنزيل نسخة لفك التشفير" : "Download decrypted copy"}</a>
+              </div>
+            )}
+            <button type="button" onClick={() => setPreview(null)} className="mt-3 h-10 rounded-lg border border-line text-sm">{lang === "ar" ? "إغلاق" : "Close"}</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -11,7 +11,7 @@ type SecurityAdminNative = {
   getPermissionStatus(): Promise<NativePermissionStatus>; listLaunchableApps(): Promise<{ apps: Array<{ packageName: string; label: string }> }>;
   requestSystemPermission(options: { permission: NativePermissionKey }): Promise<{ opened: boolean; supported: boolean }>;
   initializeSecureStorage(): Promise<NativeResult>; secureGet(options: { key: string }): Promise<SecureRead>; secureSet(options: { key: string; value: string }): Promise<NativeResult>; secureRemove(options: { key: string }): Promise<NativeResult>; secureClearOwned(): Promise<NativeResult>;
-  setSelfUninstallBlocked(options: { blocked: boolean }): Promise<NativeResult>; setKioskMode(options: { enabled: boolean }): Promise<NativeResult>; setScreenCaptureAllowed(options: { allowed: boolean }): Promise<NativeResult>;
+  setSelfUninstallBlocked(options: { blocked: boolean }): Promise<NativeResult>; setKioskMode(options: { enabled: boolean }): Promise<NativeResult>; releaseAppLockControls(): Promise<NativeResult>; setScreenCaptureAllowed(options: { allowed: boolean }): Promise<NativeResult>;
   setImmersiveMode(options: { enabled: boolean }): Promise<NativeResult>;
   completeAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
   cancelAppLockBiometric(options: { packageName: string }): Promise<NativeResult>;
@@ -52,6 +52,7 @@ export async function secureStorageRemove(key: string): Promise<boolean> { const
 export async function secureStorageClearOwned(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.secureClearOwned(), { ok: false }, NATIVE_STORAGE_TIMEOUT_MS)).ok; } catch { return false; } }
 export async function setSelfUninstallBlocked(blocked: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setSelfUninstallBlocked({ blocked }), { ok: false })).ok; } catch { return false; } }
 export async function setKioskMode(enabled: boolean): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.setKioskMode({ enabled }), { ok: false })).ok; } catch { return false; } }
+export async function releaseAppLockControls(): Promise<boolean> { const plugin = getNativePlugin(); if (!plugin) return false; try { return (await withNativeTimeout(plugin.releaseAppLockControls(), { ok: false }, NATIVE_ACTIVITY_TIMEOUT_MS)).ok; } catch { return false; } }
 export async function completeAppLockBiometric(packageName: string): Promise<boolean> {
   const plugin = getNativePlugin();
   if (!plugin || !packageName.trim()) return false;

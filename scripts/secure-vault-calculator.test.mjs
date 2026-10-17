@@ -11,8 +11,9 @@ test('calculator is the ordinary startup screen and owner entry uses the exact n
   const calculator = await read('src/components/fake-calculator.tsx');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(shell, /calculatorFront, setCalculatorFront\] = useState\(true\)/);
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /getCalculatorCommand\(\)/);
+  assert.match(shell, /if \(sequence !== `\$\{getCalculatorCommand\(\)\}=`\) return false/);
+  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /securityGateFlow\.current = true/);
   assert.match(shell, /setCalculatorFront\(false\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
@@ -21,17 +22,19 @@ test('calculator is the ordinary startup screen and owner entry uses the exact n
   assert.match(shell, /if \(session === "locked" && calculatorFront\) return <FakeCalculator/);
   assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
   assert.match(shell, /if \(overlay\?\.kind === "unlock"\) return <LockGate \/>/);
-  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
-  assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /ownerSequenceRef/);
-  assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.match(calculator, /DEFAULT_CALCULATOR_COMMAND/);
+  assert.match(calculator, /secretCommand\.startsWith/);
+  assert.match(calculator, /onSecretCommand\?\.\(`\$\{secretCommand\}=`\)/);
+  assert.doesNotMatch(calculator, /OWNER_TRIGGER = "20272006"/);
   assert.match(activity, /FLAG_SECURE/);
+  assert.match(shell, /setTab\("home"\)/);
 });
 
 test('hidden trigger remains usable while duress mode is active', async () => {
   const shell = await read('src/components/app-shell.tsx');
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /getCalculatorCommand\(\)/);
+  assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
 });
 
 test('vault v2 uses PBKDF2 600k, AES-GCM, device secret and authenticated header with no plaintext fallback', async () => {
@@ -60,8 +63,18 @@ test('retry lockout survives reload through persisted application state', async 
   assert.match(store, /nextLockoutDelayMs\(state\.lockTimeoutSec, state\.lockoutLevel\)/);
 });
 
-test('emergency reset is scoped to app-owned storage', async () => {
+test('emergency reset removes app-owned encrypted state only and verifies the wipe', async () => {
   const plugin = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt');
+  const wipe = await read('src/components/wipe-screen.tsx');
+  const security = await read('src/lib/security-service.ts');
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
+  assert.match(wipe, /secureStorageClearOwned\(\)/);
+  assert.match(wipe, /verifyOwnedSecureStoreEmpty/);
+  assert.match(wipe, /duress-security-app:calculator-command/);
+  assert.match(wipe, /duress-security-app-lock-background-image/);
+  assert.match(wipe, /resetCalculatorCommand\(\)/);
+  assert.match(security, /duress-security-app-lock-/);
+  assert.match(security, /deleteDatabase\("duress-security-vault-attachments"\)/);
+  assert.match(security, /duress-security-vault/);
 });

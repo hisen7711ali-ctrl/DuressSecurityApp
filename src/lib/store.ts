@@ -21,7 +21,7 @@ import {
 } from "@/lib/security-service";
 import * as nativeBridge from "@/lib/native-bridge";
 import { appStorage, getStoredValue, setStoredValue } from "@/lib/app-storage";
-import { lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault } from "@/lib/vault-crypto";
+import { deleteEncryptedAttachment, encryptAndStoreAttachment, lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault, type VaultAttachmentMetadata } from "@/lib/vault-crypto";
 
 export const SECURITY_STORAGE_KEY = "duress-security-state";
 
@@ -57,7 +57,7 @@ export type ThemeName = "dark" | "light";
 export type SessionMode = "locked" | "unlocked" | "duress" | "wiping" | "extlocked" | "storage-error";
 export type PanelId = "none" | "pins";
 export type PermKey = "overlayPermission" | "usagePermission" | "accessibilityPermission" | "autostartPermission" | "notificationPermission";
-export type VaultFile = { id: string; title: string; body: string; updatedAt: string };
+export type VaultFile = { id: string; title: string; body: string; updatedAt: string; attachment?: VaultAttachmentMetadata };
 export type Pins = Record<PinKind, string>;
 export type ConfirmAction =
   | { type: "toggle-home-lock"; value: boolean }
@@ -109,7 +109,7 @@ type Actions = {
   refreshSecurity: () => void; recoverExtendedLock: (masterPin: string) => Promise<boolean>; applyConfirm: (action: ConfirmAction) => void;
   addInstalledApp: (app: DeviceApp) => boolean; syncInstalledApps: (apps: DeviceApp[]) => void; removeInstalledApp: (packageName: string) => void;
   toggleLockedApp: (packageName: string) => void; openApp: (packageName: string) => void; closeApp: () => void;
-  addFile: (title: string, body: string) => Promise<boolean>; updateFile: (id: string, title: string, body: string) => Promise<boolean>; deleteFile: (id: string) => Promise<boolean>;
+  addFile: (title: string, body: string) => Promise<boolean>; addAttachment: (file: File) => Promise<boolean>; updateFile: (id: string, title: string, body: string) => Promise<boolean>; deleteFile: (id: string) => Promise<boolean>;
   setVaultOpen: (open: boolean) => void; unlockEncryptedVault: (passphrase: string) => Promise<{ ok: boolean; reason?: string }>;
   grantPermission: (key: PermKey, value: boolean) => void; wipeLocal: () => void; configuredPinCount: () => number;
   requestDeviceAdminNative: () => Promise<boolean>; setBiometricEnabled: (value: boolean) => void; tryBiometricUnlock: () => Promise<boolean>;
@@ -265,10 +265,21 @@ export const useAppStore = create<AppStore>()(
       },
 
       submitPin: (pin) => {
-        const state = get(); if (state.session === "extlocked") return "lockout"; if (Date.now() < state.lockoutUntil) return "lockout";
+        const state = get();
         const overlay = state.overlay;
-        if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== 4) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
+        if (state.session === "wiping" || state.session === "storage-error") return "lockout";
+        if (overlay?.kind === "set-pin") {
+          const normalizedPin = normalizePin(pin);
+          if (normalizedPin.length !== 4) return "wrong";
+          const candidate = { ...state.pins, [overlay.target]: normalizedPin };
+          if (validatePins(candidate) === "duplicate") return "duplicate";
+          set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } });
+          return "need-master";
+        }
         const action = serviceClassifyPin(pin, state.pins);
+        const privilegedRecovery = action === "wipe" || action === "duress";
+        if (state.session === "extlocked" && !privilegedRecovery) return "lockout";
+        if (Date.now() < state.lockoutUntil && !privilegedRecovery) return "lockout";
         if (action === "wipe") { lockEncryptedVaultSession(); set({ session: "wiping", overlay: null, panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: [] }); return "wipe"; }
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
@@ -344,8 +355,51 @@ export const useAppStore = create<AppStore>()(
       openApp: (packageName) => { const s = get(); const isLocked = s.appLockEnabled && s.lockedPackages.includes(packageName); if (isLocked && s.overlayEnabled) { set({ overlay: { kind: "app", packageName } }); return; } set({ openedApp: packageName }); },
       closeApp: () => set({ openedApp: null }),
       addFile: async (title, body) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = [{ id: crypto.randomUUID(), title, body, updatedAt: nowIso() }, ...state.vault]; try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حفظ الملف مشفّراً؛ أبقينا النص في النموذج." : "Could not save the encrypted file; the editor contents were retained." }); return false; } },
+      addAttachment: async (file) => {
+        const state = get();
+        if (!state.vaultCryptoReady) return false;
+        let attachment: VaultAttachmentMetadata | null = null;
+        try {
+          attachment = await encryptAndStoreAttachment(file);
+          const next: VaultFile[] = [{
+            id: crypto.randomUUID(),
+            title: file.name || (state.lang === "ar" ? "ملف مرفق" : "Attachment"),
+            body: "",
+            updatedAt: nowIso(),
+            attachment,
+          }, ...state.vault];
+          await persistEncryptedVault(next);
+          set({ vault: next, toast: state.lang === "ar" ? "تم استيراد الملف وتشفير نسخته داخل الخزانة. بقي الملف الأصلي في مكانه." : "The file was imported and its copy encrypted in the vault. The original file remains in place." });
+          return true;
+        } catch {
+          if (attachment) {
+            try { await deleteEncryptedAttachment(attachment.id); } catch { /* leftover records remain encrypted and inaccessible without the vault key */ }
+          }
+          set({ toast: get().lang === "ar" ? "فشل تشفير الملف أو حفظ بياناته؛ لم نضف الملف إلى الخزانة." : "File encryption or metadata save failed; the file was not added to the vault." });
+          return false;
+        }
+      },
       updateFile: async (id, title, body) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = state.vault.map((f) => (f.id === id ? { ...f, title, body, updatedAt: nowIso() } : f)); try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حفظ التعديل مشفّراً؛ لم نعتمد التغيير." : "Could not save the encrypted change; the edit was not committed." }); return false; } },
-      deleteFile: async (id) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = state.vault.filter((f) => f.id !== id); try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حذف الملف من الخزنة المشفّرة." : "Could not update the encrypted vault." }); return false; } },
+      deleteFile: async (id) => {
+        const state = get();
+        if (!state.vaultCryptoReady) return false;
+        const removed = state.vault.find((file) => file.id === id);
+        const next = state.vault.filter((file) => file.id !== id);
+        try {
+          await persistEncryptedVault(next);
+          set({ vault: next });
+          if (removed?.attachment) {
+            try { await deleteEncryptedAttachment(removed.attachment.id); }
+            catch {
+              set({ toast: get().lang === "ar" ? "حُذف سجل الملف من الخزانة، لكن تعذّر تنظيف نسخة التشفير المتبقية." : "The vault record was deleted, but encrypted attachment cleanup could not be confirmed." });
+            }
+          }
+          return true;
+        } catch {
+          set({ toast: get().lang === "ar" ? "تعذّر حذف الملف من الخزنة المشفّرة." : "Could not update the encrypted vault." });
+          return false;
+        }
+      },
       setVaultOpen: (vaultOpen) => { if (!vaultOpen) { const prior = get(); lockEncryptedVaultSession(); set({ vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); return; } set({ vaultOpen: true, vaultCryptoReady: false }); },
       unlockEncryptedVault: async (passphrase) => { try { const state = get(); const legacyFiles = state.vaultEncrypted ? [] : state.vault; const files = await unlockOrCreateEncryptedVault(passphrase, legacyFiles, !state.vaultEncrypted); set({ vault: files, vaultEncrypted: true, vaultMigrationRequired: false, vaultCryptoReady: true }); return { ok: true }; } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "VAULT_OPEN_FAILED" }; } },
       grantPermission: (key, value) => { if (!value) set({ [key]: false }); else void get().refreshNativePermissions(); },

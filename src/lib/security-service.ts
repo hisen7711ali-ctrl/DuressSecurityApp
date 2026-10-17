@@ -118,7 +118,7 @@ export function sanitizeState(raw: unknown): SecurityState {
 export async function wipeAppData(opts: { preserveKeys?: string[] } = {}): Promise<void> {
   const preserve = new Set(opts.preserveKeys ?? []);
   const isOwnedKey = (key: string) =>
-    key === "duress-security-app" || key === "duress-security-state" || key.startsWith("duress-security-app:") || key.startsWith("duress-security-vault");
+    key === "duress-security-app" || key === "duress-security-state" || key.startsWith("duress-security-app:") || key.startsWith("duress-security-app-lock-") || key.startsWith("duress-security-applock-") || key.startsWith("duress-security-vault");
   if (typeof localStorage !== "undefined") {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
@@ -132,6 +132,15 @@ export async function wipeAppData(opts: { preserveKeys?: string[] } = {}): Promi
     }
   }
   if (typeof indexedDB !== "undefined") {
+    // Delete the known vault attachment database even on WebViews that do not
+    // implement indexedDB.databases(); all records are encrypted, but reset must
+    // remove their remaining ciphertext too.
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase("duress-security-vault-attachments");
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error ?? new Error("OWNED_ATTACHMENT_DATABASE_DELETE_FAILED"));
+      request.onblocked = () => reject(new Error("OWNED_ATTACHMENT_DATABASE_DELETE_BLOCKED"));
+    });
     const dbs = await indexedDB.databases?.();
     for (const db of dbs ?? []) {
       if (!db.name || !(db.name.startsWith("duress-security") || db.name.startsWith("duress-"))) continue;

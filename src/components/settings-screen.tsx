@@ -1,9 +1,42 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import { Fingerprint, ShieldCheck } from "lucide-react";
 import { ToggleRow } from "@/components/apps-screen";
 import { useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
+import { getStoredValue, removeStoredValue, setStoredValue } from "@/lib/app-storage";
+
+const APP_LOCK_BACKGROUND_KEY = "duress-security-app-lock-background-image";
+const MAX_BACKGROUND_DATA_URL_CHARS = 450_000;
+
+async function compressBackgroundImage(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("IMAGE_REQUIRED");
+  const image = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 768 / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("CANVAS_UNAVAILABLE");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.65, 0.5, 0.35]) {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_ENCODING_FAILED")), "image/jpeg", quality);
+      });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("IMAGE_ENCODING_FAILED"));
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("IMAGE_ENCODING_FAILED"));
+        reader.readAsDataURL(blob);
+      });
+      if (dataUrl.length <= MAX_BACKGROUND_DATA_URL_CHARS) return dataUrl;
+    }
+    throw new Error("IMAGE_TOO_LARGE");
+  } finally {
+    image.close();
+  }
+}
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
@@ -30,6 +63,50 @@ export function SettingsScreen() {
   const requestDeviceAdminNative = useAppStore((s) => s.requestDeviceAdminNative);
   const setToast = useAppStore((s) => s.setToast);
   const native = isNativeAndroid();
+  const [lockBackground, setLockBackground] = useState<string | null>(null);
+  const [backgroundBusy, setBackgroundBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getStoredValue(APP_LOCK_BACKGROUND_KEY).then((value) => {
+      if (!cancelled && value?.startsWith("data:image/")) setLockBackground(value);
+    }).catch(() => {
+      if (!cancelled) setLockBackground(null);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function onBackgroundSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBackgroundBusy(true);
+    try {
+      const dataUrl = await compressBackgroundImage(file);
+      const saved = await setStoredValue(APP_LOCK_BACKGROUND_KEY, dataUrl);
+      if (!saved) throw new Error("SECURE_SAVE_FAILED");
+      setLockBackground(dataUrl);
+      setToast(lang === "ar"
+        ? "تم حفظ خلفية قفل التطبيقات. لن يُحذف الملف الأصلي من جهازك."
+        : "App Lock background saved. The original file on your device was not deleted.");
+    } catch {
+      setToast(lang === "ar"
+        ? "تعذّر حفظ الصورة. اختر صورة أخرى أصغر حجمًا (يُحفظ إصدار مصغّر ومشفّر)."
+        : "Could not save the image. Choose another smaller image; a resized encrypted copy is stored.");
+    } finally {
+      setBackgroundBusy(false);
+    }
+  }
+
+  async function clearBackground() {
+    try {
+      await removeStoredValue(APP_LOCK_BACKGROUND_KEY);
+      setLockBackground(null);
+      setToast(lang === "ar" ? "تمت إزالة خلفية قفل التطبيقات." : "App Lock background removed.");
+    } catch {
+      setToast(lang === "ar" ? "تعذّر إزالة الخلفية من التخزين الآمن." : "Could not remove the background from secure storage.");
+    }
+  }
 
   async function onActivateDeviceAdmin() {
     if (!native) {
@@ -129,6 +206,21 @@ export function SettingsScreen() {
         <p className="text-sm font-semibold">{t.pinSection}</p>
         <p className="mt-1 text-xs text-muted">{t.pinManageHint}</p>
       </button>
+
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "خلفية قفل التطبيقات" : "App Lock background"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          {lang === "ar"
+            ? "اختر صورة من ملفات جهازك لتظهر خلف شاشة قفل التطبيقات. تُحوَّل إلى صورة مصغّرة وتُحفظ في مساحة التطبيق المشفّرة. لا يحذف التطبيق الملف الأصلي."
+            : "Choose an image from your device for the App Lock screen. A resized copy is stored in the app's encrypted storage. The original file is not deleted."}
+        </p>
+        {lockBackground ? <img src={lockBackground} alt={lang === "ar" ? "معاينة خلفية قفل التطبيقات" : "App Lock background preview"} className="mt-3 max-h-40 w-full rounded-lg object-cover" /> : null}
+        <label className="mt-3 flex h-11 cursor-pointer items-center justify-center rounded-lg bg-cyan px-3 text-sm font-semibold text-night">
+          {backgroundBusy ? (lang === "ar" ? "جارٍ حفظ الصورة…" : "Saving image…") : (lang === "ar" ? "اختيار صورة من الجهاز" : "Choose image from device")}
+          <input type="file" accept="image/*" disabled={backgroundBusy} onChange={(event) => void onBackgroundSelected(event)} className="sr-only" />
+        </label>
+        {lockBackground ? <button type="button" onClick={() => void clearBackground()} className="mt-2 h-10 w-full rounded-lg border border-line text-xs text-muted">{lang === "ar" ? "إزالة الخلفية" : "Remove background"}</button> : null}
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="px-1 text-sm font-semibold text-cyan">{t.lockSection}</h2>

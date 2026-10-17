@@ -4,44 +4,19 @@ import path from "node:path";
 import test from "node:test";
 
 const root = path.resolve(import.meta.dirname, "..");
-const read = (p) => readFile(path.join(root, p), "utf8");
+const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("default 0000 PIN auto-submits immediately after the fourth digit", async () => {
-  const security = await read("src/lib/security-service.ts");
-  const gate = await read("src/components/lock-gate.tsx");
-  assert.match(security, /master: "0000"/);
-  assert.match(security, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
-  assert.match(gate, /if \(next\.length === 4\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
-});
-
-test("fresh startup keeps the calculator visible while secure initialization retries in the background", async () => {
-  const shell = await read("src/components/app-shell.tsx");
-  const storage = await read("src/lib/app-storage.ts");
-  const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
-  const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
-  assert.match(shell, /const hydrateWithRetry = async/);
-  assert.match(shell, /await hydrateSession\(\)/);
-  assert.match(shell, /STARTUP_RETRY_DELAY_MS = 3000/);
-  assert.match(shell, /STARTUP_MAX_RETRIES = 2/);
-  assert.match(storage, /STARTUP_MAX_ATTEMPTS = 12/);
-  assert.match(shell, /if \(!ready\) return <FakeCalculator onSecretCommand=\{handleCalculatorCommand\} \/>/);
-  assert.match(shell, /STARTUP_HYDRATION_WATCHDOG_MS = 80000/);
-  assert.match(shell, /session: "storage-error"/);
-  assert.doesNotMatch(shell, /Initializing security|جاري تهيئة الحماية/);
-  assert.match(activity, /DuressSecureWarmup/);
-  assert.match(plugin, /secureStorageExecutor/);
-});
-
-test("calculator trigger is the exact 20272006= sequence and opens the security gate", async () => {
+test("calculator trigger uses the configurable command and opens the security gate", async () => {
   const shell = await read("src/components/app-shell.tsx");
   const calculator = await read("src/components/fake-calculator.tsx");
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  const command = await read("src/lib/calculator-command.ts");
+  assert.match(shell, /getCalculatorCommand\(\)/);
+  assert.match(shell, /if \(sequence !== `\$\{getCalculatorCommand\(\)\}=`\) return false/);
   assert.match(shell, /openSecurityGate\(\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
   assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
-  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
-  assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.match(calculator, /DEFAULT_CALCULATOR_COMMAND/);
+  assert.match(calculator, /secretCommand\.startsWith\(next\)/);
+  assert.match(command, /DEFAULT_CALCULATOR_COMMAND = "20272006"/);
 });

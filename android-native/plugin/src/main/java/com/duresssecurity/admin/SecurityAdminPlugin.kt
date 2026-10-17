@@ -141,6 +141,72 @@ class SecurityAdminPlugin : Plugin() {
     fun secureRemove(call: PluginCall) { val key = call.getString("key"); if (key.isNullOrBlank()) { call.resolve(JSObject().putCompat("ok", false)); return }; secureStorageExecutor.execute { val ok = try { secureStore().remove(key) } catch (_: Exception) { false }; call.resolve(JSObject().putCompat("ok", ok)) } }
     @PluginMethod
     fun secureClearOwned(call: PluginCall) { secureStorageExecutor.execute { val ok = try { secureStore().removeOwned() } catch (_: Exception) { false }; call.resolve(JSObject().putCompat("ok", ok)) } }
+
+    /**
+     * Releases app-owned kiosk/uninstall controls and asks the running App Lock
+     * AccessibilityService to dismiss its overlay and disable itself.
+     * Android does not allow a normal app to silently revoke overlay/usage access,
+     * nor can a Device Owner remove its own Device Owner provisioning.
+     */
+    @PluginMethod
+    fun releaseAppLockControls(call: PluginCall) {
+        val deviceOwner = try { dpm().isDeviceOwnerApp(context.packageName) } catch (_: Exception) { false }
+        var serviceReleaseRequested = false
+        var deviceAdminRemoved = false
+        try {
+            context.sendBroadcast(
+                Intent(AppLockAccessibilityService.ACTION_RELEASE_APP_LOCK).setPackage(context.packageName)
+            )
+            serviceReleaseRequested = true
+        } catch (_: Exception) { }
+
+        if (deviceOwner) {
+            val hostActivity = activity
+            if (hostActivity == null) {
+                call.resolve(
+                    JSObject()
+                        .putCompat("ok", serviceReleaseRequested)
+                        .putCompat("deviceOwnerRetained", true)
+                        .putCompat("deviceAdminRemoved", false)
+                )
+                return
+            }
+            hostActivity.runOnUiThread {
+                val kioskReleased = try {
+                    try { hostActivity.stopLockTask() } catch (_: Exception) { }
+                    dpm().setLockTaskPackages(adminComponent(), emptyArray())
+                    true
+                } catch (_: Exception) { false }
+                val uninstallUnblocked = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        dpm().setUninstallBlocked(adminComponent(), context.packageName, false)
+                    }
+                    true
+                } catch (_: Exception) { false }
+                call.resolve(
+                    JSObject()
+                        .putCompat("ok", serviceReleaseRequested && kioskReleased && uninstallUnblocked)
+                        .putCompat("deviceOwnerRetained", true)
+                        .putCompat("deviceAdminRemoved", false)
+                )
+            }
+            return
+        }
+
+        try {
+            if (dpm().isAdminActive(adminComponent())) {
+                dpm().removeActiveAdmin(adminComponent())
+                deviceAdminRemoved = true
+            }
+        } catch (_: Exception) { }
+        call.resolve(
+            JSObject()
+                .putCompat("ok", serviceReleaseRequested || deviceAdminRemoved || !isOurAccessibilityServiceEnabled())
+                .putCompat("deviceOwnerRetained", false)
+                .putCompat("deviceAdminRemoved", deviceAdminRemoved)
+        )
+    }
+
     @PluginMethod
     fun completeAppLockBiometric(call: PluginCall) {
         val targetPackage = call.getString("packageName")?.takeIf { it.isNotBlank() && it != context.packageName }

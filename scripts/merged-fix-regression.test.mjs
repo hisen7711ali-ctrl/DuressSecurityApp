@@ -13,13 +13,15 @@ test("Capacitor plugin proxy is never awaited or wrapped in Promise.resolve", as
   assert.match(bridge, /function getNativePlugin\(\): SecurityAdminNative \| null/);
 });
 
-test("secret calculator uses the normal PIN gate and routes successful unlock to Settings", async () => {
+test("secret calculator uses the configurable command and routes successful unlock to Home", async () => {
   const shell = await read("src/components/app-shell.tsx");
+  const command = await read("src/lib/calculator-command.ts");
   const store = await read("src/lib/store.ts");
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
+  assert.match(shell, /getCalculatorCommand\(\)/);
   assert.match(shell, /openSecurityGate\(\)/);
   assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
-  assert.match(shell, /useAppStore\.getState\(\)\.setTab\("settings"\)/);
+  assert.match(shell, /useAppStore\.getState\(\)\.setTab\("home"\)/);
+  assert.match(command, /DEFAULT_CALCULATOR_COMMAND = "20272006"/);
   assert.match(store, /if \(!overlay \|\| overlay.kind === "unlock"\) \{ set\(\{ session: "unlocked"/);
 });
 
