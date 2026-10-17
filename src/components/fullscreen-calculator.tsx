@@ -21,7 +21,9 @@ export function FakeCalculator(props: Props) {
   function handleCalculatorCapture(event: MouseEvent<HTMLDivElement>) {
     if (!calculatorCommandReady) { sequenceRef.current = ""; return; }
     const button = (event.target as HTMLElement).closest("button");
-    const key = button?.textContent?.trim();
+    // The equals key is rendered as a Lucide icon, so its textContent is empty.
+    // Read the button accessibility label first to keep the secret command trigger reachable.
+    const key = button?.getAttribute("aria-label")?.trim() || button?.textContent?.trim();
     if (!key) return;
 
     if (key === "=") {
