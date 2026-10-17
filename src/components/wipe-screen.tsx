@@ -63,7 +63,7 @@ export function WipeScreen() {
   }, [performWipe]);
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-night px-6 text-center">
+    <div className="bg-mountains flex min-h-svh flex-col items-center justify-center px-6 text-center">
       <ShieldMark size={88} />
       <h1 className="mt-6 text-2xl font-bold">{t.wipeTitle}</h1>
       <p className="mt-2 max-w-sm text-sm text-muted">{wipeError
