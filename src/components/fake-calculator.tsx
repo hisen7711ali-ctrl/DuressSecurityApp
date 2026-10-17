@@ -93,6 +93,7 @@ export function FakeCalculator(_props: { onSecretCommand?: SecretCommandHandler 
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
 
+  function tap(key: string) {
     if (key === "AC") {
       setExpr("");
       setDisplay("0");
