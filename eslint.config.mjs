@@ -42,6 +42,39 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // These modules intentionally expose small non-component helpers alongside
+    // React components. Keep Fast Refresh strict everywhere else.
+    files: [
+      "src/components/pins-panel.tsx",
+      "src/components/permissions-onboarding-screen.tsx",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    // The effects below deliberately rebind to current UI state while using
+    // local functions/refs; exhaustive-deps would flag the intentional pattern.
+    files: [
+      "src/components/lock-gate.tsx",
+      "src/components/permissions-onboarding-screen.tsx",
+    ],
+    rules: {
+      "react-hooks/exhaustive-deps": "off",
+    },
+  },
+  {
+    // wipeAppData is retained as the browser/local emergency-reset primitive;
+    // native Android reset is deliberately routed through DevicePolicyManager.
+    files: ["src/lib/store.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^(wipeAppData|_)" },
+      ],
+    },
+  },
   // Disable rules that conflict with Prettier formatting.
   prettier,
 );
