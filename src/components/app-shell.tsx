@@ -18,6 +18,7 @@ import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
 import { getCalculatorCommand } from "@/lib/calculator-command";
 import { normalizePin } from "@/lib/security-service";
+import { clearDocumentPicker, hasDocumentPickerMarker, isDocumentPickerPending } from "@/lib/document-picker-guard";
 
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
 const STARTUP_RETRY_DELAY_MS = 3000;
@@ -151,12 +152,42 @@ export function AppShell() {
     };
     const finish = () => { void hydrateWithRetry(); };
     const unsub = useAppStore.persist.onFinishHydration(finish); if (useAppStore.persist.hasHydrated()) finish();
-    const refreshOnResume = () => { if (document.visibilityState === "visible") { void refreshNativePermissions(); refreshSecurity(); } };
-    const lockWhenBackgrounded = () => { if (document.visibilityState === "hidden" && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession(); };
-    const lockFromNativeActivity = () => { if (document.visibilityState !== "hidden") return; if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession(); };
+    let documentPickerReturnTimer: number | null = null;
+    const lockIfUnlocked = () => {
+      const current = useAppStore.getState();
+      if (current.session === "unlocked") current.lockSession();
+    };
+    const refreshOnResume = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshNativePermissions();
+      refreshSecurity();
+      if (!hasDocumentPickerMarker()) return;
+      if (documentPickerReturnTimer !== null) window.clearTimeout(documentPickerReturnTimer);
+      if (!isDocumentPickerPending()) {
+        clearDocumentPicker();
+        lockIfUnlocked();
+        return;
+      }
+      // A successful input change clears the marker before this timer fires.
+      // If the picker was canceled or the Activity was recreated, restore the
+      // normal fail-closed behavior instead of leaving an unlocked session behind.
+      documentPickerReturnTimer = window.setTimeout(() => {
+        documentPickerReturnTimer = null;
+        if (!hasDocumentPickerMarker()) return;
+        clearDocumentPicker();
+        lockIfUnlocked();
+      }, 2500);
+    };
+    const lockWhenBackgrounded = () => {
+      if (document.visibilityState === "hidden" && !isDocumentPickerPending() && useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
+    };
+    const lockFromNativeActivity = () => {
+      if (document.visibilityState !== "hidden" || isDocumentPickerPending()) return;
+      if (useAppStore.getState().session === "unlocked" && Date.now() >= suppressAutoLockUntil.current && !securityGateFlow.current) lockSession();
+    };
     const onSecureStorageError = (event: Event) => { const detail = (event as CustomEvent<{ reason?: string }>).detail; const reason = detail?.reason ?? "SECURE_STORAGE_UNAVAILABLE"; if (TERMINAL_STORAGE_ERRORS.has(reason) || reason === "STARTUP_SECURE_STORAGE_RETRY_EXHAUSTED" || reason === "SECURE_STORAGE_WRITE_FAILED" || reason === "LEGACY_MIGRATION_FAILED") setStorageFailed(true); useAppStore.setState({ storageErrorCode: reason }); };
     window.addEventListener("focus", refreshOnResume); window.addEventListener("duress-security-native-background", lockFromNativeActivity); window.addEventListener("duress-security-storage-error", onSecureStorageError); document.addEventListener("visibilitychange", refreshOnResume); document.addEventListener("visibilitychange", lockWhenBackgrounded);
-    return () => { cancelled = true; unsub(); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); };
+    return () => { cancelled = true; unsub(); if (documentPickerReturnTimer !== null) window.clearTimeout(documentPickerReturnTimer); window.removeEventListener("focus", refreshOnResume); window.removeEventListener("duress-security-native-background", lockFromNativeActivity); window.removeEventListener("duress-security-storage-error", onSecureStorageError); document.removeEventListener("visibilitychange", refreshOnResume); document.removeEventListener("visibilitychange", lockWhenBackgrounded); if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); };
   }, [hydrateSession, refreshNativePermissions, refreshSecurity, lockSession]);
 
   useEffect(() => {
