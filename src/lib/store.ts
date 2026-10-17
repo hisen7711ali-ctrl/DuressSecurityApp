@@ -322,7 +322,15 @@ export const useAppStore = create<AppStore>()(
         const overlay = state.overlay;
         if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== state.pinLength) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
         const action = serviceClassifyPin(pin, state.pins);
-        if (action === "wipe") { get().beginEmergencyWipe(); return "wipe"; }
+        if (action === "wipe") {
+          // A destructive reset is never a consequence of typing a PIN alone.
+          // The owner must enter Settings, pass the master-PIN confirmation,
+          // and acknowledge the separate app-owned reset screen.
+          set({ toast: get().lang === "ar"
+            ? "7777 لا يبدأ المسح من لوحة القفل. افتح إجراء الطوارئ من الإعدادات بتأكيد المالك."
+            : "7777 cannot start a wipe from a lock keypad. Open the owner-confirmed emergency action in Settings." });
+          return "wipe";
+        }
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
           set({ security, session: "extlocked", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 });
