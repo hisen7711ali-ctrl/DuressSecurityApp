@@ -28,6 +28,7 @@ const STARTUP_HYDRATION_WATCHDOG_MS = 80000;
 const TERMINAL_STORAGE_ERRORS = new Set(["KEY_MISSING", "DECRYPTION_FAILED", "DEVICE_SECRET_INVALID", "SECURE_STORAGE_DEVICE_SECRET_INVALID"]);
 
 type NativePinActionWindow = Window & {
+  __duressSecurityOpenCalculator?: () => void;
   __duressSecurityHandlePinAction?: (pin: string) => void;
   __duressSecurityPendingPinAction?: string;
   __duressSecurityHandleAppLockBiometric?: (targetPackage: string) => void;
@@ -46,6 +47,30 @@ export function AppShell() {
 
   useEffect(() => {
     const host = window as NativePinActionWindow;
+    const openCalculatorFacade = () => {
+      if (unlockTransitionTimer.current !== null) {
+        window.clearTimeout(unlockTransitionTimer.current);
+        unlockTransitionTimer.current = null;
+      }
+      securityGateFlow.current = false;
+      calculatorRestoreArmed.current = false;
+      suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS;
+      setPendingSecurityGate(false);
+      setCalculatorFront(true);
+      // Going to the calculator is a decoy-screen transition, not an unlock.
+      // Close sensitive sessions and keep the main app locked underneath it.
+      useAppStore.getState().lockSession();
+      useAppStore.setState({
+        session: "locked",
+        overlay: null,
+        panel: "none",
+        openedApp: null,
+        vaultOpen: false,
+        vaultCryptoReady: false,
+        toast: null,
+      });
+    };
+    host.__duressSecurityOpenCalculator = openCalculatorFacade;
     const handleOwnerPinAction = (pin: string) => {
       const state = useAppStore.getState();
       if (!state.ready) {
@@ -57,6 +82,12 @@ export function AppShell() {
       if (state.session === "storage-error" || state.session === "wiping") return;
       if (normalizePin(pin) === normalizePin(state.pins.format)) {
         state.setToast(state.lang === "ar" ? "تم منع الحذف من شاشة القفل. استخدم إجراء الطوارئ الواضح داخل الإعدادات." : "Deletion from the lock screen is blocked. Use the explicit emergency action in settings.");
+        return;
+      }
+      // 4444 is a calculator-facade shortcut in every lock context. It does not
+      // unlock the protected app and does not enter a duress data-changing flow.
+      if (normalizePin(pin) === normalizePin(state.pins.duress)) {
+        openCalculatorFacade();
         return;
       }
       if (state.session === "extlocked") {
@@ -82,6 +113,9 @@ export function AppShell() {
       handleOwnerPinAction(pending);
     }
     return () => {
+      if (host.__duressSecurityOpenCalculator === openCalculatorFacade) {
+        delete host.__duressSecurityOpenCalculator;
+      }
       if (host.__duressSecurityHandlePinAction === handleOwnerPinAction) {
         delete host.__duressSecurityHandlePinAction;
       }
