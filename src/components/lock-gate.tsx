@@ -78,7 +78,7 @@ export function LockGate() {
     }
     // Never trigger the app-owned wipe PIN at a screen whose context is itself a lock UI.
     // Cross-app data removal cannot be silently invoked from this keypad.
-    if (current?.kind !== "set-pin" && pin === normalizePin(useAppStore.getState().pins.format)) {
+    if (current?.kind !== "set-pin" && normalizePin(pin) === normalizePin(useAppStore.getState().pins.format)) {
       setValue("");
       setToast(current?.kind === "app"
         ? (lang === "ar" ? "تم رفض المسح التلقائي. تم الحفاظ على القفل؛ مسح بيانات التطبيق المستهدف يتطلب إجراءً صريحًا من إعدادات أندرويد." : "Automatic wiping is blocked. The lock remains active; clearing the target app requires an explicit Android Settings action.")
@@ -186,7 +186,7 @@ export function LockGate() {
       </div>
       {lockedOut ? <p className="mt-3 text-center text-sm text-danger">{t.lockout} {remaining}s</p> : null}
       <div className="mt-4">
-        <PinKeypad value={value} maxLength={maxPinLength} compact disabled={lockedOut} onChange={(next) => { setValue(next); if (shouldAutoSubmit(next)) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />
+        <PinKeypad value={value} maxLength={maxPinLength} compact disabled={lockedOut} onChange={(next) => { setValue(next); if (next.length > value.length && shouldAutoSubmit(next)) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />
       </div>
       {biometricEligible ? <button type="button" onClick={onBiometric} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-semibold"><Fingerprint className="size-4" /> {t.biometricUnlock}</button> : null}
       {canCancel ? <button type="button" onClick={closeOverlay} className="mt-4 h-11 w-full rounded-md bg-danger text-sm font-semibold">{t.cancel}</button> : null}

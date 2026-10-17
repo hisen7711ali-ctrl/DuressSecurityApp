@@ -15,10 +15,11 @@ test("extended lock shows a lock icon, PIN recovery and truthful maintenance cop
   assert.ok(source.includes("onClick={openRecovery}"));
   assert.ok(source.includes("اضغط لإلغاء وضع الصيانة"));
   assert.ok(source.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
-  assert.ok(source.includes("beginEmergencyWipe"));
+  assert.ok(!source.includes("beginEmergencyWipe"), "extended lock must not silently erase app data from a recovery keypad");
+  assert.ok(source.includes("لم تُحذف أي بيانات"));
   assert.ok(source.includes("activateDuressMode"));
   assert.ok(source.includes("normalizePin(latest.pins.format)"));
-  assert.ok(source.includes("next.length === 4"));
+  assert.ok(source.includes("next.length === pinLength"));
 });
 
 test("device-level controls are not blocked by a test-device UI check", async () => {
@@ -34,8 +35,8 @@ test("native app-lock gate uses an on-screen keypad instead of the system keyboa
   assert.match(source, /listOf\("أ", "ي", "ع"\)/);
   assert.match(source, /listOf\("1", "2", "3"\)/);
   assert.match(source, /listOf\("back", "0", "ok"\)/);
-  assert.match(source, /pinValue.length == 4/);
-  assert.match(source, /attempts >= 5/);
+  assert.match(source, /pinValue.length == current.pinLength/);
+  assert.match(source, /attempts >= attemptLimit/);
   assert.doesNotMatch(source, /EditText|InputMethodManager/);
   assert.match(source, /duressPin/);
   assert.match(source, /extendedLockPin/);

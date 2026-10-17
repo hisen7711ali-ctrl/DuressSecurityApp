@@ -34,7 +34,8 @@ test("protected-app gate routes maintenance per target, routes duress to the own
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
   assert.doesNotMatch(verify, /policy\.wipePin\?\.let/);
   assert.match(verify, /wantsTargetMaintenance/);
-  assert.match(verify, /did not delete any files|لم تُحذف ملفات/);
+  assert.match(verify, /wantsTargetQuarantine/);
+  assert.match(verify, /لم تُحذف ملفات/);
 });
 
 test("legacy per-app maintenance records remain readable and recoverable", async () => {

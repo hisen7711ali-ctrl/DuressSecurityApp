@@ -181,7 +181,7 @@ export function ExtendedLockScreen() {
                 onChange={(next) => {
                   setRecoveryPin(next);
                   setRecoveryError("");
-                  if (next.length === pinLength || next === normalizePin(useAppStore.getState().pins.master)) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
+                  if (next.length > recoveryPin.length && (next.length === pinLength || next === normalizePin(useAppStore.getState().pins.master))) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
                 }}
                 onConfirm={() => { void verifyRecoveryPin(recoveryPin); }}
               />

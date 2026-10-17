@@ -420,6 +420,15 @@ class AppLockAccessibilityService : AccessibilityService() {
             showGate(targetPackage, maintenanceUntil = until)
             return
         }
+        val wantsTargetQuarantine = policy.wipePin?.let { typed == normalizePin(it) } == true
+        if (wantsTargetQuarantine) {
+            pinValue = ""; updatePinDots()
+            errorView?.text = if (currentLanguage().equals("ar", true))
+                "تم إبقاء التطبيق المستهدف مقفولًا. لم تُحذف ملفات أو بيانات؛ مسح بيانات تطبيق آخر لا يُنفّذ من لوحة القفل."
+            else
+                "The target app remains locked. No files or data were deleted; cross-app data wiping is not performed from the lock keypad."
+            return
+        }
         val isOwnerAction = typed.isNotEmpty() && policy.duressPin?.let { typed == normalizePin(it) } == true
         if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
         if (maintenanceUntil != null) {
