@@ -1,4 +1,4 @@
-const DOCUMENT_PICKER_MAX_WAIT_MS = 120_000;
+const DOCUMENT_PICKER_MAX_WAIT_MS = 10 * 60_000;
 
 type DocumentPickerWindow = Window & {
   __duressSecurityDocumentPickerUntil?: number;
