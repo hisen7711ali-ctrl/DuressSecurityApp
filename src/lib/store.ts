@@ -349,7 +349,26 @@ export const useAppStore = create<AppStore>()(
       setVaultOpen: (vaultOpen) => { if (!vaultOpen) { const prior = get(); lockEncryptedVaultSession(); set({ vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); return; } set({ vaultOpen: true, vaultCryptoReady: false }); },
       unlockEncryptedVault: async (passphrase) => { try { const state = get(); const legacyFiles = state.vaultEncrypted ? [] : state.vault; const files = await unlockOrCreateEncryptedVault(passphrase, legacyFiles, !state.vaultEncrypted); set({ vault: files, vaultEncrypted: true, vaultMigrationRequired: false, vaultCryptoReady: true }); return { ok: true }; } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "VAULT_OPEN_FAILED" }; } },
       grantPermission: (key, value) => { if (!value) set({ [key]: false }); else void get().refreshNativePermissions(); },
-      wipeLocal: () => { lockEncryptedVaultSession(); void nativeBridge.setSelfUninstallBlocked(false); void nativeBridge.setKioskMode(false); void saveSecurity({ ...INITIAL_SECURITY_STATE }); set({ pins: { ...DEFAULT_PINS }, backgroundImage: null, installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, vaultCryptoReady: false, preventUninstall: false, dedicatedDeviceMode: false, appLockEnabled: false, overlayEnabled: true, homeLockEnabled: true, biometricEnabled: false, session: "locked", security: { ...INITIAL_SECURITY_STATE }, overlay: { kind: "unlock" }, openedApp: null, vaultOpen: false, failedAttempts: 0, lastCheckAt: nowIso(), tab: "home", panel: "none" }); void get().refreshNativePermissions(); },
+      wipeLocal: () => {
+        lockEncryptedVaultSession();
+        void nativeBridge.setSelfUninstallBlocked(false);
+        void nativeBridge.setKioskMode(false);
+        void saveSecurity({ ...INITIAL_SECURITY_STATE });
+        set({
+          lang: "ar", theme: "dark", backgroundImage: null, pins: { ...DEFAULT_PINS },
+          homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
+          preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false,
+          overlayPermission: false, usagePermission: false, accessibilityPermission: false,
+          autostartPermission: false, notificationPermission: false, deviceAdmin: false, deviceSecure: false,
+          installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false,
+          vaultMigrationRequired: false, vaultCryptoReady: false, biometricEnabled: false,
+          maxAttempts: 3, lockTimeoutSec: 20, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0,
+          session: "locked", security: { ...INITIAL_SECURITY_STATE }, overlay: { kind: "unlock" },
+          openedApp: null, vaultOpen: false, toast: null, lastCheckAt: nowIso(), tab: "home", panel: "none",
+        });
+        // Refresh actual Android-managed permissions; app data reset cannot silently revoke user-granted special access.
+        void get().refreshNativePermissions();
+      },
       beginEmergencyWipe: () => { lockEncryptedVaultSession(); set({ session: "wiping", overlay: null, panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: [] }); },
       activateDuressMode: () => { const state = get(); lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); },
       configuredPinCount: () => { const { pins } = get(); return (Object.keys(pins) as PinKind[]).filter((k) => pins[k].length === 4).length; },

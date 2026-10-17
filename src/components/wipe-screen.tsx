@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ShieldMark } from "@/components/shield-mark";
 import { wipeAppData } from "@/lib/security-service";
 import { useAppStore } from "@/lib/store";
-import { isNativeAndroid, secureStorageClearOwned, secureStorageGet } from "@/lib/native-bridge";
+import { isNativeAndroid, secureStorageClearOwned, secureStorageGet, setKioskMode, setSelfUninstallBlocked } from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 
 const OWNED_SECURE_KEYS = [
@@ -29,6 +29,8 @@ export function WipeScreen() {
     setWipeError(false);
     try {
       if (isNativeAndroid()) {
+        // Release app-owned device policies while their configuration still exists, before erasing the secure store.
+        await Promise.all([setKioskMode(false), setSelfUninstallBlocked(false)]);
         // Clear the Android Keystore-backed store first. The verification below
         // proves the old encrypted records and device-bound vault secret are gone
         // before the in-memory Zustand state is replaced with fresh defaults.

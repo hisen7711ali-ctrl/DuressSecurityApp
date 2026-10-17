@@ -71,8 +71,12 @@ test('retry lockout survives reload through persisted application state', async 
   assert.match(store, /nextLockoutDelayMs\(state\.lockTimeoutSec, state\.lockoutLevel\)/);
 });
 
-test('emergency reset is scoped to app-owned storage', async () => {
+test('emergency reset restores first-run defaults without attempting a device factory reset', async () => {
   const plugin = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt');
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
+  const store = await read('src/lib/store.ts');
+  assert.ok(store.includes('lang: "ar", theme: "dark", backgroundImage: null, pins: { ...DEFAULT_PINS }'));
+  assert.ok(store.includes('maxAttempts: 3, lockTimeoutSec: 20, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0'));
+  assert.ok(store.includes('homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true'));
 });
