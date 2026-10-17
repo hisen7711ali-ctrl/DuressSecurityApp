@@ -66,6 +66,7 @@ export type ConfirmAction =
   | { type: "toggle-overlay"; value: boolean }
   | { type: "toggle-prevent"; value: boolean }
   | { type: "toggle-kiosk"; value: boolean }
+  | { type: "begin-emergency-wipe" }
   | { type: "save-pin"; target: PinKind; value: string }
   | { type: "delete-file"; id: string }
   | { type: "open-vault" }
@@ -272,6 +273,7 @@ export const useAppStore = create<AppStore>()(
       openOverlay: (overlay) => set({ overlay }),
       closeOverlay: () => { if (get().session === "locked" || get().session === "wiping") return; set({ overlay: null }); },
       applyConfirm: (action) => {
+        if (action.type === "begin-emergency-wipe") { get().beginEmergencyWipe(); return; }
         if (action.type === "toggle-home-lock") set({ homeLockEnabled: action.value });
         if (action.type === "toggle-app-lock") {
           set({ appLockEnabled: action.value, lastCheckAt: nowIso() });
