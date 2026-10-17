@@ -6,6 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.LayerDrawable
+import android.util.Base64
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -50,6 +55,9 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var pendingBiometricTarget: String? = null
     private var activeMaintenanceUntil: Long? = null
     private var configuredAppLanguage: String? = null
+    private var configuredBackgroundImage: String? = null
+    private var cachedBackgroundSource: String? = null
+    private var cachedBackgroundBitmap: Bitmap? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -128,6 +136,9 @@ class AppLockAccessibilityService : AccessibilityService() {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
             configuredAppLanguage = state.optString("lang").takeIf { it == "ar" || it == "en" }
+            configuredBackgroundImage = state.optString("backgroundImage").takeIf {
+                it.startsWith("data:image/jpeg;base64,") && it.length <= 1_000_000
+            }
             val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
             val locked = buildSet {
                 for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add)
@@ -220,6 +231,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event -> keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP }
         }
+        applyConfiguredBackground(root)
         val appHeader = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
         val icon = ImageView(this).apply {
             if (appIcon != null) setImageDrawable(appIcon) else setImageResource(android.R.drawable.sym_def_app_icon)
@@ -459,6 +471,47 @@ class AppLockAccessibilityService : AccessibilityService() {
     }
 
     private fun faithHints(): List<String> = if (currentLanguage().equals("ar", true)) FAITH_HINTS else FAITH_HINTS_EN
+
+    private fun applyConfiguredBackground(root: LinearLayout) {
+        val source = configuredBackgroundImage
+        if (source == null) {
+            if (cachedBackgroundSource != null) cachedBackgroundBitmap?.recycle()
+            cachedBackgroundSource = null
+            cachedBackgroundBitmap = null
+            return
+        }
+        if (source != cachedBackgroundSource) {
+            try {
+                val encoded = source.substringAfter("data:image/jpeg;base64,", "")
+                if (encoded.isBlank()) return
+                val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                if (bytes.size > 750_000) return
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return
+                val largest = maxOf(bounds.outWidth, bounds.outHeight)
+                val sample = (largest / 1400).coerceAtLeast(1)
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }) ?: return
+                cachedBackgroundBitmap?.recycle()
+                cachedBackgroundBitmap = bitmap
+                cachedBackgroundSource = source
+            } catch (_: Exception) {
+                return
+            }
+        }
+        val bitmap = cachedBackgroundBitmap ?: return
+        val photo = BitmapDrawable(resources, bitmap).apply { alpha = 190 }
+        val dimmer = GradientDrawable().apply {
+            setColor(Color.argb(168, 6, 14, 27))
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), Color.rgb(40, 220, 230))
+        }
+        root.background = LayerDrawable(arrayOf(photo, dimmer))
+        root.clipToOutline = true
+    }
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
