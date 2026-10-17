@@ -54,6 +54,10 @@ export function AppShell() {
       // These are the same configured owner PIN actions used by the main login.
       // Do not allow a relaunch to bypass a storage error or an active 30-day lock.
       if (state.session === "storage-error" || state.session === "wiping") return;
+      if (normalizePin(pin) === normalizePin(state.pins.format)) {
+        state.setToast(state.lang === "ar" ? "تم منع الحذف من شاشة القفل. استخدم إجراء الطوارئ الواضح داخل الإعدادات." : "Deletion from the lock screen is blocked. Use the explicit emergency action in settings.");
+        return;
+      }
       if (state.session === "extlocked") {
         if (Date.now() < state.lockoutUntil) {
           const seconds = Math.ceil((state.lockoutUntil - Date.now()) / 1000);
@@ -61,7 +65,7 @@ export function AppShell() {
           return;
         }
         const typed = normalizePin(pin);
-        if (typed === normalizePin(state.pins.format)) { state.beginEmergencyWipe(); return; }
+        if (typed === normalizePin(state.pins.format)) { state.setToast(state.lang === "ar" ? "تم منع الحذف التلقائي من وضع القفل الممتد." : "Automatic deletion is blocked from extended-lock recovery."); return; }
         if (typed === normalizePin(state.pins.duress)) { state.activateDuressMode(); return; }
         if (typed === normalizePin(state.pins.lock)) return;
         if (typed === normalizePin(state.pins.master)) { void state.recoverExtendedLock(pin); return; }
@@ -205,11 +209,11 @@ export function AppShell() {
   if (storageFailed || session === "storage-error") return <StorageRecoveryScreen errorCode={storageErrorCode} />;
   if (!ready) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (!permissionsReady) return <PermissionsOnboardingScreen onComplete={() => setPermissionsReady(true)} />;
-  if (pendingSecurityGate) return <LockGate />;
   if (session === "wiping") return <WipeScreen />;
   if (session === "extlocked") return <ExtendedLockScreen />;
+  if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
+  if (pendingSecurityGate) return <LockGate />;
   if (session === "locked" && calculatorFront) return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   if (overlay?.kind === "unlock") return <LockGate />;
-  if (session === "duress") return <FakeCalculator onSecretCommand={handleCalculatorCommand} />;
   return <div className="bg-mountains min-h-svh"><div className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-night/55 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:bg-night/70"><div className="flex-1">{panel === "pins" ? <PinsPanel /> : null}{panel === "none" && tab === "home" ? <HomeScreen /> : null}{panel === "none" && tab === "protect" ? <AppsScreen /> : null}{panel === "none" && tab === "files" ? <FilesScreen /> : null}{panel === "none" && tab === "settings" ? <SettingsScreen /> : null}</div></div><div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><BottomNav /></div>{openedApp ? <OpenedApp /> : null}{overlay ? <LockGate /> : null}{toast ? <div className="fixed inset-x-0 top-4 z-50 mx-auto w-full max-w-md px-4"><div className="rounded-xl bg-surface-2 px-4 py-3 text-center text-sm font-medium shadow-[var(--shadow-lift)]">{toast}</div></div> : null}</div>;
 }

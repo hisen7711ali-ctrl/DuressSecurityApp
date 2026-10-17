@@ -62,7 +62,8 @@ export function ExtendedLockScreen() {
     }
     const typed = normalizePin(pin);
     if (typed === normalizePin(latest.pins.format)) {
-      beginEmergencyWipe();
+      setRecoveryPin("");
+      setRecoveryError(lang === "ar" ? "7777 لا يحذف بيانات تطبيق الحماية من قفله الرئيسي. لم تُحذف أي بيانات." : "7777 does not delete security-app data from its own lock. No data was deleted.");
       return;
     }
     if (typed === normalizePin(latest.pins.duress)) {
