@@ -10,7 +10,7 @@ export type SecurityAttemptRecord = {
   context: "main" | "app";
   attemptedLength: number;
   attemptNumber: number;
-  outcome: "rejected" | "rate-limited" | "accepted";
+  outcome: "rejected" | "rate-limited" | "accepted" | "baseline";
 };
 
 function validRecord(value: unknown): value is SecurityAttemptRecord {
@@ -20,7 +20,7 @@ function validRecord(value: unknown): value is SecurityAttemptRecord {
     (row.context === "main" || row.context === "app") &&
     Number.isInteger(row.attemptedLength) && (row.attemptedLength ?? -1) >= 0 && (row.attemptedLength ?? 99) <= 10 &&
     Number.isInteger(row.attemptNumber) && (row.attemptNumber ?? 0) >= 1 &&
-    (row.outcome === "rejected" || row.outcome === "rate-limited" || row.outcome === "accepted");
+    (row.outcome === "rejected" || row.outcome === "rate-limited" || row.outcome === "accepted" || row.outcome === "baseline");
 }
 
 function parseRecords(raw: string | null): SecurityAttemptRecord[] {
@@ -54,7 +54,7 @@ export async function loadFailedAttemptHistory(): Promise<SecurityAttemptRecord[
   const journal = await readJournal();
   // Successful-unlock markers are retained internally to calculate the
   // consecutive-failure counter, but are not shown as failed attempts.
-  return journal === null ? null : journal.records.filter((record) => record.outcome !== "accepted");
+  return journal === null ? null : journal.records.filter((record) => record.outcome === "rejected" || record.outcome === "rate-limited");
 }
 
 /**
@@ -65,16 +65,34 @@ export async function loadFailedAttemptHistory(): Promise<SecurityAttemptRecord[
 export async function loadConsecutiveMainFailedAttempts(): Promise<number | null> {
   const journal = await readJournal();
   if (journal === null) return null;
-  let lastSuccessfulUnlock = -1;
+  let lastResetMarker = -1;
   for (let i = journal.records.length - 1; i >= 0; i -= 1) {
     const record = journal.records[i]!;
-    if (record.context === "main" && record.packageName === MAIN_APP_PACKAGE && record.outcome === "accepted") {
-      lastSuccessfulUnlock = i;
+    if (
+      record.context === "main" &&
+      record.packageName === MAIN_APP_PACKAGE &&
+      (record.outcome === "accepted" || record.outcome === "baseline")
+    ) {
+      lastResetMarker = i;
       break;
     }
   }
+  if (lastResetMarker < 0) {
+    // Older app versions logged failures but not successful unlocks. Establish
+    // a one-time migration baseline so those legacy rows cannot falsely block
+    // the owner, while all failures recorded from now on remain restart-safe.
+    const initialized = await writeRecord({
+      at: Math.max(0, Math.floor(Date.now())),
+      packageName: MAIN_APP_PACKAGE,
+      context: "main",
+      attemptedLength: 0,
+      attemptNumber: 1,
+      outcome: "baseline",
+    });
+    return initialized ? 0 : null;
+  }
   return journal.records
-    .slice(lastSuccessfulUnlock + 1)
+    .slice(lastResetMarker + 1)
     .filter((record) =>
       record.context === "main" &&
       record.packageName === MAIN_APP_PACKAGE &&
