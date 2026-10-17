@@ -6,12 +6,13 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (p) => readFile(path.join(root, p), "utf8");
 
-test("default 0000 PIN auto-submits immediately after the fourth digit", async () => {
+test("default 0000 auto-submits immediately while configured PIN lengths remain supported", async () => {
   const security = await read("src/lib/security-service.ts");
   const gate = await read("src/components/lock-gate.tsx");
   assert.match(security, /master: "0000"/);
   assert.match(security, /if \(typed === normalizePin\(pins\.master\)\) return "unlock"/);
-  assert.match(gate, /if \(next\.length === 4\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
+  assert.match(gate, /if \(next\.length > value\.length && shouldAutoSubmit\(next\)\) window\.setTimeout\(\(\) => finish\(next\), 80\)/);
+  assert.match(gate, /return candidate\.length === pinLength \|\| matchesExistingPin\(candidate\)/);
 });
 
 test("fresh startup keeps the calculator visible while secure initialization retries in the background", async () => {
@@ -32,16 +33,16 @@ test("fresh startup keeps the calculator visible while secure initialization ret
   assert.match(plugin, /secureStorageExecutor/);
 });
 
-test("calculator trigger is the exact 20272006= sequence and opens the security gate", async () => {
+test("calculator trigger follows the configured command and opens the security gate", async () => {
   const shell = await read("src/components/app-shell.tsx");
   const calculator = await read("src/components/fake-calculator.tsx");
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
-  assert.match(shell, /openSecurityGate\(\)/);
-  assert.match(shell, /setPendingSecurityGate\(true\)/);
-  assert.match(shell, /openOverlay\(\{ kind: "unlock" \}\)/);
-  assert.match(shell, /if \(pendingSecurityGate\) return <LockGate \/>/);
-  assert.match(calculator, /OWNER_TRIGGER = "20272006"/);
-  assert.match(calculator, /OWNER_TRIGGER_FULL = `\$\{OWNER_TRIGGER\}=`/);
-  assert.match(calculator, /onSecretCommand\?\.\(OWNER_TRIGGER_FULL\)/);
+  assert.ok(shell.includes("getCalculatorCommand()"));
+  assert.ok(shell.includes("sequence !== `${getCalculatorCommand()}=`"));
+  assert.ok(!shell.includes("SECRET_CALCULATOR_COMMAND"));
+  assert.ok(shell.includes("openSecurityGate()"));
+  assert.ok(shell.includes("setPendingSecurityGate(true)"));
+  assert.ok(shell.includes('openOverlay({ kind: "unlock" })'));
+  assert.ok(shell.includes('if (pendingSecurityGate) return <LockGate />'));
+  assert.ok(!calculator.includes("OWNER_TRIGGER"));
+  assert.ok(!calculator.includes("20272006"));
 });

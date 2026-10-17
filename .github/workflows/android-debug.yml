@@ -3,7 +3,7 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, merged-fix, fix/maintenance-and-app-lock]
+    branches: [main, master, merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17]
 
 permissions:
   contents: write

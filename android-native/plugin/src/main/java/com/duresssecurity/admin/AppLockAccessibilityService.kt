@@ -6,6 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.ColorFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
+import android.util.Base64
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -37,6 +46,8 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var blockedUntil = 0L
     private var errorView: TextView? = null
     private var maintenanceCountdownView: TextView? = null
+    private var maintenanceRecoveryButton: Button? = null
+    private var maintenancePinControls: List<View> = emptyList()
     private var pinValue = ""
     private val pinDotViews = mutableListOf<View>()
     private val keypadButtons = mutableListOf<Button>()
@@ -47,6 +58,13 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var biometricUnlockReceiver: BroadcastReceiver? = null
     private var pendingBiometricTarget: String? = null
     private var activeMaintenanceUntil: Long? = null
+    private var configuredAppLanguage: String? = null
+    private var configuredBackgroundImage: String? = null
+    private var configuredBackgroundScale: Float = 1f
+    private var configuredBackgroundX: Float = 0f
+    private var configuredBackgroundY: Float = 0f
+    private var cachedBackgroundSource: String? = null
+    private var cachedBackgroundBitmap: Bitmap? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -116,6 +134,9 @@ class AppLockAccessibilityService : AccessibilityService() {
         val wipePin: String?,
         val biometricEnabled: Boolean,
         val maintenancePackages: Map<String, Long>,
+        val pinLength: Int,
+        val maxAttempts: Int,
+        val lockTimeoutSec: Int,
     )
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
 
@@ -124,6 +145,15 @@ class AppLockAccessibilityService : AccessibilityService() {
         return try {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
+            configuredAppLanguage = state.optString("lang").takeIf { it == "ar" || it == "en" }
+            configuredBackgroundImage = state.optString("appLockBackgroundImage").takeIf {
+                it.startsWith("data:image/jpeg;base64,") && it.length <= 1_000_000
+            } ?: state.optString("backgroundImage").takeIf {
+                it.startsWith("data:image/jpeg;base64,") && it.length <= 1_000_000
+            }
+            configuredBackgroundScale = state.optDouble("appLockBackgroundScale", 1.0).toFloat().coerceIn(1f, 2f)
+            configuredBackgroundX = state.optDouble("appLockBackgroundX", 0.0).toFloat().coerceIn(-50f, 50f)
+            configuredBackgroundY = state.optDouble("appLockBackgroundY", 0.0).toFloat().coerceIn(-50f, 50f)
             val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
             val locked = buildSet {
                 for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add)
@@ -150,9 +180,18 @@ class AppLockAccessibilityService : AccessibilityService() {
                 wipePin = pins.optString("format").takeIf { it.isNotBlank() },
                 biometricEnabled = state.optBoolean("biometricEnabled", false),
                 maintenancePackages = maintenance,
+                pinLength = state.optInt("pinLength", 4).takeIf { it == 4 || it == 7 || it == 10 } ?: 4,
+                maxAttempts = state.optInt("maxAttempts", 3).takeIf { it == 3 || it == 4 || it == 7 || it == 10 } ?: 3,
+                lockTimeoutSec = state.optInt("lockTimeoutSec", 20).takeIf { it == 10 || it == 20 || it == 30 || it == 60 || it == 300 } ?: 20,
             )
         } catch (_: Exception) { null }
     }
+
+    private fun configuredPins(policy: Policy): List<String> =
+        listOfNotNull(policy.masterPin, policy.duressPin, policy.extendedLockPin, policy.wipePin).map(::normalizePin)
+
+    private fun maxPinInputLength(policy: Policy): Int =
+        maxOf(policy.pinLength, configuredPins(policy).maxOfOrNull { it.length } ?: policy.pinLength).coerceIn(4, 10)
 
     private fun targetMaintenanceUntil(policy: Policy, targetPackage: String): Long? {
         val until = policy.maintenancePackages[targetPackage] ?: return null
@@ -207,6 +246,8 @@ class AppLockAccessibilityService : AccessibilityService() {
         attempts = persistedAttempts.attempts
         blockedUntil = persistedAttempts.blockedUntil
         val isArabic = currentLanguage().equals("ar", ignoreCase = true)
+        val gatePolicy = readPolicy()
+        val pinDotCount = gatePolicy?.let(::maxPinInputLength) ?: 4
         val appLabel = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(targetPackage, 0)).toString() } catch (_: Exception) { targetPackage }
         val appIcon = try { packageManager.getApplicationIcon(targetPackage) } catch (_: Exception) { null }
 
@@ -216,6 +257,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event -> keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP }
         }
+        applyConfiguredBackground(root)
         val appHeader = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
         val icon = ImageView(this).apply {
             if (appIcon != null) setImageDrawable(appIcon) else setImageResource(android.R.drawable.sym_def_app_icon)
@@ -226,23 +268,29 @@ class AppLockAccessibilityService : AccessibilityService() {
         appHeader.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
         val appName = TextView(this).apply { text = appLabel; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setPadding(0, dp(7), 0, 0) }
         appHeader.addView(appName, matchWrap())
-        val shield = TextView(this).apply { text = "◈"; textSize = 30f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }
+        val shield = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_lock_lock)
+            setColorFilter(Color.rgb(40, 220, 230))
+            contentDescription = if (isArabic) "قفل حماية نشط" else "Active security lock"
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(0, dp(4), 0, 0)
+        }
         val title = TextView(this).apply {
             text = if (storageUnavailable) { if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable" } else if (maintenanceUntil != null) { if (isArabic) "التطبيق قيد الصيانة" else "App under maintenance" } else if (isArabic) "التطبيق محمي" else "App protected"
             textSize = 23f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER
         }
         val subtitle = TextView(this).apply {
-            text = if (storageUnavailable) { if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery." } else if (maintenanceUntil != null) { if (isArabic) "هذا التطبيق في وضع الصيانة لمدة 30 يوماً. أدخل الرمز الرئيسي لإلغاء الصيانة." else "This app is in maintenance for 30 days. Enter the master PIN to cancel maintenance." } else if (isArabic) "أدخل الرمز الرئيسي للمتابعة" else "Enter the master PIN to continue"
+            text = if (storageUnavailable) { if (isArabic) "تعذر قراءة التخزين المشفر. الوصول مرفوض حتى استعادة الحالة الآمنة." else "Encrypted security storage could not be read. Access is denied until recovery." } else if (maintenanceUntil != null) { if (isArabic) "صيانة لمدة 30 يومًا. اضغط زر إدخال الرمز عند الحاجة." else "30-day maintenance. Tap Enter PIN when needed." } else if (isArabic) "أدخل الرمز الرئيسي للمتابعة" else "Enter the master PIN to continue"
             textSize = 14f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8))
         }
         val countdown = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(3), 0, dp(5)) }
         maintenanceCountdownView = if (maintenanceUntil != null) countdown else null
-        val quoteView = TextView(this).apply { text = FAITH_HINTS[0]; textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8)) }
+        val quoteView = TextView(this).apply { text = faithHints()[0]; textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8)) }
         startQuoteTicker(quoteView)
 
         val dots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8)) }
         pinDotViews.clear()
-        repeat(4) {
+        repeat(pinDotCount) {
             val dot = View(this).apply { background = makeDotBackground(false) }
             dots.addView(dot, LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginStart = dp(8); marginEnd = dp(8) }); pinDotViews.add(dot)
         }
@@ -262,18 +310,46 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             numberPad.addView(row, LinearLayout.LayoutParams(-2, -2))
         }
-        val biometricAvailable = !storageUnavailable && maintenanceUntil == null && readPolicy()?.biometricEnabled == true && BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+        val biometricAvailable = !storageUnavailable && maintenanceUntil == null && gatePolicy?.biometricEnabled == true && BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
         val biometricButton = if (biometricAvailable) Button(this).apply {
             text = if (isArabic) "استخدام البصمة" else "Use fingerprint"; isAllCaps = false; textSize = 14f; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.argb(26, 255, 255, 255)); setStroke(dp(1), Color.rgb(55, 76, 98)) }
             setOnClickListener { dispatchBiometricRequest(targetPackage) }
         } else null
         val error = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "استعد التخزين الآمن من داخل التطبيق" else "Recover secure storage from inside the app" } else " "; textSize = 12f; setTextColor(Color.rgb(255, 105, 105)); gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(2)) }
+        val recoveryButton = if (maintenanceUntil != null) Button(this).apply {
+            text = if (isArabic) "إدخال الرمز لإلغاء الصيانة" else "Enter PIN to cancel maintenance"
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.rgb(25, 46, 67)); setStroke(dp(1), Color.rgb(239, 68, 68)) }
+        } else null
+        if (maintenanceUntil != null) {
+            dots.visibility = View.GONE
+            symbols.visibility = View.GONE
+            numberPad.visibility = View.GONE
+            maintenancePinControls = listOf(dots, symbols, numberPad)
+            maintenanceRecoveryButton = recoveryButton
+        } else {
+            maintenancePinControls = emptyList()
+            maintenanceRecoveryButton = null
+        }
+        val showMaintenanceRecovery = {
+            dots.visibility = View.VISIBLE
+            symbols.visibility = View.VISIBLE
+            numberPad.visibility = View.VISIBLE
+            recoveryButton?.visibility = View.GONE
+            error.text = " "
+        }
+        title.setOnClickListener {
+            if (maintenanceUntil != null && !storageUnavailable) showMaintenanceRecovery()
+        }
+        recoveryButton?.setOnClickListener { showMaintenanceRecovery() }
         val footer = TextView(this).apply { text = if (storageUnavailable) { if (isArabic) "لا يتم تجاوز فشل التخزين تلقائيًا" else "Storage failure never disables protection" } else if (maintenanceUntil != null) { if (isArabic) "الرمز الرئيسي يلغي صيانة هذا التطبيق فقط" else "The master PIN cancels maintenance for this app only" } else if (isArabic) "أدخل الرمز الرئيسي من لوحة الأرقام" else "Use the on-screen PIN keypad"; textSize = 11f; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, dp(5), 0, 0) }
         root.addView(appHeader, matchWrap()); root.addView(shield, matchWrap()); root.addView(title, matchWrap()); root.addView(subtitle, matchWrap())
         if (maintenanceUntil != null) root.addView(countdown, matchWrap())
         root.addView(quoteView, matchWrap()); root.addView(dots, matchWrap()); root.addView(symbols, matchWrap()); root.addView(numberPad, matchWrap())
-        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) }); root.addView(error, matchWrap()); root.addView(footer, matchWrap())
+        if (biometricButton != null) root.addView(biometricButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) }); root.addView(error, matchWrap()); root.addView(footer, matchWrap()); if (recoveryButton != null) root.addView(recoveryButton, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(7) })
         errorView = error; lockView = root; updatePinDots()
         try {
             val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SECURE, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.CENTER }
@@ -298,36 +374,104 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun handleKey(targetPackage: String, key: String) {
         if (lockView == null || currentTarget != targetPackage) return
         if (blockedUntil > System.currentTimeMillis()) { showBlockedMessage(); return }
-        when (key) { "back" -> if (pinValue.isNotEmpty()) pinValue = pinValue.dropLast(1); "ok" -> { verifyPin(targetPackage); return }; else -> if (pinValue.length < 4) pinValue += key }
-        updatePinDots(); errorView?.text = " "
-        if (pinValue.length == 4) uiHandler.postDelayed({ if (lockView != null && currentTarget == targetPackage && pinValue.length == 4) verifyPin(targetPackage) }, 80L)
+        val policy = readPolicy()
+        val inputLimit = policy?.let(::maxPinInputLength) ?: 4
+        when (key) {
+            "back" -> if (pinValue.isNotEmpty()) pinValue = pinValue.dropLast(1)
+            "ok" -> { verifyPin(targetPackage); return }
+            else -> if (pinValue.length < inputLimit) pinValue += key
+        }
+        updatePinDots()
+        errorView?.text = " "
+        val current = readPolicy()
+        val shouldAutoVerify = current != null && pinValue.isNotEmpty() &&
+            (pinValue.length == current.pinLength || configuredPins(current).any { it == normalizePin(pinValue) })
+        if (shouldAutoVerify) {
+            val submitted = pinValue
+            uiHandler.postDelayed({
+                if (lockView != null && currentTarget == targetPackage && pinValue == submitted) verifyPin(targetPackage)
+            }, 80L)
+        }
     }
 
     private fun verifyPin(targetPackage: String) {
         val now = System.currentTimeMillis()
         if (now < blockedUntil) { showBlockedMessage(); return }
-        if (pinValue.length != 4) { errorView?.text = if (currentLanguage().equals("ar", true)) "أدخل أربعة رموز" else "Enter four characters"; return }
         val policy = readPolicy() ?: run { errorView?.text = if (currentLanguage().equals("ar", true)) "التخزين الآمن غير متاح" else "Secure storage is unavailable"; setKeypadEnabled(false); return }
-        val typed = normalizePin(pinValue); val master = normalizePin(policy.masterPin); val maintenanceUntil = targetMaintenanceUntil(policy, targetPackage)
+        val typed = normalizePin(pinValue)
+        if (typed.length != policy.pinLength && typed !in configuredPins(policy)) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) "أدخل ${policy.pinLength} أرقام أو استخدم الرمز الحالي" else "Enter ${policy.pinLength} digits or use a current PIN"
+            pinValue = ""; updatePinDots(); return
+        }
+        val master = normalizePin(policy.masterPin); val maintenanceUntil = targetMaintenanceUntil(policy, targetPackage)
         if (typed == master) {
             if (maintenanceUntil != null && !clearTargetMaintenance(targetPackage)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."; return }
             unlockedTarget = targetPackage; clearAttemptState(targetPackage); attempts = 0; blockedUntil = 0L; dismissGate(); return
         }
-        if (maintenanceUntil != null) { recordFailedAttempt(targetPackage, now); return }
-        if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
+        // The maintenance PIN applies to the currently protected target only.
+        val wantsTargetMaintenance = maintenanceUntil == null && policy.extendedLockPin?.let { typed == normalizePin(it) } == true
+        if (wantsTargetMaintenance) {
             val until = now + 30L * 24L * 60L * 60L * 1000L
-            if (!writeTargetMaintenance(targetPackage, until)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ صيانة هذا التطبيق؛ بقي محميًا." else "Could not save maintenance for this app; it remains protected."; return }
-            pinValue = ""; updatePinDots(); val refreshed = readPolicy(); showGate(targetPackage, maintenanceUntil = targetMaintenanceUntil(refreshed ?: policy, targetPackage)); return
+            if (!writeTargetMaintenance(targetPackage, until)) {
+                errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ حالة حماية هذا التطبيق؛ بقي القفل فعّالًا." else "Could not save this app protection state; the lock remains active."
+                pinValue = ""; updatePinDots(); return
+            }
+            pinValue = ""; updatePinDots()
+            showGate(targetPackage, maintenanceUntil = until)
+            return
         }
-        val isOwnerAction = typed.isNotEmpty() && (policy.duressPin?.let { typed == normalizePin(it) } == true || policy.wipePin?.let { typed == normalizePin(it) } == true)
+        val wantsTargetQuarantine = policy.wipePin?.let { typed == normalizePin(it) } == true
+        if (wantsTargetQuarantine) {
+            pinValue = ""; updatePinDots()
+            errorView?.text = if (currentLanguage().equals("ar", true))
+                "تم إبقاء التطبيق المستهدف مقفولًا. لم تُحذف ملفات أو بيانات؛ مسح بيانات تطبيق آخر لا يُنفّذ من لوحة القفل."
+            else
+                "The target app remains locked. No files or data were deleted; cross-app data wiping is not performed from the lock keypad."
+            return
+        }
+        val isOwnerAction = typed.isNotEmpty() && policy.duressPin?.let { typed == normalizePin(it) } == true
         if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
-        recordFailedAttempt(targetPackage, now)
+        if (maintenanceUntil != null) {
+            // Re-entering the maintenance PIN leaves the countdown visible rather
+            // than falling through to an error-only state.
+            if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
+                pinValue = ""; updatePinDots(); errorView?.text = " ";
+                maintenancePinControls.forEach { it.visibility = View.GONE }
+                maintenanceRecoveryButton?.visibility = View.VISIBLE
+                return
+            }
+            recordFailedAttempt(targetPackage, now, typed.length); return
+        }
+        recordFailedAttempt(targetPackage, now, typed.length)
     }
 
-    private fun recordFailedAttempt(targetPackage: String, now: Long) {
+    private fun appendAttemptHistory(targetPackage: String, attemptedLength: Int, attemptNumber: Int, at: Long, outcome: String) {
+        try {
+            val secure = SecureStorage(this)
+            val raw = secure.get(FAILED_ATTEMPT_HISTORY_KEY)
+            val history = if (raw.isNullOrBlank()) JSONArray() else JSONArray(raw)
+            history.put(JSONObject()
+                .put("at", at)
+                .put("packageName", targetPackage.take(240))
+                .put("context", "app")
+                .put("attemptedLength", attemptedLength.coerceIn(0, 10))
+                .put("attemptNumber", attemptNumber.coerceAtLeast(1))
+                .put("outcome", outcome))
+            while (history.length() > 200) history.remove(0)
+            secure.put(FAILED_ATTEMPT_HISTORY_KEY, history.toString())
+        } catch (_: Exception) {
+            // Logging is best-effort; normal attempt throttling stays in force.
+        }
+    }
+
+    private fun recordFailedAttempt(targetPackage: String, now: Long, attemptedLength: Int) {
         attempts = (attempts + 1).coerceAtMost(1_000_000); pinValue = ""; updatePinDots()
-        if (attempts >= 5) {
-            blockedUntil = now + 15_000L
+        val policy = readPolicy()
+        val attemptLimit = policy?.maxAttempts ?: 5
+        val waitMillis = (policy?.lockTimeoutSec?.toLong() ?: 15L) * 1000L
+        appendAttemptHistory(targetPackage, attemptedLength, attempts, now, if (attempts >= attemptLimit) "rate-limited" else "rejected")
+        if (attempts >= attemptLimit) {
+            blockedUntil = now + waitMillis
             if (!saveAttemptState(targetPackage, AttemptState(attempts, blockedUntil))) { blockUntilStorageRecovers(); return }
             setKeypadEnabled(false); showBlockedMessage(); startRetryTicker(targetPackage)
         } else {
@@ -358,8 +502,9 @@ class AppLockAccessibilityService : AccessibilityService() {
             private var index = 0
             override fun run() {
                 if (lockView == null) { quoteTicker = null; return }
-                index = (index + 1) % FAITH_HINTS.size
-                view.text = FAITH_HINTS[index]
+                val hints = faithHints()
+                index = (index + 1) % hints.size
+                view.text = hints[index]
                 uiHandler.postDelayed(this, 5000L)
             }
         }
@@ -398,10 +543,85 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun setKeypadEnabled(enabled: Boolean) { keypadButtons.forEach { it.isEnabled = enabled } }
     private fun updatePinDots() { pinDotViews.forEachIndexed { index, dot -> dot.background = makeDotBackground(index < pinValue.length) } }
     private fun makeDotBackground(filled: Boolean) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (filled) Color.rgb(40, 220, 230) else Color.TRANSPARENT); setStroke(dp(2), if (filled) Color.rgb(40, 220, 230) else Color.rgb(125, 138, 154)) }
-    private fun dismissGate() { stopUiTickers(); val current = lockView; if (current != null) try { windowManager?.removeView(current) } catch (_: Exception) { }; lockView = null; errorView = null; maintenanceCountdownView = null; pinValue = ""; pinDotViews.clear(); keypadButtons.clear(); currentTarget = null; activeMaintenanceUntil = null }
+    private fun dismissGate() { stopUiTickers(); val current = lockView; if (current != null) try { windowManager?.removeView(current) } catch (_: Exception) { }; lockView = null; errorView = null; maintenanceCountdownView = null; maintenanceRecoveryButton = null; maintenancePinControls = emptyList(); pinValue = ""; pinDotViews.clear(); keypadButtons.clear(); currentTarget = null; activeMaintenanceUntil = null }
     private fun blockUntilStorageRecovers() { blockedUntil = Long.MAX_VALUE; setKeypadEnabled(false); errorView?.text = if (currentLanguage().equals("ar", true)) "تعذر حفظ سجل المحاولات؛ أُوقفت المحاولات حفاظًا على الحماية." else "Attempt state could not be saved; retries are blocked to preserve protection." }
     private fun normalizePin(value: String): String = value.map { ch -> when (ch) { in '\u0660'..'\u0669' -> ('0'.code + ch.code - 0x0660).toChar(); in '\u06f0'..'\u06f9' -> ('0'.code + ch.code - 0x06f0).toChar(); else -> ch } }.joinToString("")
-    @Suppress("DEPRECATION") private fun currentLanguage(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) resources.configuration.locales[0]?.language ?: "en" else resources.configuration.locale?.language ?: "en"
+    @Suppress("DEPRECATION")
+    private fun currentLanguage(): String {
+        configuredAppLanguage?.takeIf { it == "ar" || it == "en" }?.let { return it }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) resources.configuration.locales[0]?.language ?: "en" else resources.configuration.locale?.language ?: "en"
+    }
+
+    private fun faithHints(): List<String> = if (currentLanguage().equals("ar", true)) FAITH_HINTS else FAITH_HINTS_EN
+
+    private fun applyConfiguredBackground(root: LinearLayout) {
+        val source = configuredBackgroundImage
+        if (source == null) {
+            if (cachedBackgroundSource != null) cachedBackgroundBitmap?.recycle()
+            cachedBackgroundSource = null
+            cachedBackgroundBitmap = null
+            return
+        }
+        if (source != cachedBackgroundSource) {
+            try {
+                val encoded = source.substringAfter("data:image/jpeg;base64,", "")
+                if (encoded.isBlank()) return
+                val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                if (bytes.size > 750_000) return
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return
+                val largest = maxOf(bounds.outWidth, bounds.outHeight)
+                val sample = (largest / 1400).coerceAtLeast(1)
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }) ?: return
+                cachedBackgroundBitmap?.recycle()
+                cachedBackgroundBitmap = bitmap
+                cachedBackgroundSource = source
+            } catch (_: Exception) {
+                return
+            }
+        }
+        val bitmap = cachedBackgroundBitmap ?: return
+        val photo = CoverImageDrawable(bitmap, configuredBackgroundScale, configuredBackgroundX, configuredBackgroundY).apply { alpha = 190 }
+        val dimmer = GradientDrawable().apply {
+            setColor(Color.argb(168, 6, 14, 27))
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), Color.rgb(40, 220, 230))
+        }
+        root.background = LayerDrawable(arrayOf(photo, dimmer))
+        root.clipToOutline = true
+    }
+    private class CoverImageDrawable(
+        private val bitmap: Bitmap,
+        private val scale: Float,
+        private val offsetX: Float,
+        private val offsetY: Float,
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = 190 }
+
+        override fun draw(canvas: Canvas) {
+            val bounds = bounds
+            if (bounds.width() <= 0 || bounds.height() <= 0 || bitmap.isRecycled) return
+            val cropScale = maxOf(bounds.width().toFloat() / bitmap.width, bounds.height().toFloat() / bitmap.height) * scale
+            val width = bitmap.width * cropScale
+            val height = bitmap.height * cropScale
+            val left = bounds.left - (width - bounds.width()) * (50f + offsetX) / 100f
+            val top = bounds.top - (height - bounds.height()) * (50f + offsetY) / 100f
+            val destination = RectF(left, top, left + width, top + height)
+            val checkpoint = canvas.save()
+            canvas.clipRect(bounds)
+            canvas.drawBitmap(bitmap, null, destination, paint)
+            canvas.restoreToCount(checkpoint)
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha.coerceIn(0, 255); invalidateSelf() }
+        override fun setColorFilter(colorFilter: ColorFilter?) { paint.colorFilter = colorFilter; invalidateSelf() }
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
@@ -413,8 +633,15 @@ class AppLockAccessibilityService : AccessibilityService() {
             "﴿وَمِنْ آيَاتِهِ أَنْ خَلَقَ لَكُم مِّنْ أَنفُسِكُمْ أَزْوَاجًا لِّتَسْكُنُوا إِلَيْهَا وَجَعَلَ بَيْنَكُم مَّوَدَّةً وَرَحْمَةً﴾",
             "قال ﷺ: «يَا مَعْشَرَ الشَّبَابِ مَنِ اسْتَطَاعَ مِنْكُمُ الْبَاءَةَ فَلْيَتَزَوَّجْ، فَإِنَّهُ أَغَضُّ لِلْبَصَرِ وَأَحْصَنُ لِلْفَرْجِ»",
         )
+        private val FAITH_HINTS_EN = listOf(
+            "Prepare against them whatever strength you can. (Qur'an 8:60)",
+            "A day and a night of guarding is better than a month of fasting and prayer.",
+            "Among His signs is that He created spouses for you, so you may find tranquility. (Qur'an 30:21)",
+            "Young people, whoever is able to marry should do so.",
+        )
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
         const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
+        const val FAILED_ATTEMPT_HISTORY_KEY = "duress-security-failed-attempt-history"
         const val EXTRA_TARGET_PACKAGE = "com.duresssecurity.app.EXTRA_APP_LOCK_TARGET_PACKAGE"
     }
 }

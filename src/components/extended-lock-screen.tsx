@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Moon } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { AndroidClock } from "@/components/android-clock";
-import { remainingTime } from "@/lib/security-service";
+import { normalizePin, remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
@@ -13,7 +13,12 @@ export function ExtendedLockScreen() {
   const security = useAppStore((s) => s.security);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
   const recoverExtendedLock = useAppStore((s) => s.recoverExtendedLock);
+
+  const activateDuressMode = useAppStore((s) => s.activateDuressMode);
   const lockoutUntil = useAppStore((s) => s.lockoutUntil);
+  const pinLength = useAppStore((s) => s.pinLength);
+  const configuredMasterPin = useAppStore((s) => s.pins.master);
+  const maxPinLength = Math.min(10, Math.max(pinLength, normalizePin(configuredMasterPin).length));
   const [now, setNow] = useState(() => Date.now());
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryPin, setRecoveryPin] = useState("");
@@ -48,8 +53,32 @@ export function ExtendedLockScreen() {
 
   async function verifyRecoveryPin(pin: string) {
     if (recoveryAttemptRef.current) return;
-    if (pin.length !== 4) {
-      setRecoveryError(lang === "ar" ? "أدخل كلمة السر المكوّنة من أربعة أرقام." : "Enter the four-digit owner PIN.");
+    const latest = useAppStore.getState();
+    if (pin.length !== latest.pinLength && pin !== normalizePin(latest.pins.master)) {
+      setRecoveryError(lang === "ar" ? "أدخل الرمز بطوله المحدد أو رمز المالك الحالي." : "Enter the selected PIN length or the currently configured owner PIN.");
+      return;
+    }
+    if (Date.now() < latest.lockoutUntil) {
+      const seconds = Math.ceil((latest.lockoutUntil - Date.now()) / 1000);
+      setRecoveryError(lang === "ar" ? `انتظر ${seconds} ثانية قبل المحاولة مجددًا.` : `Wait ${seconds} seconds before trying again.`);
+      return;
+    }
+    const typed = normalizePin(pin);
+    if (typed === normalizePin(latest.pins.format)) {
+      setRecoveryPin("");
+      setRecoveryError(lang === "ar" ? "7777 لا يحذف بيانات تطبيق الحماية من قفله الرئيسي. لم تُحذف أي بيانات." : "7777 does not delete security-app data from its own lock. No data was deleted.");
+      return;
+    }
+    if (typed === normalizePin(latest.pins.duress)) {
+      activateDuressMode();
+      setRecoveryOpen(false);
+      setRecoveryPin("");
+      setRecoveryError("");
+      return;
+    }
+    if (typed === normalizePin(latest.pins.lock)) {
+      setRecoveryPin("");
+      setRecoveryError(lang === "ar" ? "قفل الصيانة ما زال مفعّلًا؛ أدخل رمز المالك لإلغائه." : "Maintenance remains active; enter the owner PIN to exit.");
       return;
     }
     recoveryAttemptRef.current = true;
@@ -96,16 +125,8 @@ export function ExtendedLockScreen() {
     <div className="bg-mountains flex min-h-svh flex-col select-none">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
-        <button
-          type="button"
-          onClick={openRecovery}
-          aria-label={lang === "ar" ? "استرداد المالك من وضع الصيانة" : "Owner recovery from maintenance"}
-          className="absolute left-5 top-5 z-10 grid size-9 place-items-center rounded-full text-white/70 outline-none"
-        >
-          <Moon className="size-5" />
-        </button>
-        <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
-          <Moon className="size-7" />
+        <span className="grid size-16 place-items-center rounded-full bg-cyan/10 text-cyan ring-1 ring-cyan/30 backdrop-blur" aria-label={lang === "ar" ? "قفل حماية نشط" : "Active security lock"}>
+          <LockKeyhole className="size-7" aria-hidden="true" />
         </span>
         <div>
           <button
@@ -118,8 +139,8 @@ export function ExtendedLockScreen() {
           </button>
           <p className="mt-2 text-sm text-white/70">
             {lang === "ar"
-              ? "يعمل التطبيق حالياً على صيانة ذاتية لمعالجة الأخطاء المتراكمة، وفقاً لإجراء صيانة صادر عن الشركة. تستمر الصيانة لمدة 30 يوماً."
-              : "The app is performing self-maintenance to address accumulated errors under a company maintenance procedure. The maintenance lasts 30 days."}
+              ? "تم تفعيل قفل صيانة التطبيق لمدة 30 يومًا. هذا القفل خاص بالتطبيق ولا يستبدل قفل شاشة أندرويد."
+              : "App-level maintenance is active for 30 days. This does not replace the Android screen lock."}
           </p>
         </div>
         <div className="w-full rounded-3xl bg-white/10 p-4 backdrop-blur">
@@ -143,7 +164,7 @@ export function ExtendedLockScreen() {
               {lang === "ar" ? "ضع كلمة السر لإلغاء وضع الصيانة." : "Enter the owner PIN to cancel maintenance mode."}
             </p>
             <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3">
-              <PinDots length={recoveryPin.length} />
+              <PinDots length={recoveryPin.length} max={maxPinLength} />
             </div>
             {recoveryBlockedSeconds > 0 ? (
               <p className="mt-2 text-center text-xs text-red-300">
@@ -152,13 +173,14 @@ export function ExtendedLockScreen() {
             ) : recoveryError ? <p className="mt-2 text-center text-xs text-red-300">{recoveryError}</p> : null}
             <div className="mt-3">
               <PinKeypad
+                maxLength={maxPinLength}
                 compact
                 disabled={recoveryBlockedSeconds > 0}
                 value={recoveryPin}
                 onChange={(next) => {
                   setRecoveryPin(next);
                   setRecoveryError("");
-                  if (next.length === 4) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
+                  if (next.length > recoveryPin.length && (next.length === pinLength || next === normalizePin(useAppStore.getState().pins.master))) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
                 }}
                 onConfirm={() => { void verifyRecoveryPin(recoveryPin); }}
               />

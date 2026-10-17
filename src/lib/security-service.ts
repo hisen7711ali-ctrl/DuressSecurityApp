@@ -62,7 +62,14 @@ export function classifyPin(pin: string, pins: PinMap): PinAction {
 
 export function validatePins(pins: PinMap): "duplicate" | null {
   const used = [pins.master, pins.duress, pins.lock, pins.format].filter(Boolean).map(normalizePin);
-  return new Set(used).size === used.length ? null : "duplicate";
+  if (new Set(used).size !== used.length) return "duplicate";
+  // Prefixes would make a short PIN auto-submit before a longer configured PIN could be entered.
+  for (let i = 0; i < used.length; i += 1) {
+    for (let j = i + 1; j < used.length; j += 1) {
+      if (used[i]!.startsWith(used[j]!) || used[j]!.startsWith(used[i]!)) return "duplicate";
+    }
+  }
+  return null;
 }
 
 export function startExtendedLock(now: number = Date.now(), durationMs: number = EXTENDED_LOCK_MS): SecurityState {
@@ -133,10 +140,11 @@ export async function wipeAppData(opts: { preserveKeys?: string[] } = {}): Promi
   }
   if (typeof indexedDB !== "undefined") {
     const dbs = await indexedDB.databases?.();
-    for (const db of dbs ?? []) {
-      if (!db.name || !(db.name.startsWith("duress-security") || db.name.startsWith("duress-"))) continue;
+    const names = new Set((dbs ?? []).map((db) => db.name).filter((name): name is string => Boolean(name && (name.startsWith("duress-security") || name.startsWith("duress-")))));
+    names.add("duress-security-vault-files");
+    for (const name of names) {
       await new Promise<void>((resolve, reject) => {
-        const req = indexedDB.deleteDatabase(db.name!);
+        const req = indexedDB.deleteDatabase(name);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error ?? new Error("IndexedDB deletion failed"));
         req.onblocked = () => reject(new Error("OWNED_DATABASE_DELETE_BLOCKED"));

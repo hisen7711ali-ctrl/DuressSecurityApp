@@ -6,27 +6,40 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("protected-app gate is target-aware and uses the real target icon/name", async () => {
+test("protected-app gate is target-aware and routes 5555 to target-only maintenance", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /getApplicationLabel\(packageManager\.getApplicationInfo\(targetPackage/);
   assert.match(service, /getApplicationIcon\(targetPackage\)/);
   assert.match(service, /App under maintenance/);
   assert.match(service, /التطبيق قيد الصيانة/);
   assert.match(service, /TARGET_MAINTENANCE_KEY/);
-  assert.match(service, /writeTargetMaintenance\(targetPackage, until\)/);
-  assert.match(service, /30L \* 24L \* 60L \* 60L \* 1000L/);
+  assert.match(service, /maintenancePinControls/);
+  assert.match(service, /startMaintenanceTicker/);
+  assert.ok(service.includes("title.setOnClickListener"));
+  const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
+  assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
+  assert.ok(verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
+  assert.ok(verify.includes("dispatchOwnerPinAction(targetPackage, typed)"), "4444 routes to the app calculator/owner flow");
+  assert.match(service, /30-day maintenance/);
 });
 
-test("protected-app gate keeps configured PINs dynamic and routes only app-owned wipe/duress to the existing owner flow", async () => {
+test("protected-app gate routes maintenance per target, routes duress to the owner flow and never wipes another app", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /policy\.extendedLockPin/);
   assert.match(service, /policy\.duressPin/);
-  assert.match(service, /policy\.wipePin/);
+  assert.match(service, /wipePin = pins\.optString\("format"\)/);
   assert.doesNotMatch(service, /typed\s*==\s*"5555"|typed\s*==\s*"4444"|typed\s*==\s*"7777"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+  const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
+  assert.match(verify, /policy\.wipePin\?\.let/);
+  assert.doesNotMatch(verify, /wipeData\(|clearApplicationUserData|beginEmergencyWipe|deleteRecursively/);
+  assert.match(verify, /wantsTargetMaintenance/);
+  assert.match(verify, /wantsTargetQuarantine/);
+  assert.match(verify, /لم تُحذف ملفات/);
 });
 
-test("target maintenance is stored outside the Zustand policy record so normal persistence cannot erase it", async () => {
+test("legacy per-app maintenance records remain readable and recoverable", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /duress-security-app-lock-maintenance/);
   assert.match(service, /SecureStorage\(this\)\.get\(TARGET_MAINTENANCE_KEY\)/);

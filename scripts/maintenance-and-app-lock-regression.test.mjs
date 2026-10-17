@@ -6,23 +6,27 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("extended lock uses maintenance copy and hides normal recovery UI", async () => {
+test("extended lock shows a lock icon, PIN recovery and truthful maintenance copy", async () => {
   const source = await read("src/components/extended-lock-screen.tsx");
-  assert.match(source, /التطبيق قيد الصيانة/);
-  assert.match(source, /30 يوماً/);
-  assert.match(source, /<Moon className="size-5" \/>/);
-  assert.match(source, /onClick=\{openRecovery\}/);
-  assert.match(source, /استرداد المالك من وضع الصيانة/);
-  assert.match(source, /اضغط لإلغاء وضع الصيانة/);
-  assert.doesNotMatch(source, /aria-hidden="true"/);
-  assert.match(source, /ضع كلمة السر لإلغاء وضع الصيانة/);
-  assert.match(source, /next.length === 4/);
+  assert.ok(source.includes("التطبيق قيد الصيانة"));
+  assert.ok(source.includes("30 يومًا"));
+  assert.ok(source.includes("<LockKeyhole className=\"size-7\""));
+  assert.ok(!source.includes("Moon"));
+  assert.ok(source.includes("onClick={openRecovery}"));
+  assert.ok(source.includes("اضغط لإلغاء وضع الصيانة"));
+  assert.ok(source.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
+  assert.ok(!source.includes("beginEmergencyWipe"), "extended lock must not silently erase app data from a recovery keypad");
+  assert.ok(source.includes("لم تُحذف أي بيانات"));
+  assert.ok(source.includes("activateDuressMode"));
+  assert.ok(source.includes("normalizePin(latest.pins.format)"));
+  assert.ok(source.includes("next.length === pinLength"));
 });
 
 test("device-level controls are not blocked by a test-device UI check", async () => {
   const source = await read("src/components/settings-screen.tsx");
   assert.match(source, /action: \{ type: "toggle-prevent", value \}/);
-  assert.match(source, /action: \{ type: "toggle-kiosk", value \}/);
+  const kiosk = await read("src/components/kiosk-screen.tsx");
+  assert.match(kiosk, /action: \{ type: "toggle-kiosk", value \}/);
   assert.doesNotMatch(source, /if \(!deviceOwner\) \{\s*setToast\(t\.deviceOwnerOnly/);
 });
 
@@ -31,14 +35,16 @@ test("native app-lock gate uses an on-screen keypad instead of the system keyboa
   assert.match(source, /listOf\("أ", "ي", "ع"\)/);
   assert.match(source, /listOf\("1", "2", "3"\)/);
   assert.match(source, /listOf\("back", "0", "ok"\)/);
-  assert.match(source, /pinValue.length == 4/);
-  assert.match(source, /attempts >= 5/);
+  assert.match(source, /pinValue.length == current.pinLength/);
+  assert.match(source, /attempts >= attemptLimit/);
   assert.doesNotMatch(source, /EditText|InputMethodManager/);
   assert.match(source, /duressPin/);
   assert.match(source, /extendedLockPin/);
   assert.match(source, /wipePin/);
   assert.match(source, /dispatchOwnerPinAction\(targetPackage, typed\)/);
   assert.match(source, /performHapticFeedback/);
+  assert.ok(source.includes("android.R.drawable.ic_lock_lock"));
+  assert.ok(source.includes("title.setOnClickListener"));
 });
 
 test("native app-lock gate does not dismiss on its own overlay package event", async () => {
@@ -80,6 +86,9 @@ test("native special PINs are handed to the same primary submitPin flow", async 
   const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
   const shell = await read("src/components/app-shell.tsx");
   assert.match(service, /EXTRA_OWNER_PIN_ACTION/);
+  const specialPinRoute = service.indexOf("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }");
+  const maintenanceGuard = service.indexOf("if (maintenanceUntil != null)", specialPinRoute);
+  assert.ok(specialPinRoute >= 0 && maintenanceGuard > specialPinRoute, "duress and format PINs must be routed before maintenance rejects ordinary PINs");
   assert.match(activity, /__duressSecurityPendingPinAction/);
   assert.match(shell, /state\.submitPin\(pin\)/);
   assert.match(shell, /__duressSecurityHandlePinAction/);
@@ -133,19 +142,20 @@ test("native App Lock biometric flow requires configured package and enabled bio
 });
 
 
-test("extended maintenance uses native immersive bars and a visible owner recovery moon", async () => {
+test("extended maintenance uses immersive bars and a lock icon rather than a moon", async () => {
   const screen = await read("src/components/extended-lock-screen.tsx");
   const bridge = await read("src/lib/native-bridge.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
-  assert.match(screen, /setImmersiveMode\(true\)/);
-  assert.match(screen, /setImmersiveMode\(false\)/);
-  assert.match(screen, /<Moon className="size-5" \/>/);
-  assert.match(screen, /onClick=\{openRecovery\}/);
-  assert.match(screen, /ضع كلمة السر لإلغاء وضع الصيانة/);
-  assert.match(bridge, /setImmersiveMode\(options: \{ enabled: boolean \}\)/);
-  assert.match(plugin, /fun setImmersiveMode/);
-  assert.match(plugin, /WindowInsets\.Type\.statusBars\(\) or WindowInsets\.Type\.navigationBars\(\)/);
-  assert.match(plugin, /SYSTEM_UI_FLAG_IMMERSIVE_STICKY/);
+  assert.ok(screen.includes("setImmersiveMode(true)"));
+  assert.ok(screen.includes("setImmersiveMode(false)"));
+  assert.ok(screen.includes("<LockKeyhole className=\"size-7\""));
+  assert.ok(!screen.includes("Moon"));
+  assert.ok(screen.includes("onClick={openRecovery}"));
+  assert.ok(screen.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
+  assert.ok(bridge.includes("setImmersiveMode(options: { enabled: boolean })"));
+  assert.ok(plugin.includes("fun setImmersiveMode"));
+  assert.ok(plugin.includes("WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()"));
+  assert.ok(plugin.includes("SYSTEM_UI_FLAG_IMMERSIVE_STICKY"));
 });
 
 test("uninstall protection is visibly unsupported until Device Owner and stays policy-confirmed", async () => {
@@ -183,4 +193,57 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
   assert.match(service, /"back"/);
   assert.match(service, /"ok"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+  assert.match(service, /30-day maintenance/);
+  assert.match(service, /val recoveryButton = if \(maintenanceUntil != null\)/);
+  assert.match(service, /dots\.visibility = View\.GONE/);
+  assert.match(service, /maintenanceRecoveryButton\?\.visibility = View\.VISIBLE/);
+  const files = await read("src/components/files-screen.tsx");
+  assert.match(files, /vault-file-v1/);
+  assert.match(files, /تُشفّر الملفات المختارة/);
+  const shell = await read("src/components/app-shell.tsx");
+  assert.match(shell, /custom-app-background/);
+  assert.match(shell, /setTab\("home"\)/);
+});
+
+
+test("App Lock 4444 returns to the locked calculator while 5555 maintains only the target app", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  const shell = await read("src/components/app-shell.tsx");
+  const store = await read("src/lib/store.ts");
+  const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
+  assert.ok(verify.includes("policy.duressPin?.let"));
+  assert.ok(verify.includes("policy.wipePin?.let"), "7777 enters a target-only quarantine state");
+  assert.ok(verify.includes("wantsTargetQuarantine"));
+  assert.ok(!verify.includes("wipeData(") && !verify.includes("clearApplicationUserData"), "the lock keypad must not erase another package");
+  assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
+  assert.ok(verify.includes("writeTargetMaintenance(targetPackage, until)"));
+  assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
+  assert.ok(verify.includes("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }"));
+  assert.ok(shell.includes("state.submitPin(pin)"));
+  assert.ok(shell.includes('state.session !== "extlocked" && normalizePin(pin) === normalizePin(state.pins.duress)'));
+  assert.ok(shell.includes("Extended lock remains active; the calculator shortcut cannot bypass it."));
+  assert.ok(shell.includes('window.addEventListener("duress-security-open-calculator", openCalculatorFacade)'));
+  assert.ok(shell.includes("__duressSecurityOpenCalculator = openCalculatorFacade"));
+  assert.ok(store.includes('window.dispatchEvent(new Event("duress-security-open-calculator"))'));
+  assert.ok(store.includes('state.session !== "extlocked"'), "calculator shortcut must not bypass extended lock");
+  assert.ok(!shell.includes("state.beginEmergencyWipe()"), "App Lock must not silently wipe device/app data from a generic PIN path");
+  assert.ok(store.includes('session: "extlocked"'));
+  assert.ok(store.includes("startExtendedLock(Date.now(), lockDurationMs())"));
+});
+
+test("main lock failure count is restored from encrypted journal without storing PIN digits", async () => {
+  const audit = await read("src/lib/security-audit.ts");
+  const store = await read("src/lib/store.ts");
+  const gate = await read("src/components/lock-gate.tsx");
+  const settings = await read("src/components/settings-screen.tsx");
+  assert.ok(audit.includes("loadConsecutiveMainFailedAttempts"));
+  assert.ok(audit.includes("recordSuccessfulMainUnlock"));
+  assert.ok(audit.includes("secureStorageGet(SECURITY_AUDIT_STORAGE_KEY)"));
+  assert.ok(audit.includes("secureStorageSet("));
+  assert.ok(store.includes("await loadConsecutiveMainFailedAttempts()"));
+  assert.ok(gate.includes("await recordFailedAttempt("));
+  assert.ok(gate.includes("await recordSuccessfulMainUnlock()"));
+  assert.ok(settings.includes("Entered PIN: redacted"));
+  assert.ok(settings.includes("appName(lang, entry.packageName, installedApps)"));
+  assert.doesNotMatch(audit, /attemptedPin|pinValue|typedPin/i);
 });

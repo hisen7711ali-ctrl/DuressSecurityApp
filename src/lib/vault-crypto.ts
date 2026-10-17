@@ -34,3 +34,133 @@ export function hasEncryptedVault(): boolean { try { const store = localStore();
 export async function unlockOrCreateEncryptedVault(passphrase: string, legacyFiles: EncryptedVaultFile[], allowCreate = true): Promise<EncryptedVaultFile[]> { if (!passphrase) throw new Error("PASSPHRASE_REQUIRED"); const store = localStore(); const v2Raw = store.getItem(VAULT_STORAGE_KEY); if (v2Raw !== null) { const opened = await decryptEnvelope(parseEnvelope(v2Raw), passphrase); activeKey = opened.key; activeSalt = opened.salt; activeVersion = 2; return opened.files; } const v1Raw = store.getItem(LEGACY_VAULT_STORAGE_KEY); if (v1Raw !== null) return migrateV1(v1Raw, passphrase); if (!allowCreate) throw new Error("VAULT_RECORD_MISSING"); const created = await encryptV2(legacyFiles, passphrase); const raw = JSON.stringify(created.envelope); store.setItem(VAULT_STORAGE_KEY, raw); await verifyV2(store.getItem(VAULT_STORAGE_KEY) ?? "", passphrase); activeKey = created.key; activeSalt = created.salt; activeVersion = 2; return legacyFiles; }
 export async function persistEncryptedVault(files: EncryptedVaultFile[]): Promise<void> { if (!activeKey || !activeSalt || activeVersion !== 2) throw new Error("VAULT_LOCKED"); const iv = webCrypto().getRandomValues(new Uint8Array(AES_IV_BYTES)); const aad = v2Aad(activeSalt); const plain = new TextEncoder().encode(JSON.stringify(files)); const encrypted = await webCrypto().subtle.encrypt({ name: "AES-GCM", iv: asBufferSource(iv), additionalData: asBufferSource(aad), tagLength: 128 }, activeKey, asBufferSource(plain)); plain.fill(0); const envelope: VaultEnvelopeV2 = { version: 2, kdf: "PBKDF2-SHA256+DEVICE-SECRET", iterations: PBKDF2_ITERATIONS, salt: encodeBase64(activeSalt), iv: encodeBase64(iv), aad: encodeBase64(aad), ciphertext: encodeBase64(new Uint8Array(encrypted)) }; localStore().setItem(VAULT_STORAGE_KEY, JSON.stringify(envelope)); }
 export function lockEncryptedVaultSession(): void { activeKey = null; activeSalt = null; activeVersion = 0; }
+
+type EncryptedAttachmentMeta = { recordType: "meta"; id: string; mimeType: string; size: number; totalChunks: number; complete: boolean };
+type EncryptedAttachmentChunk = { recordType: "chunk"; id: string; fileId: string; index: number; iv: string; ciphertext: Uint8Array };
+type AttachmentRecord = EncryptedAttachmentMeta | EncryptedAttachmentChunk;
+const ATTACHMENT_DB_NAME = "duress-security-vault-files";
+const ATTACHMENT_STORE_NAME = "attachments";
+const ATTACHMENT_CHUNK_SIZE = 1024 * 1024;
+const ATTACHMENT_MAX_BYTES = 512 * 1024 * 1024;
+
+function openAttachmentDatabase(): Promise<IDBDatabase> {
+  if (typeof indexedDB === "undefined") throw new Error("VAULT_ATTACHMENT_STORAGE_UNAVAILABLE");
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ATTACHMENT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(ATTACHMENT_STORE_NAME)) db.createObjectStore(ATTACHMENT_STORE_NAME, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("VAULT_ATTACHMENT_STORAGE_UNAVAILABLE"));
+    request.onblocked = () => reject(new Error("VAULT_ATTACHMENT_STORAGE_BLOCKED"));
+  });
+}
+function attachmentAad(id: string, index: number, totalChunks: number, mimeType: string, size: number): Uint8Array {
+  return new TextEncoder().encode(`duress-vault-attachment-v1|${id}|${index}|${totalChunks}|${mimeType}|${size}`);
+}
+async function writeAttachmentRecord(record: AttachmentRecord): Promise<void> {
+  const db = await openAttachmentDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
+      transaction.objectStore(ATTACHMENT_STORE_NAME).put(record);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_WRITE_FAILED"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_WRITE_FAILED"));
+    });
+  } finally { db.close(); }
+}
+async function readAttachmentRecord(id: string): Promise<AttachmentRecord | undefined> {
+  const db = await openAttachmentDatabase();
+  try {
+    return await new Promise<AttachmentRecord | undefined>((resolve, reject) => {
+      const transaction = db.transaction(ATTACHMENT_STORE_NAME, "readonly");
+      const request = transaction.objectStore(ATTACHMENT_STORE_NAME).get(id);
+      request.onsuccess = () => resolve(request.result as AttachmentRecord | undefined);
+      request.onerror = () => reject(request.error ?? new Error("VAULT_ATTACHMENT_READ_FAILED"));
+    });
+  } finally { db.close(); }
+}
+
+/** Encrypt a file in 1 MiB chunks so large media does not require a full-size plaintext buffer. */
+export async function persistEncryptedAttachment(id: string, file: Blob, mimeType: string): Promise<void> {
+  if (!activeKey || activeVersion !== 2) throw new Error("VAULT_LOCKED");
+  if (!id || id.length > 200 || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > ATTACHMENT_MAX_BYTES) throw new Error("VAULT_ATTACHMENT_INVALID");
+  const key = activeKey;
+  const safeMimeType = (mimeType || "application/octet-stream").slice(0, 200);
+  const totalChunks = Math.ceil(file.size / ATTACHMENT_CHUNK_SIZE);
+  const meta: EncryptedAttachmentMeta = { recordType: "meta", id, mimeType: safeMimeType, size: file.size, totalChunks, complete: false };
+  await writeAttachmentRecord(meta);
+  try {
+    for (let index = 0; index < totalChunks; index += 1) {
+      const plaintext = new Uint8Array(await file.slice(index * ATTACHMENT_CHUNK_SIZE, Math.min(file.size, (index + 1) * ATTACHMENT_CHUNK_SIZE)).arrayBuffer());
+      const iv = webCrypto().getRandomValues(new Uint8Array(AES_IV_BYTES));
+      let ciphertext: Uint8Array;
+      try {
+        ciphertext = new Uint8Array(await webCrypto().subtle.encrypt(
+          { name: "AES-GCM", iv: asBufferSource(iv), additionalData: asBufferSource(attachmentAad(id, index, totalChunks, safeMimeType, file.size)), tagLength: 128 },
+          key,
+          asBufferSource(plaintext),
+        ));
+      } finally { plaintext.fill(0); }
+      await writeAttachmentRecord({ recordType: "chunk", id: `${id}:${index}`, fileId: id, index, iv: encodeBase64(iv), ciphertext });
+    }
+    await writeAttachmentRecord({ ...meta, complete: true });
+  } catch (error) {
+    try { await deleteEncryptedAttachment(id); } catch { /* A later app-data wipe also removes incomplete records. */ }
+    throw error;
+  }
+}
+
+/** Decrypt only into a short-lived in-memory Blob for viewing or explicit download. */
+export async function openEncryptedAttachment(id: string): Promise<{ blob: Blob; mimeType: string }> {
+  if (!activeKey || activeVersion !== 2) throw new Error("VAULT_LOCKED");
+  const key = activeKey;
+  const meta = await readAttachmentRecord(id);
+  if (!meta || meta.recordType !== "meta" || !meta.complete || meta.id !== id ||
+      typeof meta.mimeType !== "string" || !Number.isSafeInteger(meta.size) || meta.size < 1 || meta.size > ATTACHMENT_MAX_BYTES ||
+      !Number.isSafeInteger(meta.totalChunks) || meta.totalChunks < 1 || meta.totalChunks > ATTACHMENT_MAX_BYTES / ATTACHMENT_CHUNK_SIZE || meta.totalChunks !== Math.ceil(meta.size / ATTACHMENT_CHUNK_SIZE)) throw new Error("VAULT_ATTACHMENT_NOT_FOUND");
+  const parts: BlobPart[] = [];
+  let totalSize = 0;
+  for (let index = 0; index < meta.totalChunks; index += 1) {
+    const record = await readAttachmentRecord(`${id}:${index}`);
+    if (!record || record.recordType !== "chunk" || record.fileId !== id || record.index !== index ||
+        !(record.ciphertext instanceof Uint8Array) || typeof record.iv !== "string") throw new Error("VAULT_ATTACHMENT_INTEGRITY_ERROR");
+    let clear: Uint8Array;
+    try {
+      clear = new Uint8Array(await webCrypto().subtle.decrypt(
+        { name: "AES-GCM", iv: asBufferSource(decodeBase64(record.iv)), additionalData: asBufferSource(attachmentAad(id, index, meta.totalChunks, meta.mimeType, meta.size)), tagLength: 128 },
+        key, asBufferSource(record.ciphertext),
+      ));
+    } catch { throw new Error("VAULT_ATTACHMENT_INTEGRITY_ERROR"); }
+    const part = new Blob([clear.buffer as ArrayBuffer], { type: "application/octet-stream" });
+    clear.fill(0);
+    parts.push(part);
+    totalSize += part.size;
+  }
+  if (totalSize !== meta.size) throw new Error("VAULT_ATTACHMENT_INTEGRITY_ERROR");
+  return { blob: new Blob(parts, { type: meta.mimeType }), mimeType: meta.mimeType };
+}
+export async function deleteEncryptedAttachment(id: string): Promise<void> {
+  const db = await openAttachmentDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
+      const store = transaction.objectStore(ATTACHMENT_STORE_NAME);
+      store.delete(id);
+      const range = IDBKeyRange.bound(`${id}:`, `${id}:\uffff`);
+      const request = store.openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));
+    });
+  } finally { db.close(); }
+}
+

@@ -11,6 +11,8 @@ test("calculator command is stored through secure app storage with the original 
   assert.match(module, /DEFAULT_CALCULATOR_COMMAND = "20272006"/);
   assert.match(module, /duress-security-app:calculator-command/);
   assert.match(module, /getStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY\)/);
+  assert.match(module, /stored === null/);
+  assert.match(module, /cachedCommand = DEFAULT_CALCULATOR_COMMAND/);
   assert.match(module, /setStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY, normalized\)/);
   assert.match(module, /\\d\{8\}/);
 });
@@ -24,11 +26,13 @@ test("calculator settings require the master PIN and reject security-PIN reuse",
   assert.match(panel, /تم تغيير رمز فتح الحاسبة/);
 });
 
-test("calculator intercepts the configurable command and swallows the old command", async () => {
+test("calculator intercepts only the currently configured command", async () => {
   const calculator = await read("src/components/fullscreen-calculator.tsx");
-  assert.match(calculator, /getCalculatorCommand\(\)/);
-  assert.match(calculator, /sequenceRef\.current === calculatorCommand/);
-  assert.match(calculator, /sequenceRef\.current === LEGACY_CALCULATOR_COMMAND/);
-  assert.match(calculator, /if \(configuredMatch\) props\.onSecretCommand/);
-  assert.match(calculator, /old value is deliberately swallowed/);
+  const baseCalculator = await read("src/components/fake-calculator.tsx");
+  assert.ok(calculator.includes("getCalculatorCommand()"));
+  assert.ok(calculator.includes("sequenceRef.current === calculatorCommand"));
+  assert.ok(calculator.includes("props.onSecretCommand?.(`${calculatorCommand}=`)"));
+  assert.ok(!calculator.includes("LEGACY_CALCULATOR_COMMAND"));
+  assert.ok(!baseCalculator.includes("OWNER_TRIGGER"));
+  assert.ok(!baseCalculator.includes("20272006"));
 });
