@@ -80,6 +80,7 @@ test("native special PINs are handed to the same primary submitPin flow", async 
   const activity = await read("android-native/mainactivity-patch/MainActivity.kt");
   const shell = await read("src/components/app-shell.tsx");
   assert.match(service, /EXTRA_OWNER_PIN_ACTION/);
+  assert.match(service, /special PINs must reach the same central policy/);
   assert.match(activity, /__duressSecurityPendingPinAction/);
   assert.match(shell, /state\.submitPin\(pin\)/);
   assert.match(shell, /__duressSecurityHandlePinAction/);

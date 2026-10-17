@@ -16,8 +16,9 @@ import { useAppStore } from "@/lib/store";
 import * as nativeBridge from "@/lib/native-bridge";
 import { useCopy } from "@/lib/use-copy";
 import { installNetworkGuard } from "@/lib/network-guard";
+import { getCalculatorCommand } from "@/lib/calculator-command";
+import { normalizePin } from "@/lib/security-service";
 
-const SECRET_CALCULATOR_COMMAND = "20272006=";
 const CALCULATOR_GATE_TRANSITION_MS = 10000;
 const STARTUP_RETRY_DELAY_MS = 3000;
 const STARTUP_MAX_RETRIES = 2;
@@ -37,9 +38,9 @@ export function AppShell() {
   const [pendingSecurityGate, setPendingSecurityGate] = useState(false);
   const [permissionsReady, setPermissionsReady] = useState(() => hasCompletedInitialPermissions() || !nativeBridge.isNativeAndroid());
   const securityGateFlow = useRef(false); const calculatorRestoreArmed = useRef(true); const suppressAutoLockUntil = useRef(0); const unlockTransitionTimer = useRef<number | null>(null); const previousSession = useRef(useAppStore.getState().session);
-  const hydrateSession = useAppStore((s) => s.hydrateSession); const session = useAppStore((s) => s.session); const storageErrorCode = useAppStore((s) => s.storageErrorCode); const ready = useAppStore((s) => s.ready); const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions); const refreshSecurity = useAppStore((s) => s.refreshSecurity); const tab = useAppStore((s) => s.tab); const vaultOpen = useAppStore((s) => s.vaultOpen); const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired); const vault = useAppStore((s) => s.vault); const setTab = useAppStore((s) => s.setTab); const setVaultOpen = useAppStore((s) => s.setVaultOpen); const panel = useAppStore((s) => s.panel); const overlay = useAppStore((s) => s.overlay); const openedApp = useAppStore((s) => s.openedApp); const toast = useAppStore((s) => s.toast); const setToast = useAppStore((s) => s.setToast); const lockSession = useAppStore((s) => s.lockSession); const openOverlay = useAppStore((s) => s.openOverlay); const theme = useAppStore((s) => s.theme); const { lang, dir } = useCopy(); const protectedUi = !calculatorFront && ready && session !== "duress";
+  const hydrateSession = useAppStore((s) => s.hydrateSession); const session = useAppStore((s) => s.session); const storageErrorCode = useAppStore((s) => s.storageErrorCode); const ready = useAppStore((s) => s.ready); const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions); const refreshSecurity = useAppStore((s) => s.refreshSecurity); const tab = useAppStore((s) => s.tab); const vaultOpen = useAppStore((s) => s.vaultOpen); const vaultMigrationRequired = useAppStore((s) => s.vaultMigrationRequired); const vault = useAppStore((s) => s.vault); const setTab = useAppStore((s) => s.setTab); const setVaultOpen = useAppStore((s) => s.setVaultOpen); const panel = useAppStore((s) => s.panel); const overlay = useAppStore((s) => s.overlay); const openedApp = useAppStore((s) => s.openedApp); const toast = useAppStore((s) => s.toast); const setToast = useAppStore((s) => s.setToast); const lockSession = useAppStore((s) => s.lockSession); const openOverlay = useAppStore((s) => s.openOverlay); const theme = useAppStore((s) => s.theme); const backgroundImage = useAppStore((s) => s.backgroundImage); const { lang, dir } = useCopy(); const protectedUi = !calculatorFront && ready && session !== "duress";
   const openSecurityGate = () => { if (unlockTransitionTimer.current !== null) { window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = null; } securityGateFlow.current = true; calculatorRestoreArmed.current = false; suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; setCalculatorFront(false); setPendingSecurityGate(true); openOverlay({ kind: "unlock" }); };
-  const handleCalculatorCommand = (sequence: string): boolean => { if (sequence !== SECRET_CALCULATOR_COMMAND) return false; openSecurityGate(); return true; };
+  const handleCalculatorCommand = (sequence: string): boolean => { if (sequence !== `${getCalculatorCommand()}=`) return false; openSecurityGate(); return true; };
 
   useEffect(() => {
     const host = window as NativePinActionWindow;
@@ -51,7 +52,15 @@ export function AppShell() {
       }
       // These are the same configured owner PIN actions used by the main login.
       // Do not allow a relaunch to bypass a storage error or an active 30-day lock.
-      if (state.session === "storage-error" || state.session === "wiping" || state.session === "extlocked") return;
+      if (state.session === "storage-error" || state.session === "wiping") return;
+      if (state.session === "extlocked") {
+        const typed = normalizePin(pin);
+        if (typed === normalizePin(state.pins.format)) { state.beginEmergencyWipe(); return; }
+        if (typed === normalizePin(state.pins.duress)) { state.activateDuressMode(); return; }
+        if (typed === normalizePin(state.pins.lock)) return;
+        if (typed === normalizePin(state.pins.master)) { void state.recoverExtendedLock(pin); return; }
+        return;
+      }
       state.openOverlay({ kind: "unlock" });
       state.submitPin(pin);
     };
@@ -151,9 +160,9 @@ export function AppShell() {
     return () => window.clearTimeout(timeout);
   }, [ready]);
 
-  useEffect(() => { if (securityGateFlow.current && session === "unlocked") { suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; calculatorRestoreArmed.current = true; setPendingSecurityGate(false); setCalculatorFront(false); useAppStore.getState().setTab("settings"); previousSession.current = "unlocked"; if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = window.setTimeout(() => { securityGateFlow.current = false; unlockTransitionTimer.current = null; }, CALCULATOR_GATE_TRANSITION_MS); return; } if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") { calculatorRestoreArmed.current = false; setCalculatorFront(true); } previousSession.current = session; }, [session]);
+  useEffect(() => { if (securityGateFlow.current && session === "unlocked") { suppressAutoLockUntil.current = Date.now() + CALCULATOR_GATE_TRANSITION_MS; calculatorRestoreArmed.current = true; setPendingSecurityGate(false); setCalculatorFront(false); useAppStore.getState().setTab("home"); previousSession.current = "unlocked"; if (unlockTransitionTimer.current !== null) window.clearTimeout(unlockTransitionTimer.current); unlockTransitionTimer.current = window.setTimeout(() => { securityGateFlow.current = false; unlockTransitionTimer.current = null; }, CALCULATOR_GATE_TRANSITION_MS); return; } if (calculatorRestoreArmed.current && (previousSession.current === "unlocked" || previousSession.current === "extlocked" || previousSession.current === "wiping") && session === "locked") { calculatorRestoreArmed.current = false; setCalculatorFront(true); } previousSession.current = session; }, [session]);
   useEffect(() => { if (session !== "unlocked" || !vaultMigrationRequired || vault.length === 0) return; if (tab !== "files") setTab("files"); if (!vaultOpen) setVaultOpen(true); }, [session, vaultMigrationRequired, vault.length, tab, vaultOpen, setTab, setVaultOpen]);
-  useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; }, [lang, dir, theme]);
+  useEffect(() => { const root = document.documentElement; root.lang = lang; root.dir = dir; root.dataset.theme = theme; root.dataset.customBackground = backgroundImage ? "true" : "false"; if (backgroundImage) root.style.setProperty("--custom-app-background", `url("${backgroundImage}")`); else root.style.removeProperty("--custom-app-background"); }, [lang, dir, theme, backgroundImage]);
   useEffect(() => { void nativeBridge.setScreenCaptureAllowed(!protectedUi); }, [protectedUi]);
   useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 2400); return () => clearTimeout(id); }, [toast, setToast]);
 

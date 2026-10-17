@@ -226,7 +226,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         appHeader.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
         val appName = TextView(this).apply { text = appLabel; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setPadding(0, dp(7), 0, 0) }
         appHeader.addView(appName, matchWrap())
-        val shield = TextView(this).apply { text = "◈"; textSize = 30f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }
+        val shield = TextView(this).apply { text = "▼"; textSize = 34f; setTextColor(Color.rgb(239, 68, 68)); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) }
         val title = TextView(this).apply {
             text = if (storageUnavailable) { if (isArabic) "الحماية الآمنة غير متاحة" else "Secure protection unavailable" } else if (maintenanceUntil != null) { if (isArabic) "التطبيق قيد الصيانة" else "App under maintenance" } else if (isArabic) "التطبيق محمي" else "App protected"
             textSize = 23f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER
@@ -313,14 +313,23 @@ class AppLockAccessibilityService : AccessibilityService() {
             if (maintenanceUntil != null && !clearTargetMaintenance(targetPackage)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."; return }
             unlockedTarget = targetPackage; clearAttemptState(targetPackage); attempts = 0; blockedUntil = 0L; dismissGate(); return
         }
-        if (maintenanceUntil != null) { recordFailedAttempt(targetPackage, now); return }
+        // The duress and app-data reset PINs must reach the same central policy
+        // even while this particular target app is already in maintenance mode.
+        val isOwnerAction = typed.isNotEmpty() && (policy.duressPin?.let { typed == normalizePin(it) } == true || policy.wipePin?.let { typed == normalizePin(it) } == true)
+        if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
+        if (maintenanceUntil != null) {
+            // Re-entering the maintenance PIN leaves the countdown visible rather
+            // than falling through to an error-only state.
+            if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
+                pinValue = ""; updatePinDots(); errorView?.text = " "; return
+            }
+            recordFailedAttempt(targetPackage, now); return
+        }
         if (policy.extendedLockPin?.let { typed == normalizePin(it) } == true) {
             val until = now + 30L * 24L * 60L * 60L * 1000L
             if (!writeTargetMaintenance(targetPackage, until)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ صيانة هذا التطبيق؛ بقي محميًا." else "Could not save maintenance for this app; it remains protected."; return }
             pinValue = ""; updatePinDots(); val refreshed = readPolicy(); showGate(targetPackage, maintenanceUntil = targetMaintenanceUntil(refreshed ?: policy, targetPackage)); return
         }
-        val isOwnerAction = typed.isNotEmpty() && (policy.duressPin?.let { typed == normalizePin(it) } == true || policy.wipePin?.let { typed == normalizePin(it) } == true)
-        if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }
         recordFailedAttempt(targetPackage, now)
     }
 

@@ -21,7 +21,7 @@ import {
 } from "@/lib/security-service";
 import * as nativeBridge from "@/lib/native-bridge";
 import { appStorage, getStoredValue, setStoredValue } from "@/lib/app-storage";
-import { lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault } from "@/lib/vault-crypto";
+import { deleteEncryptedAttachment, lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault } from "@/lib/vault-crypto";
 
 export const SECURITY_STORAGE_KEY = "duress-security-state";
 
@@ -94,7 +94,7 @@ function hasLegacyVaultContent(value: unknown): value is VaultFile[] {
 }
 
 type PersistedSlice = {
-  lang: Lang; theme: ThemeName; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
+  lang: Lang; theme: ThemeName; backgroundImage: string | null; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
   preventUninstall: boolean; dedicatedDeviceMode: boolean; deviceOwner: boolean; overlayPermission: boolean; usagePermission: boolean;
   deviceAdmin: boolean; deviceSecure: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
   installedApps: DeviceApp[]; lockedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
@@ -102,7 +102,7 @@ type PersistedSlice = {
 };
 type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: string | null; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
 type Actions = {
-  hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void;
+  hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void; setBackgroundImage: (image: string | null) => void;
   setTab: (tab: TabId) => void; setPanel: (panel: PanelId) => void; lockSession: () => void; setToast: (msg: string | null) => void;
   openOverlay: (req: OverlayRequest) => void; closeOverlay: () => void;
   submitPin: (pin: string) => "ok" | "duress" | "wipe" | "extended-lock" | "wrong" | "duplicate" | "lockout" | "need-master";
@@ -111,7 +111,7 @@ type Actions = {
   toggleLockedApp: (packageName: string) => void; openApp: (packageName: string) => void; closeApp: () => void;
   addFile: (title: string, body: string) => Promise<boolean>; updateFile: (id: string, title: string, body: string) => Promise<boolean>; deleteFile: (id: string) => Promise<boolean>;
   setVaultOpen: (open: boolean) => void; unlockEncryptedVault: (passphrase: string) => Promise<{ ok: boolean; reason?: string }>;
-  grantPermission: (key: PermKey, value: boolean) => void; wipeLocal: () => void; configuredPinCount: () => number;
+  grantPermission: (key: PermKey, value: boolean) => void; wipeLocal: () => void; beginEmergencyWipe: () => void; activateDuressMode: () => void; configuredPinCount: () => number;
   requestDeviceAdminNative: () => Promise<boolean>; setBiometricEnabled: (value: boolean) => void; tryBiometricUnlock: () => Promise<boolean>;
 };
 export type AppStore = PersistedSlice & TransientSlice & Actions;
@@ -129,7 +129,7 @@ function withPins(pins: Pins): Pins {
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
-      lang: "ar", theme: "dark", pins: { ...DEFAULT_PINS }, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
+      lang: "ar", theme: "dark", backgroundImage: null, pins: { ...DEFAULT_PINS }, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
       deviceAdmin: false, deviceSecure: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, lastCheckAt: nowIso(), maxAttempts: 3,
@@ -170,7 +170,7 @@ export const useAppStore = create<AppStore>()(
         set({ overlayPermission: status.overlayPermission, usagePermission: status.usagePermission, accessibilityPermission: status.accessibilityPermission, notificationPermission: status.notificationPermission,
           autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
       },
-      setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }),
+      setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }), setBackgroundImage: (backgroundImage) => set({ backgroundImage }),
       setTab: (tab) => { const state = get(); if (state.tab === "files" && tab !== "files" && state.vaultCryptoReady) { lockEncryptedVaultSession(); set({ tab, panel: "none", vaultOpen: false, vaultCryptoReady: false, vault: [] }); return; } set({ tab, panel: "none" }); },
       setPanel: (panel) => set({ panel }),
       lockSession: () => { const prior = get(); lockEncryptedVaultSession(); set({ session: "locked", overlay: { kind: "unlock" }, tab: "home", panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); },
@@ -258,7 +258,7 @@ export const useAppStore = create<AppStore>()(
         });
         if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتفعيل وضع الجهاز المخصص على هذا الجهاز." : "Android did not allow dedicated-device mode on this device." }); });
         if (action.type === "save-pin") set((s) => ({ pins: { ...s.pins, [action.target]: normalizePin(action.value) }, lastCheckAt: nowIso() }));
-        if (action.type === "delete-file") { const state = get(); if (!state.vaultCryptoReady) { set({ toast: state.lang === "ar" ? "افتح الخزنة المشفّرة أولاً." : "Unlock the encrypted vault first." }); return; } const nextVault = state.vault.filter((f) => f.id !== action.id); void persistEncryptedVault(nextVault).then(() => set({ vault: nextVault })).catch(() => set({ toast: get().lang === "ar" ? "تعذّر حفظ التغيير المشفّر." : "Encrypted vault change could not be saved." })); }
+        if (action.type === "delete-file") { void get().deleteFile(action.id); }
         if (action.type === "open-vault") set({ vaultOpen: true });
         if (action.type === "grant-all") void get().refreshNativePermissions();
         if (action.type === "grant-one") void nativeBridge.requestSystemPermission(action.key).then(async (opened) => { await get().refreshNativePermissions(); if (!opened) set({ toast: get().lang === "ar" ? (action.key === "autostartPermission" ? "إعداد التشغيل التلقائي يختلف حسب الشركة المصنّعة؛ لم يُسجّل كإذن ممنوح." : "تعذّر فتح إعداد الإذن. تحقّق من دعم إصدار Android.") : (action.key === "autostartPermission" ? "Autostart settings vary by manufacturer; it was not marked as granted." : "Could not open this permission setting on this Android version.") }); });
@@ -269,7 +269,7 @@ export const useAppStore = create<AppStore>()(
         const overlay = state.overlay;
         if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== 4) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
         const action = serviceClassifyPin(pin, state.pins);
-        if (action === "wipe") { lockEncryptedVaultSession(); set({ session: "wiping", overlay: null, panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: [] }); return "wipe"; }
+        if (action === "wipe") { get().beginEmergencyWipe(); return "wipe"; }
         if (action === "extended-lock") {
           lockEncryptedVaultSession(); const security = startExtendedLock(Date.now(), lockDurationMs());
           set({ security, session: "extlocked", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 });
@@ -310,7 +310,7 @@ export const useAppStore = create<AppStore>()(
           });
           return "extended-lock";
         }
-        if (action === "duress") { lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); return "duress"; }
+        if (action === "duress") { get().activateDuressMode(); return "duress"; }
         if (action === "reject") {
           const attempts = state.failedAttempts + 1;
           const locked = attempts >= state.maxAttempts;
@@ -331,7 +331,7 @@ export const useAppStore = create<AppStore>()(
           }
           return locked ? "lockout" : "wrong";
         }
-        if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return "ok"; }
+        if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, tab: "home", panel: "none", failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return "ok"; }
         if (overlay.kind === "app") { set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
         if (overlay.kind === "confirm") { get().applyConfirm(overlay.action); set({ overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok"; }
         set({ overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return "ok";
@@ -345,11 +345,13 @@ export const useAppStore = create<AppStore>()(
       closeApp: () => set({ openedApp: null }),
       addFile: async (title, body) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = [{ id: crypto.randomUUID(), title, body, updatedAt: nowIso() }, ...state.vault]; try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حفظ الملف مشفّراً؛ أبقينا النص في النموذج." : "Could not save the encrypted file; the editor contents were retained." }); return false; } },
       updateFile: async (id, title, body) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = state.vault.map((f) => (f.id === id ? { ...f, title, body, updatedAt: nowIso() } : f)); try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حفظ التعديل مشفّراً؛ لم نعتمد التغيير." : "Could not save the encrypted change; the edit was not committed." }); return false; } },
-      deleteFile: async (id) => { const state = get(); if (!state.vaultCryptoReady) return false; const next = state.vault.filter((f) => f.id !== id); try { await persistEncryptedVault(next); set({ vault: next }); return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حذف الملف من الخزنة المشفّرة." : "Could not update the encrypted vault." }); return false; } },
+      deleteFile: async (id) => { const state = get(); if (!state.vaultCryptoReady) return false; const removed = state.vault.find((f) => f.id === id); const attachmentId = removed?.body.match(/^vault-file-v1:([^:]+):/)?.[1]; const next = state.vault.filter((f) => f.id !== id); try { await persistEncryptedVault(next); set({ vault: next }); if (attachmentId) { try { await deleteEncryptedAttachment(attachmentId); } catch { /* Private orphan ciphertext is removed by app-data wipe. */ } } return true; } catch { set({ toast: get().lang === "ar" ? "تعذّر حذف الملف من الخزنة المشفّرة." : "Could not update the encrypted vault." }); return false; } },
       setVaultOpen: (vaultOpen) => { if (!vaultOpen) { const prior = get(); lockEncryptedVaultSession(); set({ vaultOpen: false, vaultCryptoReady: false, vault: prior.vaultEncrypted ? [] : prior.vault }); return; } set({ vaultOpen: true, vaultCryptoReady: false }); },
       unlockEncryptedVault: async (passphrase) => { try { const state = get(); const legacyFiles = state.vaultEncrypted ? [] : state.vault; const files = await unlockOrCreateEncryptedVault(passphrase, legacyFiles, !state.vaultEncrypted); set({ vault: files, vaultEncrypted: true, vaultMigrationRequired: false, vaultCryptoReady: true }); return { ok: true }; } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "VAULT_OPEN_FAILED" }; } },
       grantPermission: (key, value) => { if (!value) set({ [key]: false }); else void get().refreshNativePermissions(); },
-      wipeLocal: () => { lockEncryptedVaultSession(); void nativeBridge.setSelfUninstallBlocked(false); void nativeBridge.setKioskMode(false); void saveSecurity({ ...INITIAL_SECURITY_STATE }); set({ pins: { ...DEFAULT_PINS }, installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, vaultCryptoReady: false, preventUninstall: false, dedicatedDeviceMode: false, appLockEnabled: false, overlayEnabled: true, homeLockEnabled: true, biometricEnabled: false, session: "locked", security: { ...INITIAL_SECURITY_STATE }, overlay: { kind: "unlock" }, openedApp: null, vaultOpen: false, failedAttempts: 0, lastCheckAt: nowIso(), tab: "home", panel: "none" }); void get().refreshNativePermissions(); },
+      wipeLocal: () => { lockEncryptedVaultSession(); void nativeBridge.setSelfUninstallBlocked(false); void nativeBridge.setKioskMode(false); void saveSecurity({ ...INITIAL_SECURITY_STATE }); set({ pins: { ...DEFAULT_PINS }, backgroundImage: null, installedApps: [], lockedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, vaultCryptoReady: false, preventUninstall: false, dedicatedDeviceMode: false, appLockEnabled: false, overlayEnabled: true, homeLockEnabled: true, biometricEnabled: false, session: "locked", security: { ...INITIAL_SECURITY_STATE }, overlay: { kind: "unlock" }, openedApp: null, vaultOpen: false, failedAttempts: 0, lastCheckAt: nowIso(), tab: "home", panel: "none" }); void get().refreshNativePermissions(); },
+      beginEmergencyWipe: () => { lockEncryptedVaultSession(); set({ session: "wiping", overlay: null, panel: "none", openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: [] }); },
+      activateDuressMode: () => { const state = get(); lockEncryptedVaultSession(); set({ session: "duress", overlay: null, openedApp: null, vaultOpen: false, vaultCryptoReady: false, vault: state.vaultEncrypted ? [] : state.vault, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, panel: "none" }); },
       configuredPinCount: () => { const { pins } = get(); return (Object.keys(pins) as PinKind[]).filter((k) => pins[k].length === 4).length; },
       requestDeviceAdminNative: async () => { const granted = await nativeBridge.requestDeviceAdmin(); if (granted) set({ deviceAdmin: true }); return granted; },
       setBiometricEnabled: (value) => set({ biometricEnabled: value }),
@@ -365,7 +367,7 @@ export const useAppStore = create<AppStore>()(
         const vaultMigrationRequired = old.vaultMigrationRequired === true || (old.vaultEncrypted !== true && hasLegacyVaultContent(vault));
         return { ...old, pins, vault, vaultEncrypted: old.vaultEncrypted === true, vaultMigrationRequired, lockoutLevel: Math.max(0, Math.min(13, Math.floor(Number(old.lockoutLevel) || 0))) } as PersistedSlice;
       },
-      partialize: (s) => ({ lang: s.lang, theme: s.theme, pins: s.pins, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
+      partialize: (s) => ({ lang: s.lang, theme: s.theme, backgroundImage: s.backgroundImage, pins: s.pins, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
     },
   ),
 );

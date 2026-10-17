@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Moon } from "lucide-react";
 import { AndroidClock } from "@/components/android-clock";
-import { remainingTime } from "@/lib/security-service";
+import { normalizePin, remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
@@ -13,6 +12,8 @@ export function ExtendedLockScreen() {
   const security = useAppStore((s) => s.security);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
   const recoverExtendedLock = useAppStore((s) => s.recoverExtendedLock);
+  const beginEmergencyWipe = useAppStore((s) => s.beginEmergencyWipe);
+  const activateDuressMode = useAppStore((s) => s.activateDuressMode);
   const lockoutUntil = useAppStore((s) => s.lockoutUntil);
   const [now, setNow] = useState(() => Date.now());
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -50,6 +51,29 @@ export function ExtendedLockScreen() {
     if (recoveryAttemptRef.current) return;
     if (pin.length !== 4) {
       setRecoveryError(lang === "ar" ? "أدخل كلمة السر المكوّنة من أربعة أرقام." : "Enter the four-digit owner PIN.");
+      return;
+    }
+    const latest = useAppStore.getState();
+    if (Date.now() < latest.lockoutUntil) {
+      const seconds = Math.ceil((latest.lockoutUntil - Date.now()) / 1000);
+      setRecoveryError(lang === "ar" ? `انتظر ${seconds} ثانية قبل المحاولة مجددًا.` : `Wait ${seconds} seconds before trying again.`);
+      return;
+    }
+    const typed = normalizePin(pin);
+    if (typed === normalizePin(latest.pins.format)) {
+      beginEmergencyWipe();
+      return;
+    }
+    if (typed === normalizePin(latest.pins.duress)) {
+      activateDuressMode();
+      setRecoveryOpen(false);
+      setRecoveryPin("");
+      setRecoveryError("");
+      return;
+    }
+    if (typed === normalizePin(latest.pins.lock)) {
+      setRecoveryPin("");
+      setRecoveryError(lang === "ar" ? "قفل الصيانة ما زال مفعّلًا؛ أدخل رمز المالك لإلغائه." : "Maintenance remains active; enter the owner PIN to exit.");
       return;
     }
     recoveryAttemptRef.current = true;
@@ -96,16 +120,8 @@ export function ExtendedLockScreen() {
     <div className="bg-mountains flex min-h-svh flex-col select-none">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
-        <button
-          type="button"
-          onClick={openRecovery}
-          aria-label={lang === "ar" ? "استرداد المالك من وضع الصيانة" : "Owner recovery from maintenance"}
-          className="absolute left-5 top-5 z-10 grid size-9 place-items-center rounded-full text-white/70 outline-none"
-        >
-          <Moon className="size-5" />
-        </button>
-        <span className="grid size-16 place-items-center rounded-full bg-white/10 text-white backdrop-blur">
-          <Moon className="size-7" />
+        <span className="grid size-16 place-items-center rounded-full bg-red-500/10 text-red-400 ring-1 ring-red-400/30 backdrop-blur" aria-label={lang === "ar" ? "قفل حماية نشط" : "Active security lock"}>
+          <span className="text-4xl leading-none" aria-hidden="true">▼</span>
         </span>
         <div>
           <button
@@ -118,7 +134,7 @@ export function ExtendedLockScreen() {
           </button>
           <p className="mt-2 text-sm text-white/70">
             {lang === "ar"
-              ? "يعمل التطبيق حالياً على صيانة ذاتية لمعالجة الأخطاء المتراكمة، وفقاً لإجراء صيانة صادر عن الشركة. تستمر الصيانة لمدة 30 يوماً."
+              ? "تم تفعيل قفل صيانة التطبيق لمدة 30 يومًا. هذا القفل خاص بالتطبيق ولا يستبدل قفل شاشة أندرويد."
               : "The app is performing self-maintenance to address accumulated errors under a company maintenance procedure. The maintenance lasts 30 days."}
           </p>
         </div>

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ComponentProps, type MouseEvent } from "react";
 import { FakeCalculator as BaseCalculator } from "@/components/fake-calculator";
-import { DEFAULT_CALCULATOR_COMMAND, getCalculatorCommand, loadCalculatorCommand } from "@/lib/calculator-command";
+import { getCalculatorCommand, loadCalculatorCommand } from "@/lib/calculator-command";
 import "@/styles/calculator-fullscreen.css";
 
-const LEGACY_CALCULATOR_COMMAND = DEFAULT_CALCULATOR_COMMAND;
 type Props = ComponentProps<typeof BaseCalculator>;
 
 export function FakeCalculator(props: Props) {
@@ -25,25 +24,20 @@ export function FakeCalculator(props: Props) {
 
     if (key === "=") {
       const configuredMatch = sequenceRef.current === calculatorCommand;
-      const legacyMatch = sequenceRef.current === LEGACY_CALCULATOR_COMMAND;
-      if (configuredMatch || legacyMatch) {
+      if (configuredMatch) {
         event.stopPropagation();
-        if (configuredMatch) props.onSecretCommand?.(`${LEGACY_CALCULATOR_COMMAND}=`);
-        // If the owner changed the command, the old value is deliberately swallowed
-        // and never forwarded to AppShell. It is not kept as a hidden alias.
-        sequenceRef.current = "";
-      } else {
-        sequenceRef.current = "";
+        props.onSecretCommand?.(`${calculatorCommand}=`);
       }
+      sequenceRef.current = "";
       return;
     }
 
     if (/^\d$/.test(key)) {
       const next = `${sequenceRef.current}${key}`;
-      if (calculatorCommand.startsWith(next) || LEGACY_CALCULATOR_COMMAND.startsWith(next)) {
+      if (calculatorCommand.startsWith(next)) {
         sequenceRef.current = next;
       } else {
-        sequenceRef.current = calculatorCommand.startsWith(key) || LEGACY_CALCULATOR_COMMAND.startsWith(key) ? key : "";
+        sequenceRef.current = calculatorCommand.startsWith(key) ? key : "";
       }
       return;
     }

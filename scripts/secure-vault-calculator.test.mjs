@@ -11,8 +11,9 @@ test('calculator is the ordinary startup screen and owner entry uses the exact n
   const calculator = await read('src/components/fake-calculator.tsx');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
   assert.match(shell, /calculatorFront, setCalculatorFront\] = useState\(true\)/);
-  assert.match(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /getCalculatorCommand\(\)/);
+  assert.match(shell, /sequence !== `\$\{getCalculatorCommand\(\)\}=`/);
+  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND = "20272006="/);
   assert.match(shell, /securityGateFlow\.current = true/);
   assert.match(shell, /setCalculatorFront\(false\)/);
   assert.match(shell, /setPendingSecurityGate\(true\)/);
@@ -31,7 +32,7 @@ test('calculator is the ordinary startup screen and owner entry uses the exact n
 test('hidden trigger remains usable while duress mode is active', async () => {
   const shell = await read('src/components/app-shell.tsx');
   assert.match(shell, /if \(session === "duress"\) return <FakeCalculator/);
-  assert.match(shell, /if \(sequence !== SECRET_CALCULATOR_COMMAND\) return false/);
+  assert.match(shell, /sequence !== `\$\{getCalculatorCommand\(\)\}=`/);
 });
 
 test('vault v2 uses PBKDF2 600k, AES-GCM, device secret and authenticated header with no plaintext fallback', async () => {
