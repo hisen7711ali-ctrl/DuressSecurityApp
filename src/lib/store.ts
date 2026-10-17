@@ -94,7 +94,7 @@ function hasLegacyVaultContent(value: unknown): value is VaultFile[] {
 }
 
 type PersistedSlice = {
-  lang: Lang; theme: ThemeName; backgroundImage: string | null; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
+  lang: Lang; theme: ThemeName; backgroundImage: string | null; backgroundPresetId: string | null; pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
   preventUninstall: boolean; dedicatedDeviceMode: boolean; deviceOwner: boolean; overlayPermission: boolean; usagePermission: boolean;
   deviceAdmin: boolean; deviceSecure: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
   installedApps: DeviceApp[]; lockedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
@@ -102,7 +102,7 @@ type PersistedSlice = {
 };
 type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: string | null; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
 type Actions = {
-  hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void; setBackgroundImage: (image: string | null) => void;
+  hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void; setBackgroundImage: (image: string | null, presetId?: string | null) => void;
   setTab: (tab: TabId) => void; setPanel: (panel: PanelId) => void; lockSession: () => void; setToast: (msg: string | null) => void;
   openOverlay: (req: OverlayRequest) => void; closeOverlay: () => void;
   submitPin: (pin: string) => "ok" | "duress" | "wipe" | "extended-lock" | "wrong" | "duplicate" | "lockout" | "need-master";
