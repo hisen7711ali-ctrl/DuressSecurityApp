@@ -1,4 +1,3 @@
-import { useRef, useState } from "react";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
@@ -10,10 +9,6 @@ const ROWS = [
   ["1", "2", "3", "+"],
   ["±", ".", "0", "="],
 ] as const;
-
-const OWNER_TRIGGER = "20272006";
-const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
-type SecretCommandHandler = (sequence: string) => boolean;
 
 function evalExpr(raw: string): string {
   const normalized = raw.replaceAll("×", "*").replaceAll("÷", "/").replaceAll("−", "-");
@@ -90,67 +85,25 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   );
 }
 
-export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCommandHandler }) {
+export function FakeCalculator() {
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
-  const ownerSequenceRef = useRef("");
-
-  function resetOwnerSequence() {
-    ownerSequenceRef.current = "";
-  }
-
-  function trackOwnerKey(key: string): boolean {
-    if (key === "=") {
-      // The trigger is tracked from the actual button taps, not from the
-      // calculator expression. This avoids React state batching/re-render
-      // timing from losing the final digit before '=' is pressed.
-      const sequenceMatches = ownerSequenceRef.current === OWNER_TRIGGER;
-      if (!sequenceMatches) return false;
-      const handled = onSecretCommand?.(OWNER_TRIGGER_FULL) ?? false;
-      if (handled) resetOwnerSequence();
-      return handled;
-    }
-
-    if (/^\d$/.test(key)) {
-      const next = `${ownerSequenceRef.current}${key}`;
-      if (OWNER_TRIGGER.startsWith(next)) ownerSequenceRef.current = next;
-      // On a mismatch the wrong digit may itself be the first digit of a new attempt
-      // (e.g. "2" then "20272006"); never drop it, or the trigger needs repeated retries.
-      else ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
-      return false;
-    }
-
-    resetOwnerSequence();
-    return false;
-  }
 
   function tap(key: string) {
     if (key === "AC") {
-      resetOwnerSequence();
       setExpr("");
       setDisplay("0");
       return;
     }
 
     if (key === "⌫") {
-      resetOwnerSequence();
       setExpr((current) => {
         const next = current.slice(0, -1);
         setDisplay(next || "0");
         return next;
       });
       return;
-    }
-
-    if (trackOwnerKey(key)) {
-      setExpr("");
-      setDisplay("0");
-      return;
-    }
-
-    if (key !== "0" && key !== "1" && key !== "2" && key !== "3" && key !== "4" && key !== "5" && key !== "6" && key !== "7" && key !== "8" && key !== "9") {
-      resetOwnerSequence();
     }
 
     if (key === "±") {
@@ -189,7 +142,10 @@ export function FakeCalculator({ onSecretCommand }: { onSecretCommand?: SecretCo
       return;
     }
 
-    const next = expr === "0" && !operator ? key : expr + key;
+    // Preserve repeated zeroes. Previously `expr === "0"` collapsed every
+    // subsequent zero into the same single character, so commands such as
+    // `00000000` could never be entered through the calculator.
+    const next = expr === "0" && key !== "0" && !operator ? key : expr + key;
     setExpr(next);
     setDisplay(next);
   }
