@@ -142,7 +142,8 @@ html[data-theme="light"] .bg-mountains {
 
 /* Optional owner-selected image background, compressed and stored locally. */
 html[data-custom-background="true"] .bg-mountains,
-html[data-custom-background="true"] .calculator-fullscreen-root {
+html[data-custom-background="true"] .calculator-fullscreen-root,
+html[data-custom-background="true"] .app-lock-backdrop {
   background-image: var(--custom-app-background) !important;
   background-position: center !important;
   background-size: cover !important;
