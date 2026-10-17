@@ -13,9 +13,12 @@ export function ExtendedLockScreen() {
   const security = useAppStore((s) => s.security);
   const refreshSecurity = useAppStore((s) => s.refreshSecurity);
   const recoverExtendedLock = useAppStore((s) => s.recoverExtendedLock);
-  const beginEmergencyWipe = useAppStore((s) => s.beginEmergencyWipe);
+
   const activateDuressMode = useAppStore((s) => s.activateDuressMode);
   const lockoutUntil = useAppStore((s) => s.lockoutUntil);
+  const pinLength = useAppStore((s) => s.pinLength);
+  const configuredMasterPin = useAppStore((s) => s.pins.master);
+  const maxPinLength = Math.min(10, Math.max(pinLength, normalizePin(configuredMasterPin).length));
   const [now, setNow] = useState(() => Date.now());
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryPin, setRecoveryPin] = useState("");
@@ -50,8 +53,9 @@ export function ExtendedLockScreen() {
 
   async function verifyRecoveryPin(pin: string) {
     if (recoveryAttemptRef.current) return;
-    if (pin.length !== 4) {
-      setRecoveryError(lang === "ar" ? "أدخل كلمة السر المكوّنة من أربعة أرقام." : "Enter the four-digit owner PIN.");
+    const latest = useAppStore.getState();
+    if (pin.length !== latest.pinLength && pin !== normalizePin(latest.pins.master)) {
+      setRecoveryError(lang === "ar" ? "أدخل الرمز بطوله المحدد أو رمز المالك الحالي." : "Enter the selected PIN length or the currently configured owner PIN.");
       return;
     }
     const latest = useAppStore.getState();
@@ -161,7 +165,7 @@ export function ExtendedLockScreen() {
               {lang === "ar" ? "ضع كلمة السر لإلغاء وضع الصيانة." : "Enter the owner PIN to cancel maintenance mode."}
             </p>
             <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3">
-              <PinDots length={recoveryPin.length} />
+              <PinDots length={recoveryPin.length} max={maxPinLength} />
             </div>
             {recoveryBlockedSeconds > 0 ? (
               <p className="mt-2 text-center text-xs text-red-300">
@@ -170,13 +174,14 @@ export function ExtendedLockScreen() {
             ) : recoveryError ? <p className="mt-2 text-center text-xs text-red-300">{recoveryError}</p> : null}
             <div className="mt-3">
               <PinKeypad
+                maxLength={maxPinLength}
                 compact
                 disabled={recoveryBlockedSeconds > 0}
                 value={recoveryPin}
                 onChange={(next) => {
                   setRecoveryPin(next);
                   setRecoveryError("");
-                  if (next.length === 4) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
+                  if (next.length === pinLength || next === normalizePin(useAppStore.getState().pins.master)) window.setTimeout(() => { void verifyRecoveryPin(next); }, 80);
                 }}
                 onConfirm={() => { void verifyRecoveryPin(recoveryPin); }}
               />
