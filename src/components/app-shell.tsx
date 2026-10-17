@@ -71,6 +71,7 @@ export function AppShell() {
       });
     };
     host.__duressSecurityOpenCalculator = openCalculatorFacade;
+    window.addEventListener("duress-security-open-calculator", openCalculatorFacade);
     const handleOwnerPinAction = (pin: string) => {
       const state = useAppStore.getState();
       if (!state.ready) {
@@ -113,6 +114,7 @@ export function AppShell() {
       handleOwnerPinAction(pending);
     }
     return () => {
+      window.removeEventListener("duress-security-open-calculator", openCalculatorFacade);
       if (host.__duressSecurityOpenCalculator === openCalculatorFacade) {
         delete host.__duressSecurityOpenCalculator;
       }
