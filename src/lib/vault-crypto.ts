@@ -41,6 +41,7 @@ type AttachmentRecord = EncryptedAttachmentMeta | EncryptedAttachmentChunk;
 const ATTACHMENT_DB_NAME = "duress-security-vault-files";
 const ATTACHMENT_STORE_NAME = "attachments";
 const ATTACHMENT_CHUNK_SIZE = 1024 * 1024;
+const ATTACHMENT_MAX_BYTES = 512 * 1024 * 1024;
 
 function openAttachmentDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") throw new Error("VAULT_ATTACHMENT_STORAGE_UNAVAILABLE");
@@ -85,7 +86,7 @@ async function readAttachmentRecord(id: string): Promise<AttachmentRecord | unde
 /** Encrypt a file in 1 MiB chunks so large media does not require a full-size plaintext buffer. */
 export async function persistEncryptedAttachment(id: string, file: Blob, mimeType: string): Promise<void> {
   if (!activeKey || activeVersion !== 2) throw new Error("VAULT_LOCKED");
-  if (!id || id.length > 200 || !Number.isSafeInteger(file.size) || file.size < 1) throw new Error("VAULT_ATTACHMENT_INVALID");
+  if (!id || id.length > 200 || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > ATTACHMENT_MAX_BYTES) throw new Error("VAULT_ATTACHMENT_INVALID");
   const key = activeKey;
   const safeMimeType = (mimeType || "application/octet-stream").slice(0, 200);
   const totalChunks = Math.ceil(file.size / ATTACHMENT_CHUNK_SIZE);
@@ -118,8 +119,8 @@ export async function openEncryptedAttachment(id: string): Promise<{ blob: Blob;
   const key = activeKey;
   const meta = await readAttachmentRecord(id);
   if (!meta || meta.recordType !== "meta" || !meta.complete || meta.id !== id ||
-      typeof meta.mimeType !== "string" || !Number.isSafeInteger(meta.size) || meta.size < 1 ||
-      !Number.isSafeInteger(meta.totalChunks) || meta.totalChunks < 1) throw new Error("VAULT_ATTACHMENT_NOT_FOUND");
+      typeof meta.mimeType !== "string" || !Number.isSafeInteger(meta.size) || meta.size < 1 || meta.size > ATTACHMENT_MAX_BYTES ||
+      !Number.isSafeInteger(meta.totalChunks) || meta.totalChunks < 1 || meta.totalChunks > ATTACHMENT_MAX_BYTES / ATTACHMENT_CHUNK_SIZE || meta.totalChunks !== Math.ceil(meta.size / ATTACHMENT_CHUNK_SIZE)) throw new Error("VAULT_ATTACHMENT_NOT_FOUND");
   const parts: BlobPart[] = [];
   let totalSize = 0;
   for (let index = 0; index < meta.totalChunks; index += 1) {
@@ -142,27 +143,20 @@ export async function openEncryptedAttachment(id: string): Promise<{ blob: Blob;
   return { blob: new Blob(parts, { type: meta.mimeType }), mimeType: meta.mimeType };
 }
 export async function deleteEncryptedAttachment(id: string): Promise<void> {
-  let meta: EncryptedAttachmentMeta | undefined;
-  try { const record = await readAttachmentRecord(id); if (record?.recordType === "meta") meta = record; } catch { /* Still remove metadata if readable. */ }
-  if (meta) {
-    for (let index = 0; index < meta.totalChunks; index += 1) {
-      const db = await openAttachmentDatabase();
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const transaction = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
-          transaction.objectStore(ATTACHMENT_STORE_NAME).delete(`${id}:${index}`);
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));
-          transaction.onabort = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));
-        });
-      } finally { db.close(); }
-    }
-  }
   const db = await openAttachmentDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(ATTACHMENT_STORE_NAME, "readwrite");
-      transaction.objectStore(ATTACHMENT_STORE_NAME).delete(id);
+      const store = transaction.objectStore(ATTACHMENT_STORE_NAME);
+      store.delete(id);
+      const range = IDBKeyRange.bound(`${id}:`, `${id}:\uffff`);
+      const request = store.openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        cursor.delete();
+        cursor.continue();
+      };
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));
       transaction.onabort = () => reject(transaction.error ?? new Error("VAULT_ATTACHMENT_DELETE_FAILED"));

@@ -3,7 +3,7 @@ name: Android build diagnostic
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/pin-routing-vault-files-2026-10-17]
 
 permissions:
   contents: read
