@@ -5,11 +5,13 @@ import { useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
 import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
+import { BACKGROUND_PRESETS, type BackgroundPreset } from "@/lib/background-presets";
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
   const theme = useAppStore((s) => s.theme);
   const backgroundImage = useAppStore((s) => s.backgroundImage);
+  const backgroundPresetId = useAppStore((s) => s.backgroundPresetId);
   const setBackgroundImage = useAppStore((s) => s.setBackgroundImage);
   const setTheme = useAppStore((s) => s.setTheme);
   const setLang = useAppStore((s) => s.setLang);
@@ -49,6 +51,27 @@ export function SettingsScreen() {
       if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
       setBackgroundImage(encoded); setToast(lang === "ar" ? "تم تحديث خلفية التطبيق." : "App background updated.");
     } catch { setToast(lang === "ar" ? "تعذّر معالجة الصورة. جرّب صورة أصغر أو بصيغة أخرى." : "Could not process the image. Try a smaller image or another format."); }
+  }
+
+  async function onBackgroundPresetSelected(preset: BackgroundPreset) {
+    try {
+      const bitmap = await createImageBitmap(new Blob([preset.svg], { type: "image/svg+xml" }));
+      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) { bitmap.close(); throw new Error("CANVAS_UNAVAILABLE"); }
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      let encoded = canvas.toDataURL("image/jpeg", 0.72);
+      if (encoded.length > 850_000) encoded = canvas.toDataURL("image/jpeg", 0.52);
+      if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
+      setBackgroundImage(encoded, preset.id);
+      setToast(lang === "ar" ? "تم تطبيق الخلفية." : "Background applied.");
+    } catch {
+      setToast(lang === "ar" ? "تعذّر تطبيق الخلفية الجاهزة." : "Could not apply the preset background.");
+    }
   }
 
   async function onActivateDeviceAdmin() {
@@ -147,6 +170,21 @@ export function SettingsScreen() {
           <p className="text-sm">{lang === "ar" ? "خلفية مخصصة" : "Custom background"}</p>
           <p className="mt-1 text-xs leading-5 text-muted">{lang === "ar" ? "اختر صورة من الجهاز؛ تُضغط محليًا وتحفظ ضمن إعدادات التطبيق." : "Choose an image from the device; it is compressed locally and saved in app settings."}</p>
           <input type="file" accept="image/*" className="mt-3 block w-full text-xs text-muted file:me-3 file:rounded-md file:border-0 file:bg-cyan file:px-3 file:py-2 file:font-semibold file:text-night" onClick={beginDocumentPicker} onChange={(event) => void onBackgroundImageSelected(event.currentTarget)} />
+          <p className="mt-3 text-xs font-semibold text-muted">{lang === "ar" ? "خلفيات جاهزة" : "Built-in backgrounds"}</p>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {BACKGROUND_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-pressed={backgroundPresetId === preset.id}
+                onClick={() => void onBackgroundPresetSelected(preset)}
+                style={{ backgroundImage: "linear-gradient(0deg, rgba(2,8,16,.8), rgba(2,8,16,.08)), url(\"data:image/svg+xml," + encodeURIComponent(preset.svg) + "\")" }}
+                className={"flex h-20 items-end rounded-lg border bg-cover bg-center p-2 text-start text-[11px] font-semibold text-white " + (backgroundPresetId === preset.id ? "border-cyan ring-2 ring-cyan/40" : "border-line")}
+              >
+                {lang === "ar" ? preset.labelAr : preset.labelEn}
+              </button>
+            ))}
+          </div>
           {backgroundImage ? <button type="button" onClick={() => { setBackgroundImage(null); setToast(lang === "ar" ? "تمت استعادة الخلفية الافتراضية." : "Default background restored."); }} className="mt-3 h-9 rounded-md border border-line px-3 text-xs">{lang === "ar" ? "إزالة الخلفية المخصصة" : "Remove custom background"}</button> : null}
         </div>
       </section>
