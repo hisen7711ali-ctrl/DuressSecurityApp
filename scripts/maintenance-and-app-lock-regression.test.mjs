@@ -206,7 +206,7 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
 });
 
 
-test("App Lock 4444 returns to the owner flow while 5555 maintains only the target app", async () => {
+test("App Lock 4444 returns to the locked calculator while 5555 maintains only the target app", async () => {
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   const shell = await read("src/components/app-shell.tsx");
   const store = await read("src/lib/store.ts");
@@ -221,6 +221,10 @@ test("App Lock 4444 returns to the owner flow while 5555 maintains only the targ
   assert.ok(verify.includes("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }"));
   assert.ok(shell.includes("state.submitPin(pin)"));
   assert.ok(shell.includes("state.activateDuressMode()"));
+  assert.ok(shell.includes('window.addEventListener("duress-security-open-calculator", openCalculatorFacade)'));
+  assert.ok(shell.includes("__duressSecurityOpenCalculator = openCalculatorFacade"));
+  assert.ok(store.includes('window.dispatchEvent(new Event("duress-security-open-calculator"))'));
+  assert.ok(store.includes('state.session !== "extlocked"'), "calculator shortcut must not bypass extended lock");
   assert.ok(!shell.includes("state.beginEmergencyWipe()"), "App Lock must not silently wipe device/app data from a generic PIN path");
   assert.ok(store.includes('session: "extlocked"'));
   assert.ok(store.includes("startExtendedLock(Date.now(), lockDurationMs())"));
