@@ -78,7 +78,7 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.doesNotMatch(plugin, /\.wipeData\s*\(/);
   assert.doesNotMatch(plugin, /FactoryReset/);
   const store = await read('src/lib/store.ts');
-  assert.ok(store.includes('lang: "ar", theme: "dark", backgroundImage: null, pins: { ...DEFAULT_PINS }'));
+  assert.ok(store.includes('lang: "ar", theme: "dark", backgroundImage: null, backgroundPresetId: null, pins: { ...DEFAULT_PINS }'));
   assert.ok(store.includes('maxAttempts: 3, lockTimeoutSec: 20, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0'));
   assert.ok(store.includes('homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true'));
   const wipeScreen = await read('src/components/wipe-screen.tsx');
@@ -88,4 +88,47 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.ok(wipeScreen.includes("if (result.found) return false"));
   assert.ok(secureStorage.includes("preferences.edit().clear().commit()"));
   assert.ok(secureStorage.includes("deleteEntry(KEY_ALIAS)"));
+});
+
+
+test('file and gallery pickers keep successful imports on the current screen and lock on cancellation', async () => {
+  const shell = await read('src/components/app-shell.tsx');
+  const guard = await read('src/lib/document-picker-guard.ts');
+  const files = await read('src/components/files-screen.tsx');
+  const settings = await read('src/components/settings-screen.tsx');
+  assert.match(guard, /DOCUMENT_PICKER_MAX_WAIT_MS = 10 \* 60_000/);
+  assert.match(shell, /isDocumentPickerPending\(\)/);
+  assert.match(shell, /clearDocumentPicker\(\)/);
+  assert.match(files, /onClick=\{beginDocumentPicker\}/);
+  assert.match(files, /clearDocumentPicker\(\)/);
+  assert.match(files, /if \(!picked\) \{[\s\S]*?current\.lockSession\(\)/);
+  assert.match(files, /await persistEncryptedAttachment\(attachmentId, picked/);
+  assert.match(files, /await addFile\(safeName, `vault-file-v1:\$\{attachmentId\}`\)/);
+  assert.match(settings, /onClick=\{beginDocumentPicker\}/);
+  assert.match(settings, /if \(!file\) \{[\s\S]*?current\.lockSession\(\)/);
+});
+
+test('built-in background presets persist and reach both web and native lock gates', async () => {
+  const presets = await read('src/lib/background-presets.ts');
+  const settings = await read('src/components/settings-screen.tsx');
+  const store = await read('src/lib/store.ts');
+  const nativeLock = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt');
+  assert.match(presets, /river-mountains/);
+  assert.match(presets, /arabian-horses/);
+  assert.match(presets, /night-riders/);
+  assert.match(settings, /BACKGROUND_PRESETS\.map/);
+  assert.match(settings, /setBackgroundImage\(encoded, preset\.id\)/);
+  assert.match(store, /backgroundPresetId: s\.backgroundPresetId/);
+  assert.match(nativeLock, /configuredBackgroundImage = state\.optString\("backgroundImage"\)/);
+  assert.match(nativeLock, /applyConfiguredBackground\(root\)/);
+});
+
+test('native app-lock language follows the selected app language and onboarding has Arabic and English strings', async () => {
+  const nativeLock = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt');
+  const permissions = await read('src/components/permissions-onboarding-screen.tsx');
+  assert.match(nativeLock, /configuredAppLanguage = state\.optString\("lang"\)/);
+  assert.match(nativeLock, /private fun faithHints\(\): List<String>/);
+  assert.match(permissions, /status\.lang === "ar" \? "ar" : "en"/);
+  assert.match(permissions, /Set up required permissions/);
+  assert.match(permissions, /تهيئة الأذونات المطلوبة/);
 });
