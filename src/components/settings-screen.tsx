@@ -379,27 +379,10 @@ export function SettingsScreen() {
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}</h2>
-        <p className="mt-2 text-xs leading-relaxed text-muted">{lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}</p>
-        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-muted"}`}>
-          {deviceOwner
-            ? (lang === "ar" ? "حالة إدارة الجهاز: مفعّلة" : "Device management: active")
-            : (lang === "ar" ? "حالة إدارة الجهاز: غير مفعّلة" : "Device management: not active")}
-        </p>
-        <div className="mt-3">
-          <ToggleRow
-            label={lang === "ar" ? "وضع الجهاز المخصص (Kiosk)" : "Dedicated device mode (Kiosk)"}
-            hint={lang === "ar" ? "يحاول التطبيق تفعيل وضع الجهاز المخصص مباشرةً؛ يطبّق أندرويد القيود المطلوبة على مستوى الجهاز." : "The app asks Android to enable dedicated-device mode directly; Android applies the required device-level restrictions."}
-            on={dedicatedDeviceMode}
-            onToggle={(value) =>
-              openOverlay({
-                kind: "confirm",
-                action: { type: "toggle-kiosk", value },
-                title: t.enterMasterConfirm,
-              })
-            }
-          />
-        </div>
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "بيئة Kiosk المستقلة" : "Standalone Kiosk environment"}</h2>
+        <p className="mt-2 text-xs leading-relaxed text-muted">{lang === "ar" ? "إعدادات وتصميم منفصلان عن قفل الشاشة، مع شاشة رئيسية شبيهة بالهاتف وقائمة تطبيقات مسموحة. القيود الفعلية في أندرويد تتطلب أن يكون التطبيق مالك الجهاز." : "Separate from the lock screen, with a phone-like launcher and an allowlist. Actual Android restrictions require Device Owner provisioning."}</p>
+        <p className={`mt-2 text-xs ${deviceOwner ? "text-success" : "text-muted"}`}>{deviceOwner ? (lang === "ar" ? "إدارة الجهاز: مفعّلة" : "Device management: active") : (lang === "ar" ? "إدارة الجهاز: غير مفعّلة" : "Device management: not active")}</p>
+        <button type="button" onClick={() => setPanel("kiosk")} className="mt-3 h-11 w-full rounded-lg bg-cyan text-sm font-semibold text-night">{lang === "ar" ? "فتح إعدادات وواجهة Kiosk" : "Open Kiosk setup and launcher"}</button>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
