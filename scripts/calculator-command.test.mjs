@@ -11,6 +11,8 @@ test("calculator command is stored through secure app storage with the original 
   assert.match(module, /DEFAULT_CALCULATOR_COMMAND = "20272006"/);
   assert.match(module, /duress-security-app:calculator-command/);
   assert.match(module, /getStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY\)/);
+  assert.match(module, /stored === null/);
+  assert.match(module, /cachedCommand = DEFAULT_CALCULATOR_COMMAND/);
   assert.match(module, /setStoredValue\(CALCULATOR_COMMAND_STORAGE_KEY, normalized\)/);
   assert.match(module, /\\d\{8\}/);
 });

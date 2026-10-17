@@ -18,8 +18,13 @@ export function getCalculatorCommand(): string {
 export async function loadCalculatorCommand(): Promise<string> {
   try {
     const stored = await getStoredValue(CALCULATOR_COMMAND_STORAGE_KEY);
-    const normalized = normalizeCalculatorCommand(stored ?? "");
-    if (/^\d{8}$/.test(normalized)) cachedCommand = normalized;
+    if (stored === null) {
+      // The key is absent after a clean app-data reset; do not keep the prior session's command in memory.
+      cachedCommand = DEFAULT_CALCULATOR_COMMAND;
+    } else {
+      const normalized = normalizeCalculatorCommand(stored);
+      if (/^\d{8}$/.test(normalized)) cachedCommand = normalized;
+    }
   } catch {
     // Keep the last known safe command. Android secure storage remains the source of truth.
   }
