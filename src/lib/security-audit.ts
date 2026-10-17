@@ -88,12 +88,14 @@ export async function recordFailedAttempt(input: Omit<SecurityAttemptRecord, "at
   at?: number;
   outcome: "rejected" | "rate-limited";
 }): Promise<boolean> {
+  const persistedAttemptCount = input.context === "main" ? await loadConsecutiveMainFailedAttempts() : null;
   return writeRecord({
     at: Math.max(0, Math.floor(input.at ?? Date.now())),
     packageName: input.packageName.slice(0, 240),
     context: input.context,
     attemptedLength: Math.max(0, Math.min(10, Math.floor(input.attemptedLength))),
-    attemptNumber: Math.max(1, Math.floor(input.attemptNumber)),
+    // The journal count is authoritative for the main lock across lockout windows.
+    attemptNumber: Math.max(1, Math.floor(persistedAttemptCount === null ? input.attemptNumber : persistedAttemptCount + 1)),
     outcome: input.outcome,
   });
 }
