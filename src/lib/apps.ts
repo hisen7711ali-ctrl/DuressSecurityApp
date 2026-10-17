@@ -20,6 +20,8 @@ export type DeviceApp = {
   nameEn: string;
   accent: string;
   icon: AppIconId;
+  /** Native Android icon converted to an inert local PNG data URL. */
+  iconDataUrl?: string;
 };
 
 export const APP_SUGGESTIONS: DeviceApp[] = [
