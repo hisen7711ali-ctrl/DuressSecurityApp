@@ -11,6 +11,7 @@ const OWNED_SECURE_KEYS = [
   "duress-security-state",
   "duress-security-app-lock-maintenance",
   "duress-security-vault-device-secret",
+  "duress-security-main-failed-attempt-count",
 ];
 
 async function verifyOwnedSecureStoreEmpty(): Promise<boolean> {
