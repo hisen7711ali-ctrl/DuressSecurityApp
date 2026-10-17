@@ -38,6 +38,12 @@ test('hidden trigger remains usable while duress mode is active', async () => {
   assert.match(shell, /sequence !== `\$\{getCalculatorCommand\(\)\}=`/);
 });
 
+test('calculator preserves repeated leading zeros for PIN commands', async () => {
+  const baseCalculator = await read('src/components/fake-calculator.tsx');
+  assert.match(baseCalculator, /Keep repeated leading zeros visible/);
+  assert.ok(baseCalculator.includes('const next = expr === "0" && key !== "0" && !operator ? key : expr + key;'));
+});
+
 test('vault v2 uses PBKDF2 600k, AES-GCM, device secret and authenticated header with no plaintext fallback', async () => {
   const vault = await read('src/lib/vault-crypto.ts');
   const store = await read('src/lib/store.ts');
@@ -88,6 +94,9 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.ok(wipeScreen.includes('result.reason === "KEY_MISSING"'));
   assert.ok(wipeScreen.includes("if (result.available)"));
   assert.ok(wipeScreen.includes("if (result.found) return false"));
+  assert.ok(wipeScreen.includes("if (!acknowledged || wipeBusy) return"));
+  assert.ok(wipeScreen.includes("disabled={!acknowledged || wipeBusy}"));
+  assert.doesNotMatch(wipeScreen, /useEffect\(\(\) => \{\s*void performWipe\(\)/, "mounting the emergency screen must not erase data");
   assert.ok(secureStorage.includes("preferences.edit().clear().commit()"));
   assert.ok(secureStorage.includes("deleteEntry(KEY_ALIAS)"));
 });
