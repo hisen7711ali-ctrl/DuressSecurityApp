@@ -7,6 +7,7 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** Stores only minimal non-secret lock policy in Device Protected Storage for Direct Boot. */
 @CapacitorPlugin(name = "DirectBootPolicy")
@@ -16,8 +17,6 @@ class DirectBootPolicyPlugin : Plugin() {
 
     override fun load() {
         super.load()
-        // Refresh the minimal policy whenever the WebView/native bridge starts.
-        // Private PINs, vault keys and other secrets remain in credential-encrypted storage.
         try {
             val raw = SecureStorage(context).get("duress-security-app") ?: return
             val root = JSONObject(raw)
