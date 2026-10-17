@@ -49,6 +49,23 @@ jobs:
           retention-days: 3
       - name: TypeScript
         run: npm run typecheck
+      - name: Verify lock and emergency-reset safety invariants
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const store = fs.readFileSync("src/lib/store.ts", "utf8");
+          const wipe = fs.readFileSync("src/components/wipe-screen.tsx", "utf8");
+          const gate = fs.readFileSync("src/components/lock-gate.tsx", "utf8");
+          const plugin = fs.readFileSync("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt", "utf8");
+          if (/if \(action === "wipe"\)\s*\{\s*get\(\)\.beginEmergencyWipe\(\)/.test(store)) throw new Error("PIN-only wipe route found");
+          if (!store.includes('type: "begin-emergency-wipe"')) throw new Error("Owner-confirmed reset action missing");
+          if (!wipe.includes("if (!acknowledged || wipeInProgress.current) return")) throw new Error("Emergency reset is missing its explicit confirmation/double-submit guard");
+          if (/useEffect\(\(\) => \{\s*void performWipe\(\)/.test(wipe)) throw new Error("Emergency reset starts automatically on mount");
+          if (!gate.includes("recordFailedAttempt") || !gate.includes("recordSuccessfulMainUnlock")) throw new Error("Secure attempt journal is not wired to the lock gate");
+          if (/\.wipeData\s*\(|clearApplicationUserData/.test(plugin)) throw new Error("Device-wide or cross-app wiping API found");
+          console.log("Safety invariants passed: PINs cannot silently wipe app/device data; emergency reset is owner-confirmed; attempt journal is wired.");
+          NODE
       - name: Sync and inspect Gradle JVM configuration
         shell: bash
         run: |
