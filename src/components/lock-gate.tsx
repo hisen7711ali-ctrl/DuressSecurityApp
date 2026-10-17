@@ -29,6 +29,9 @@ export function LockGate() {
   const appLockBackgroundX = useAppStore((s) => s.appLockBackgroundX);
   const appLockBackgroundY = useAppStore((s) => s.appLockBackgroundY);
   const submitPin = useAppStore((s) => s.submitPin);
+  const configuredPins = useAppStore((s) => s.pins);
+  const pinLength = useAppStore((s) => s.pinLength);
+  const maxPinLength = Math.min(10, Math.max(pinLength, ...Object.values(configuredPins).map((pin) => normalizePin(pin).length)));
   const closeOverlay = useAppStore((s) => s.closeOverlay);
   const failedAttempts = useAppStore((s) => s.failedAttempts);
   const lockoutUntil = useAppStore((s) => s.lockoutUntil);
@@ -54,10 +57,20 @@ export function LockGate() {
   const remaining = Math.max(0, Math.ceil((lockoutUntil - now) / 1000));
   const lockedOut = remaining > 0;
 
+  function matchesExistingPin(candidate: string): boolean {
+    const normalized = normalizePin(candidate);
+    return Object.values(useAppStore.getState().pins).some((configured) => normalizePin(configured) === normalized);
+  }
+
+  function shouldAutoSubmit(candidate: string): boolean {
+    if (overlay?.kind === "set-pin") return candidate.length === pinLength;
+    return candidate.length === pinLength || matchesExistingPin(candidate);
+  }
+
   function finish(next?: string) {
     const current = overlay;
     const pin = (next ?? value).trim();
-    if (pin.length !== 4) {
+    if (pin.length !== pinLength && !(current?.kind !== "set-pin" && matchesExistingPin(pin))) {
       setShake(true);
       window.setTimeout(() => setShake(false), 400);
       setToast(t.invalidPin);
@@ -101,10 +114,10 @@ export function LockGate() {
 
   function typeChar(ch: string) {
     if (lockedOut) return;
-    if (value.length >= 4) return;
+    if (value.length >= maxPinLength) return;
     const next = value + ch;
     setValue(next);
-    if (next.length === 4) window.setTimeout(() => finish(next), 80);
+    if (shouldAutoSubmit(next)) window.setTimeout(() => finish(next), 80);
   }
 
   useEffect(() => {
@@ -169,11 +182,11 @@ export function LockGate() {
       <p className="mt-1 text-center text-sm text-muted">{hint}</p>
       <p className="mt-1 text-center text-xs text-faint">{t.availableKeys}</p>
       <div className={cn("mt-4 rounded-xl border border-cyan/40 bg-surface px-4 py-4", shake && "pin-shake")}>
-        <PinDots length={value.length} shake={shake} />
+        <PinDots length={value.length} max={maxPinLength} shake={shake} />
       </div>
       {lockedOut ? <p className="mt-3 text-center text-sm text-danger">{t.lockout} {remaining}s</p> : null}
       <div className="mt-4">
-        <PinKeypad value={value} compact disabled={lockedOut} onChange={(next) => { setValue(next); if (next.length === 4) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />
+        <PinKeypad value={value} maxLength={maxPinLength} compact disabled={lockedOut} onChange={(next) => { setValue(next); if (shouldAutoSubmit(next)) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />
       </div>
       {biometricEligible ? <button type="button" onClick={onBiometric} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-surface-2 text-sm font-semibold"><Fingerprint className="size-4" /> {t.biometricUnlock}</button> : null}
       {canCancel ? <button type="button" onClick={closeOverlay} className="mt-4 h-11 w-full rounded-md bg-danger text-sm font-semibold">{t.cancel}</button> : null}
@@ -188,7 +201,7 @@ export function LockGate() {
         <div className="relative z-10 flex min-h-svh flex-col overflow-y-auto"><StatusBar />
         <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-between px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-6">
           <div className="flex flex-col items-center gap-3"><svg viewBox="0 0 16 16" className="size-5 text-white/90" fill="currentColor" aria-hidden><path d="M5 7V5.2A3 3 0 0 1 11 5.2V7h.8A1.2 1.2 0 0 1 13 8.2v4.6A1.2 1.2 0 0 1 11.8 14H4.2A1.2 1.2 0 0 1 3 12.8V8.2A1.2 1.2 0 0 1 4.2 7H5Zm1.3-1.8V7h3.4V5.2a1.7 1.7 0 0 0-3.4 0Z" /></svg><AndroidClock lang={lang} /></div>
-          <div className="mt-6 flex w-full flex-col items-center"><p className="text-sm text-white/75">{lockedOut ? `${t.lockout} ${remaining}s` : t.swipeHint}</p><div className={cn("mt-4 mb-6", shake && "pin-shake")}><PinDots length={value.length} shake={shake} /></div><PinKeypad android value={value} disabled={lockedOut} onChange={(next) => { setValue(next); if (next.length === 4) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />{biometricEligible ? <button type="button" onClick={onBiometric} className="key-press mt-5 grid size-[52px] place-items-center rounded-full bg-white/10 text-white backdrop-blur" aria-label={t.biometricUnlock}><Fingerprint className="size-6" /></button> : null}</div>
+          <div className="mt-6 flex w-full flex-col items-center"><p className="text-sm text-white/75">{lockedOut ? `${t.lockout} ${remaining}s` : t.swipeHint}</p><div className={cn("mt-4 mb-6", shake && "pin-shake")}><PinDots length={value.length} max={maxPinLength} shake={shake} /></div><PinKeypad android value={value} disabled={lockedOut} onChange={(next) => { setValue(next); if (next.length === 4) window.setTimeout(() => finish(next), 80); }} onConfirm={() => finish()} />{biometricEligible ? <button type="button" onClick={onBiometric} className="key-press mt-5 grid size-[52px] place-items-center rounded-full bg-white/10 text-white backdrop-blur" aria-label={t.biometricUnlock}><Fingerprint className="size-6" /></button> : null}</div>
           <div className="mt-6 w-full"><QuotesBanner compact /></div>
         </div></div>
       </div>
