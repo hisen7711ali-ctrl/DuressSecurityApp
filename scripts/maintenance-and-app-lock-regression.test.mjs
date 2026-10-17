@@ -6,11 +6,11 @@ import test from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-test("extended lock shows a red triangle, PIN recovery and truthful maintenance copy", async () => {
+test("extended lock shows a lock icon, PIN recovery and truthful maintenance copy", async () => {
   const source = await read("src/components/extended-lock-screen.tsx");
   assert.ok(source.includes("التطبيق قيد الصيانة"));
   assert.ok(source.includes("30 يومًا"));
-  assert.ok(source.includes(">▼</span>"));
+  assert.ok(source.includes("<LockKeyhole className=\"size-7\""));
   assert.ok(!source.includes("Moon"));
   assert.ok(source.includes("onClick={openRecovery}"));
   assert.ok(source.includes("اضغط لإلغاء وضع الصيانة"));
@@ -41,6 +41,8 @@ test("native app-lock gate uses an on-screen keypad instead of the system keyboa
   assert.match(source, /wipePin/);
   assert.match(source, /dispatchOwnerPinAction\(targetPackage, typed\)/);
   assert.match(source, /performHapticFeedback/);
+  assert.match(source, /android\\.R\\.drawable\\.ic_lock_lock/);
+  assert.match(source, /title\\.setOnClickListener/);
 });
 
 test("native app-lock gate does not dismiss on its own overlay package event", async () => {
@@ -138,13 +140,13 @@ test("native App Lock biometric flow requires configured package and enabled bio
 });
 
 
-test("extended maintenance uses immersive bars and a red triangle rather than a moon", async () => {
+test("extended maintenance uses immersive bars and a lock icon rather than a moon", async () => {
   const screen = await read("src/components/extended-lock-screen.tsx");
   const bridge = await read("src/lib/native-bridge.ts");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
   assert.ok(screen.includes("setImmersiveMode(true)"));
   assert.ok(screen.includes("setImmersiveMode(false)"));
-  assert.ok(screen.includes(">▼</span>"));
+  assert.ok(screen.includes("<LockKeyhole className=\"size-7\""));
   assert.ok(!screen.includes("Moon"));
   assert.ok(screen.includes("onClick={openRecovery}"));
   assert.ok(screen.includes("ضع كلمة السر لإلغاء وضع الصيانة"));
@@ -199,4 +201,22 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
   const shell = await read("src/components/app-shell.tsx");
   assert.match(shell, /custom-app-background/);
   assert.match(shell, /setTab\("home"\)/);
+});
+
+
+test("App Lock owner PINs reuse the primary duress, wipe, and extended-maintenance actions", async () => {
+  const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
+  const shell = await read("src/components/app-shell.tsx");
+  const store = await read("src/lib/store.ts");
+  const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
+  assert.match(verify, /policy\\.duressPin\\?\\.let/);
+  assert.match(verify, /policy\\.wipePin\\?\\.let/);
+  assert.match(verify, /maintenanceUntil == null && policy\\.extendedLockPin\\?\\.let/);
+  assert.doesNotMatch(verify, /writeTargetMaintenance\\(targetPackage, until\\)/);
+  assert.match(verify, /if \\(isOwnerAction\\) \\{ dispatchOwnerPinAction\\(targetPackage, typed\\); return \\}/);
+  assert.match(shell, /state\\.submitPin\\(pin\\)/);
+  assert.match(shell, /state\\.activateDuressMode\\(\\)/);
+  assert.match(shell, /state\\.beginEmergencyWipe\\(\\)/);
+  assert.match(store, /session: \\"extlocked\\"/);
+  assert.match(store, /startExtendedLock\\(Date\\.now\\(\\), lockDurationMs\\(\\)\\)/);
 });
