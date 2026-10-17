@@ -220,7 +220,8 @@ test("App Lock 4444 returns to the locked calculator while 5555 maintains only t
   assert.ok(verify.includes("showGate(targetPackage, maintenanceUntil = until)"));
   assert.ok(verify.includes("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }"));
   assert.ok(shell.includes("state.submitPin(pin)"));
-  assert.ok(shell.includes("state.activateDuressMode()"));
+  assert.ok(shell.includes('state.session !== "extlocked" && normalizePin(pin) === normalizePin(state.pins.duress)'));
+  assert.ok(shell.includes("Extended lock remains active; the calculator shortcut cannot bypass it."));
   assert.ok(shell.includes('window.addEventListener("duress-security-open-calculator", openCalculatorFacade)'));
   assert.ok(shell.includes("__duressSecurityOpenCalculator = openCalculatorFacade"));
   assert.ok(store.includes('window.dispatchEvent(new Event("duress-security-open-calculator"))'));
