@@ -90,8 +90,10 @@ export async function loadConsecutiveMainFailedAttempts(): Promise<number | null
   const counterRead = await nativeBridge.secureStorageGet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY);
   if (!counterRead.available && counterRead.reason !== "KEY_MISSING") return null;
 
-  if (counterRead.found && counterRead.value !== null) {
-    const count = Number(counterRead.value);
+  if (counterRead.found) {
+    const rawCount = counterRead.value?.trim();
+    if (!rawCount || !/^\\d+$/.test(rawCount)) return null;
+    const count = Number(rawCount);
     return Number.isSafeInteger(count) && count >= 0 && count <= 1_000_000 ? count : null;
   }
 
@@ -111,7 +113,7 @@ export async function recordFailedAttempt(input: Omit<SecurityAttemptRecord, "at
   if (input.context === "main") {
     const previous = await loadConsecutiveMainFailedAttempts();
     if (previous === null) return false;
-    attemptNumber = previous + 1;
+    attemptNumber = Math.min(1_000_000, previous + 1);
     if (!(await nativeBridge.secureStorageSet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY, String(attemptNumber)))) return false;
   }
   return writeRecord({
