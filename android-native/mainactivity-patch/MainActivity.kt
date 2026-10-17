@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
+import com.duresssecurity.admin.SecurityIntegrityPlugin
 import com.getcapacitor.BridgeActivity
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
+        registerPlugin(SecurityIntegrityPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
@@ -91,21 +93,15 @@ class MainActivity : BridgeActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Android can recreate/resume this Activity with the previous window flags.
-        // Start secure, then let the WebView apply the current calculator/lock policy.
         setScreenCaptureAllowed(false)
         try {
             bridge?.webView?.post {
-                bridge?.webView?.evaluateJavascript(
-                    "window.dispatchEvent(new Event('duress-security-native-foreground'))",
-                    null,
-                )
+                bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-foreground'))", null)
             }
         } catch (_: Exception) { }
     }
 
     override fun onPause() {
-        // FLAG_SECURE must be present before Android captures a Recents snapshot.
         setScreenCaptureAllowed(false)
         super.onPause()
     }
