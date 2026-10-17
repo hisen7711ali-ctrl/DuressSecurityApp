@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type MouseEvent } from "react";
 import { FakeCalculator as BaseCalculator } from "@/components/fake-calculator";
 import { getCalculatorCommand, loadCalculatorCommand } from "@/lib/calculator-command";
+import * as nativeBridge from "@/lib/native-bridge";
 import "@/styles/calculator-fullscreen.css";
 
 type Props = ComponentProps<typeof BaseCalculator>;
@@ -30,6 +31,8 @@ export function FakeCalculator(props: Props) {
       const configuredMatch = sequenceRef.current === calculatorCommand;
       if (configuredMatch) {
         event.stopPropagation();
+        // Apply the native window protection before switching away from the calculator facade.
+        void nativeBridge.setScreenCaptureAllowed(false);
         props.onSecretCommand?.(`${calculatorCommand}=`);
       }
       sequenceRef.current = "";
