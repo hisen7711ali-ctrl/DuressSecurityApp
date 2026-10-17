@@ -142,6 +142,7 @@ await rm(path.join(androidDir, "app/src/main/java/com/duresssecurity/app/MainAct
 await cp(path.join(root, "android-native/mainactivity-patch/MainActivity.kt"), mainActivity);
 
 const gradlePath = path.join(androidDir, "app/build.gradle");
+await cp(path.join(root, "android-native/proguard-rules.pro"), path.join(androidDir, "app/proguard-rules.pro"));
 if (await exists(gradlePath)) {
   let gradle = await readFile(gradlePath, "utf8");
   if (!gradle.includes("org.jetbrains.kotlin.android")) {
