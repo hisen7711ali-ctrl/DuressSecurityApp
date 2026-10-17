@@ -7,17 +7,19 @@ type Props = ComponentProps<typeof BaseCalculator>;
 
 export function FakeCalculator(props: Props) {
   const [calculatorCommand, setCalculatorCommand] = useState(getCalculatorCommand());
+  const [calculatorCommandReady, setCalculatorCommandReady] = useState(false);
   const sequenceRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
     void loadCalculatorCommand().then((value) => {
-      if (!cancelled) setCalculatorCommand(value);
+      if (!cancelled) { setCalculatorCommand(value); setCalculatorCommandReady(true); }
     });
     return () => { cancelled = true; };
   }, []);
 
   function handleCalculatorCapture(event: MouseEvent<HTMLDivElement>) {
+    if (!calculatorCommandReady) { sequenceRef.current = ""; return; }
     const button = (event.target as HTMLElement).closest("button");
     const key = button?.textContent?.trim();
     if (!key) return;

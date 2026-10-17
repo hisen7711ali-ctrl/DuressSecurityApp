@@ -8,26 +8,26 @@ const read = (p) => readFile(path.join(root, p), 'utf8');
 
 test('calculator remains the ordinary startup screen and its secret command follows saved settings', async () => {
   const shell = await read('src/components/app-shell.tsx');
-  const calculator = await read('src/components/fake-calculator.tsx');
+  const baseCalculator = await read('src/components/fake-calculator.tsx');
   const wrapper = await read('src/components/fullscreen-calculator.tsx');
   const activity = await read('android-native/mainactivity-patch/MainActivity.kt');
-  assert.match(shell, /calculatorFront, setCalculatorFront\\] = useState\\(true\\)/);
+  assert.ok(shell.includes('calculatorFront, setCalculatorFront] = useState(true)'));
   assert.ok(shell.includes('getCalculatorCommand()'));
   assert.ok(shell.includes('sequence !== `${getCalculatorCommand()}=`'));
-  assert.doesNotMatch(shell, /SECRET_CALCULATOR_COMMAND/);
-  assert.match(shell, /securityGateFlow\\.current = true/);
-  assert.match(shell, /setCalculatorFront\\(false\\)/);
-  assert.match(shell, /setPendingSecurityGate\\(true\\)/);
-  assert.match(shell, /openOverlay\\(\\{ kind: "unlock" \\}\\)/);
-  assert.match(shell, /if \\(!ready\\) return <FakeCalculator/);
-  assert.match(shell, /if \\(session === "locked" && calculatorFront\\) return <FakeCalculator/);
-  assert.match(shell, /if \\(pendingSecurityGate\\) return <LockGate \\/>/);
-  assert.match(shell, /if \\(overlay\\?\\.kind === "unlock"\\) return <LockGate \\/>/);
+  assert.ok(!shell.includes('SECRET_CALCULATOR_COMMAND'));
+  assert.ok(shell.includes('securityGateFlow.current = true'));
+  assert.ok(shell.includes('setCalculatorFront(false)'));
+  assert.ok(shell.includes('setPendingSecurityGate(true)'));
+  assert.ok(shell.includes('openOverlay({ kind: "unlock" })'));
+  assert.ok(shell.includes('if (!ready) return <FakeCalculator'));
+  assert.ok(shell.includes('if (session === "locked" && calculatorFront) return <FakeCalculator'));
+  assert.ok(shell.includes('if (pendingSecurityGate) return <LockGate />'));
+  assert.ok(shell.includes('if (overlay?.kind === "unlock") return <LockGate />'));
   assert.ok(wrapper.includes('sequenceRef.current === calculatorCommand'));
-  assert.ok(wrapper.includes('props.onSecretCommand?.(`${calculatorCommand}=`)'));
-  assert.ok(!calculator.includes('OWNER_TRIGGER'));
-  assert.ok(!calculator.includes('20272006'));
-  assert.match(activity, /FLAG_SECURE/);
+  assert.ok(wrapper.includes('calculatorCommandReady'));
+  assert.ok(!baseCalculator.includes('OWNER_TRIGGER'));
+  assert.ok(!baseCalculator.includes('20272006'));
+  assert.ok(activity.includes('FLAG_SECURE'));
 });
 
 test('hidden trigger remains usable while duress mode is active', async () => {

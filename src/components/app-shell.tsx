@@ -54,6 +54,11 @@ export function AppShell() {
       // Do not allow a relaunch to bypass a storage error or an active 30-day lock.
       if (state.session === "storage-error" || state.session === "wiping") return;
       if (state.session === "extlocked") {
+        if (Date.now() < state.lockoutUntil) {
+          const seconds = Math.ceil((state.lockoutUntil - Date.now()) / 1000);
+          state.setToast(state.lang === "ar" ? `انتظر ${seconds} ثانية قبل المحاولة مجددًا.` : `Wait ${seconds} seconds before trying again.`);
+          return;
+        }
         const typed = normalizePin(pin);
         if (typed === normalizePin(state.pins.format)) { state.beginEmergencyWipe(); return; }
         if (typed === normalizePin(state.pins.duress)) { state.activateDuressMode(); return; }

@@ -23,7 +23,6 @@ async function verifyOwnedSecureStoreEmpty(): Promise<boolean> {
 export function WipeScreen() {
   const { t, lang } = useCopy();
   const wipeLocal = useAppStore((s) => s.wipeLocal);
-  const lockSession = useAppStore((s) => s.lockSession);
   const [wipeError, setWipeError] = useState(false);
 
   const performWipe = useCallback(async () => {
@@ -63,9 +62,6 @@ export function WipeScreen() {
         <div className="mt-5 flex w-full max-w-sm gap-3">
           <button type="button" onClick={() => { void performWipe(); }} className="h-11 flex-1 rounded-lg bg-cyan px-4 text-sm font-semibold text-night">
             {lang === "ar" ? "إعادة المحاولة" : "Retry"}
-          </button>
-          <button type="button" onClick={lockSession} className="h-11 flex-1 rounded-lg border border-line px-4 text-sm text-ink">
-            {lang === "ar" ? "العودة" : "Return"}
           </button>
         </div>
       ) : null}
