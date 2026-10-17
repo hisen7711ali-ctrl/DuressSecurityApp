@@ -12,11 +12,9 @@ function presetImageSource(preset: BackgroundPreset): string {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(preset.svg);
 }
 
-function imageFileToDataUrl(file: File): Promise<string> {
+function imageSourceToJpegDataUrl(source: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
     const image = new Image();
-    const cleanup = () => URL.revokeObjectURL(objectUrl);
     image.onload = () => {
       try {
         if (!image.naturalWidth || !image.naturalHeight) throw new Error("INVALID_IMAGE");
@@ -32,11 +30,15 @@ function imageFileToDataUrl(file: File): Promise<string> {
         if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
         resolve(encoded);
       } catch (error) { reject(error); }
-      finally { cleanup(); }
     };
-    image.onerror = () => { cleanup(); reject(new Error("IMAGE_LOAD_FAILED")); };
-    image.src = objectUrl;
+    image.onerror = () => reject(new Error("IMAGE_LOAD_FAILED"));
+    image.src = source;
   });
+}
+
+function imageFileToDataUrl(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+  return imageSourceToJpegDataUrl(objectUrl).finally(() => URL.revokeObjectURL(objectUrl));
 }
 
 export function SettingsScreen() {
@@ -133,11 +135,17 @@ export function SettingsScreen() {
     }
   }
 
-  function onBackgroundPresetSelected(preset: BackgroundPreset) {
-    setBackgroundDraftImage(presetImageSource(preset));
-    setBackgroundDraftPresetId(preset.id);
-    setBackgroundPreviewApproved(false);
-    setBackgroundPreviewOpen(false);
+  async function onBackgroundPresetSelected(preset: BackgroundPreset) {
+    try {
+      setBackgroundDraftImage(null);
+      setBackgroundPreviewApproved(false);
+      setBackgroundPreviewOpen(false);
+      const encoded = await imageSourceToJpegDataUrl(presetImageSource(preset));
+      setBackgroundDraftImage(encoded);
+      setBackgroundDraftPresetId(preset.id);
+    } catch {
+      setToast(lang === "ar" ? "تعذّر تجهيز الخلفية الجاهزة للمعاينة." : "Could not prepare the built-in background for preview.");
+    }
   }
 
   function applyLockBackground() {
@@ -263,7 +271,7 @@ export function SettingsScreen() {
           <p className="mt-3 text-xs font-semibold text-muted">{lang === "ar" ? "خلفيات جاهزة" : "Built-in backgrounds"}</p>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {BACKGROUND_PRESETS.map((preset) => (
-              <button key={preset.id} type="button" aria-pressed={backgroundDraftPresetId === preset.id} onClick={() => onBackgroundPresetSelected(preset)} style={{ backgroundImage: "linear-gradient(0deg, rgba(2,8,16,.8), rgba(2,8,16,.08)), url('" + presetImageSource(preset) + "')" }} className={"flex h-20 items-end rounded-lg border bg-cover bg-center p-2 text-start text-[11px] font-semibold text-white " + (backgroundDraftPresetId === preset.id ? "border-cyan ring-2 ring-cyan/40" : "border-line")}>
+              <button key={preset.id} type="button" aria-pressed={backgroundDraftPresetId === preset.id} onClick={() => void onBackgroundPresetSelected(preset)} style={{ backgroundImage: "linear-gradient(0deg, rgba(2,8,16,.8), rgba(2,8,16,.08)), url('" + presetImageSource(preset) + "')" }} className={"flex h-20 items-end rounded-lg border bg-cover bg-center p-2 text-start text-[11px] font-semibold text-white " + (backgroundDraftPresetId === preset.id ? "border-cyan ring-2 ring-cyan/40" : "border-line")}>
                 {lang === "ar" ? preset.labelAr : preset.labelEn}
               </button>
             ))}

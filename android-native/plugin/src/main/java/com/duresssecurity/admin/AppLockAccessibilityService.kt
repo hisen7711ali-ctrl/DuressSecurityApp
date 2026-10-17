@@ -6,9 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.ColorFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.util.Base64
 import android.graphics.PixelFormat
@@ -27,7 +31,6 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import org.json.JSONArray
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.biometric.BiometricManager
@@ -57,6 +60,9 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var activeMaintenanceUntil: Long? = null
     private var configuredAppLanguage: String? = null
     private var configuredBackgroundImage: String? = null
+    private var configuredBackgroundScale: Float = 1f
+    private var configuredBackgroundX: Float = 0f
+    private var configuredBackgroundY: Float = 0f
     private var cachedBackgroundSource: String? = null
     private var cachedBackgroundBitmap: Bitmap? = null
 
@@ -137,9 +143,14 @@ class AppLockAccessibilityService : AccessibilityService() {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
             configuredAppLanguage = state.optString("lang").takeIf { it == "ar" || it == "en" }
-            configuredBackgroundImage = state.optString("backgroundImage").takeIf {
+            configuredBackgroundImage = state.optString("appLockBackgroundImage").takeIf {
+                it.startsWith("data:image/jpeg;base64,") && it.length <= 1_000_000
+            } ?: state.optString("backgroundImage").takeIf {
                 it.startsWith("data:image/jpeg;base64,") && it.length <= 1_000_000
             }
+            configuredBackgroundScale = state.optDouble("appLockBackgroundScale", 1.0).toFloat().coerceIn(1f, 2f)
+            configuredBackgroundX = state.optDouble("appLockBackgroundX", 0.0).toFloat().coerceIn(-50f, 50f)
+            configuredBackgroundY = state.optDouble("appLockBackgroundY", 0.0).toFloat().coerceIn(-50f, 50f)
             val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
             val locked = buildSet {
                 for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add)
@@ -529,7 +540,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
         }
         val bitmap = cachedBackgroundBitmap ?: return
-        val photo = BitmapDrawable(resources, bitmap).apply { alpha = 190 }
+        val photo = CoverImageDrawable(bitmap, configuredBackgroundScale, configuredBackgroundX, configuredBackgroundY).apply { alpha = 190 }
         val dimmer = GradientDrawable().apply {
             setColor(Color.argb(168, 6, 14, 27))
             cornerRadius = dp(24).toFloat()
@@ -538,6 +549,34 @@ class AppLockAccessibilityService : AccessibilityService() {
         root.background = LayerDrawable(arrayOf(photo, dimmer))
         root.clipToOutline = true
     }
+    private class CoverImageDrawable(
+        private val bitmap: Bitmap,
+        private val scale: Float,
+        private val offsetX: Float,
+        private val offsetY: Float,
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = 190 }
+
+        override fun draw(canvas: Canvas) {
+            val bounds = bounds
+            if (bounds.width() <= 0 || bounds.height() <= 0 || bitmap.isRecycled) return
+            val cropScale = maxOf(bounds.width().toFloat() / bitmap.width, bounds.height().toFloat() / bitmap.height) * scale
+            val width = bitmap.width * cropScale
+            val height = bitmap.height * cropScale
+            val left = bounds.left - (width - bounds.width()) * (50f + offsetX) / 100f
+            val top = bounds.top - (height - bounds.height()) * (50f + offsetY) / 100f
+            val destination = RectF(left, top, left + width, top + height)
+            val checkpoint = canvas.save()
+            canvas.clipRect(bounds)
+            canvas.drawBitmap(bitmap, null, destination, paint)
+            canvas.restoreToCount(checkpoint)
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha.coerceIn(0, 255); invalidateSelf() }
+        override fun setColorFilter(colorFilter: ColorFilter?) { paint.colorFilter = colorFilter; invalidateSelf() }
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 

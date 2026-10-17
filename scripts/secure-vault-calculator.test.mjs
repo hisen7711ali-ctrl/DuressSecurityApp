@@ -129,8 +129,9 @@ test('built-in background presets persist and reach both web and native lock gat
   const lockGate = await read('src/components/lock-gate.tsx');
   assert.match(lockGate, /mainLockBackgroundImage/);
   assert.match(lockGate, /appLockBackgroundImage/);
-  assert.match(nativeLock, /configuredBackgroundImage = state\.optString\("backgroundImage"\)/);
+  assert.match(nativeLock, /configuredBackgroundImage = state\.optString\("appLockBackgroundImage"\)/);
   assert.match(nativeLock, /applyConfiguredBackground\(root\)/);
+  assert.match(nativeLock, /CoverImageDrawable/);
 });
 
 test('native app-lock language follows the selected app language and onboarding has Arabic and English strings', async () => {

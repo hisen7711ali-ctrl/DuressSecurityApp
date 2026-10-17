@@ -6,7 +6,7 @@ import { deleteEncryptedAttachment, openEncryptedAttachment, persistEncryptedAtt
 import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
 
 function parseVaultAttachment(body: string): { id: string; mimeType: string | null; size: number | null } | null {
-  const v2 = body.match(/^vault-file-v2:([^:]+):([^:]*):(\\d+)$/);
+  const v2 = body.match(/^vault-file-v2:([^:]+):([^:]*):(\d+)$/);
   if (v2) {
     let mimeType: string | null = null;
     try { mimeType = decodeURIComponent(v2[2] ?? "") || null; } catch { mimeType = null; }
@@ -27,12 +27,12 @@ function formatBytes(size: number): string {
 
 function classifyAttachment(mimeType: string, filename: string, lang: string): string {
   const lower = filename.toLowerCase();
-  if (mimeType.startsWith("image/") || /\\.(png|jpe?g|gif|webp|heic|bmp|svg)$/.test(lower)) return lang === "ar" ? "صورة" : "Image";
-  if (mimeType.startsWith("video/") || /\\.(mp4|mkv|mov|webm|3gp)$/.test(lower)) return lang === "ar" ? "فيديو" : "Video";
-  if (mimeType.startsWith("audio/") || /\\.(mp3|wav|ogg|m4a|flac)$/.test(lower)) return lang === "ar" ? "صوت" : "Audio";
-  if (mimeType.startsWith("text/") || /\\.(txt|md|rtf|csv|log)$/.test(lower)) return lang === "ar" ? "نص / ملاحظات" : "Text / notes";
-  if (/pdf|word|document|spreadsheet|presentation|officedocument/.test(mimeType) || /\\.(pdf|docx?|xlsx?|pptx?)$/.test(lower)) return lang === "ar" ? "مستند" : "Document";
-  if (/zip|rar|7z|tar|gzip/.test(mimeType) || /\\.(zip|rar|7z|tar|gz)$/.test(lower)) return lang === "ar" ? "أرشيف" : "Archive";
+  if (mimeType.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|bmp|svg)$/.test(lower)) return lang === "ar" ? "صورة" : "Image";
+  if (mimeType.startsWith("video/") || /\.(mp4|mkv|mov|webm|3gp)$/.test(lower)) return lang === "ar" ? "فيديو" : "Video";
+  if (mimeType.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|flac)$/.test(lower)) return lang === "ar" ? "صوت" : "Audio";
+  if (mimeType.startsWith("text/") || /\.(txt|md|rtf|csv|log)$/.test(lower)) return lang === "ar" ? "نص / ملاحظات" : "Text / notes";
+  if (/pdf|word|document|spreadsheet|presentation|officedocument/.test(mimeType) || /\.(pdf|docx?|xlsx?|pptx?)$/.test(lower)) return lang === "ar" ? "مستند" : "Document";
+  if (/zip|rar|7z|tar|gzip/.test(mimeType) || /\.(zip|rar|7z|tar|gz)$/.test(lower)) return lang === "ar" ? "أرشيف" : "Archive";
   return lang === "ar" ? "ملف آخر" : "Other file";
 }
 
