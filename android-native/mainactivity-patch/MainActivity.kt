@@ -9,6 +9,7 @@ import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
 import com.duresssecurity.admin.SecurityIntegrityPlugin
 import com.duresssecurity.admin.DirectBootPolicyPlugin
+import com.duresssecurity.admin.InstalledAppsPlugin
 import com.getcapacitor.BridgeActivity
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,6 +20,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(SecurityAdminPlugin::class.java)
         registerPlugin(SecurityIntegrityPlugin::class.java)
         registerPlugin(DirectBootPolicyPlugin::class.java)
+        registerPlugin(InstalledAppsPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
