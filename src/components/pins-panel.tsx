@@ -20,6 +20,8 @@ export function PinsPanel() {
   const [newCalculatorCommand, setNewCalculatorCommand] = useState("");
   const [calculatorBusy, setCalculatorBusy] = useState(false);
   const pins = useAppStore((s) => s.pins);
+  const pinLength = useAppStore((s) => s.pinLength);
+  const setPinLength = useAppStore((s) => s.setPinLength);
   const maxAttempts = useAppStore((s) => s.maxAttempts);
   const lockTimeoutSec = useAppStore((s) => s.lockTimeoutSec);
   const openOverlay = useAppStore((s) => s.openOverlay);
@@ -41,7 +43,16 @@ export function PinsPanel() {
     format: { title: t.formatPin, hint: t.formatPinHint },
   };
   const Icon = ICONS[active];
-  const set = pins[active].length === 4;
+  const set = pins[active].length > 0;
+  const lengthMatches = pins[active].length === pinLength;
+
+  function updatePinLength(nextLength: number) {
+    if (nextLength !== 4 && nextLength !== 7 && nextLength !== 10) return;
+    setPinLength(nextLength);
+    setToast(lang === "ar"
+      ? "تغيّر الطول المطلوب. الرموز الحالية تبقى صالحة حتى تعيد ضبط كل رمز على حدة؛ لن تتغيّر سرًّا."
+      : "Preferred length changed. Existing PINs remain valid until you update each one; no PIN changes silently.");
+  }
 
   async function saveCalculatorCommand() {
     const normalizedMaster = normalizeCalculatorCommand(masterCheck);
@@ -81,16 +92,27 @@ export function PinsPanel() {
       <article className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center gap-3">
           <span className="grid size-14 place-items-center rounded-full bg-navy text-cyan"><Icon className="size-6" /></span>
-          <div className="min-w-0 flex-1"><h2 className="font-semibold">{labels[active].title}</h2><p className="mt-1 text-xs text-muted">{labels[active].hint}</p><p className="mt-2 font-mono text-sm tracking-[0.4em] text-cyan">{set ? "••••" : t.noPinsSet}</p></div>
+          <div className="min-w-0 flex-1"><h2 className="font-semibold">{labels[active].title}</h2><p className="mt-1 text-xs text-muted">{labels[active].hint}</p><p className="mt-2 font-mono text-sm tracking-[0.4em] text-cyan">{lengthMatches ? "•".repeat(pinLength) : set ? (lang === "ar" ? "الرمز مضبوط على " + pins[active].length + " أرقام" : "Current length: " + pins[active].length) : t.noPinsSet}</p></div>
         </div>
       </article>
 
       <section className="overflow-hidden rounded-xl border border-line bg-surface">
         <Row label={t.pinCharset} value={t.charsHint} />
         <Row label={t.pinType} value={labels[active].title} />
-        <Row label={t.pinLength} value={t.fourChars} />
+        <Row label={t.pinLength} value={String(pinLength)} />
         <Row label={t.attempts} value={`${maxAttempts}`} />
         <Row label={t.lockTimeout} value={`${lockTimeoutSec}s`} last />
+      </section>
+
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "طول رموز الحماية" : "Security PIN length"}</h2>
+        <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar" ? "اختر ٤ أو ٧ أو ١٠ أرقام. الرمز الحالي لا يتغير تلقائيًا؛ استخدم «تغيير الرمز» لكل رمز حتى لا تفقد الوصول." : "Choose 4, 7, or 10 digits. Existing PINs do not change automatically; use Change PIN for each one to avoid losing access."}</p>
+        <label className="mt-3 block text-xs text-muted">{lang === "ar" ? "عدد الأرقام" : "Number of digits"}
+          <select value={pinLength} onChange={(event) => updatePinLength(Number(event.target.value))} className="mt-1 h-11 w-full rounded-md bg-navy px-3 text-sm text-ink">
+            {[4, 7, 10].map((length) => <option key={length} value={length}>{length}</option>)}
+          </select>
+        </label>
+        {!lengthMatches && set ? <p className="mt-2 text-xs text-amber-300">{lang === "ar" ? "هذا الرمز مضبوط حاليًا على " + pins[active].length + " أرقام؛ أعد ضبطه ليطابق الطول المختار." : "This PIN currently has " + pins[active].length + " digits; reconfigure it to match the selected length."}</p> : null}
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-4">
@@ -117,7 +139,7 @@ export function PinsPanel() {
         <p className="mt-2 text-xs leading-relaxed text-muted">{lang === "ar" ? "هذا هو الرمز الذي تدخله من شاشة الحاسبة ثم تضغط = لفتح شاشة الحماية. يتكون من 8 أرقام ويُحفظ في التخزين الآمن. تغيير الرمز يلغي الرمز القديم فوراً." : "This is the 8-digit command entered on the calculator followed by = to open the security gate. It is stored in secure storage, and changing it immediately invalidates the old command."}</p>
         <p className="mt-3 font-mono text-sm tracking-[0.35em] text-cyan">{calculatorCommand ? `${calculatorCommand.slice(0, 2)}••••••` : "••••••••"}</p>
         <label className="mt-4 block text-xs text-muted">{lang === "ar" ? "رمز المالك للتأكيد" : "Master PIN for confirmation"}
-          <input inputMode="numeric" type="password" maxLength={4} value={masterCheck} onChange={(event) => setMasterCheck(normalizeCalculatorCommand(event.target.value).replace(/\D/g, "").slice(0, 4))} className="mt-1 h-11 w-full rounded-md border border-line bg-navy px-3 font-mono text-sm tracking-[0.35em] outline-none focus:border-cyan" placeholder="••••" />
+          <input inputMode="numeric" type="password" maxLength={10} value={masterCheck} onChange={(event) => setMasterCheck(normalizeCalculatorCommand(event.target.value).replace(/\D/g, "").slice(0, 10))} className="mt-1 h-11 w-full rounded-md border border-line bg-navy px-3 font-mono text-sm tracking-[0.35em] outline-none focus:border-cyan" placeholder="••••" />
         </label>
         <label className="mt-3 block text-xs text-muted">{lang === "ar" ? "الرمز الجديد (8 أرقام)" : "New command (8 digits)"}
           <input inputMode="numeric" type="password" maxLength={8} value={newCalculatorCommand} onChange={(event) => setNewCalculatorCommand(normalizeCalculatorCommand(event.target.value).replace(/\D/g, "").slice(0, 8))} className="mt-1 h-11 w-full rounded-md border border-line bg-navy px-3 font-mono text-sm tracking-[0.35em] outline-none focus:border-cyan" placeholder="••••••••" />
