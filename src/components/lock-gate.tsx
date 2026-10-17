@@ -119,13 +119,28 @@ export function LockGate() {
       return;
     }
     if (result === "wrong" || result === "lockout") {
-      void recordFailedAttempt({
+      const recorded = await recordFailedAttempt({
         packageName: current?.kind === "app" ? current.packageName : "com.duresssecurity.app",
         context: current?.kind === "app" ? "app" : "main",
         attemptedLength: pin.length,
         attemptNumber: Math.max(1, failedAttempts + 1),
         outcome: result === "lockout" ? "rate-limited" : "rejected",
       });
+      if (!recorded && isNativeAndroid()) {
+        useAppStore.setState({
+          ready: true,
+          session: "storage-error",
+          storageErrorCode: "FAILED_ATTEMPT_HISTORY_WRITE_FAILED",
+          overlay: null,
+          openedApp: null,
+          vaultOpen: false,
+          vaultCryptoReady: false,
+        });
+        setToast(lang === "ar"
+          ? "تعذّر حفظ المحاولة الفاشلة في التخزين المشفّر؛ أُوقف الدخول حفاظًا على الحماية."
+          : "Could not save the failed attempt securely; access is paused for safety.");
+        return;
+      }
     }
     setValue("");
     setShake(true);
