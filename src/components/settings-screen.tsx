@@ -412,6 +412,16 @@ export function SettingsScreen() {
         {failedHistory === null ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "السجل المشفّر متاح داخل نسخة أندرويد فقط." : "The encrypted journal is available only in the Android app."}</p> : failedHistory.length === 0 ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "لا توجد محاولات مسجلة." : "No attempts recorded."}</p> : <div className="mt-3 max-h-64 space-y-2 overflow-auto">{failedHistory.slice(-10).reverse().map((entry, index) => <div key={entry.at + "-" + entry.packageName + "-" + index} className="rounded-lg border border-line px-3 py-2"><p className="break-all text-xs font-semibold">{appName(lang, entry.packageName, installedApps)}</p><p className="mt-1 break-all text-[10px] text-muted">{entry.packageName}</p><p className="mt-1 text-[11px] text-muted">{new Date(entry.at).toLocaleString(lang === "ar" ? "ar" : "en-US")} · {lang === "ar" ? "المحاولة" : "Attempt"} {entry.attemptNumber} · {lang === "ar" ? "الإدخال: محجوب" : "Entered PIN: redacted"} ({entry.attemptedLength} {lang === "ar" ? "أرقام" : "digits"})</p><p className="mt-1 text-[11px] text-muted">{entry.context === "app" ? (lang === "ar" ? "سياق قفل تطبيق" : "App-lock context") : (lang === "ar" ? "سياق القفل الرئيسي" : "Main-lock context")} · {entry.outcome === "rate-limited" ? (lang === "ar" ? "تم تفعيل الإيقاف المؤقت" : "Rate limited") : (lang === "ar" ? "رمز غير صحيح" : "Rejected")}</p></div>)}</div>}
       </section>
 
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "وضع الطوارئ واستجابة المحاولات" : "Emergency mode and attempt response"}</h2>
+        <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar"
+          ? "الاستجابة الحالية هي القفل المؤقت حسب عدد المحاولات ومدة الانتظار اللذين اخترتهما من إعدادات الرموز. لا يجري حذف بيانات تطبيقات أخرى أو الهاتف تلقائيًا. مسح بيانات هذا التطبيق وحده يحتاج تأكيد رمز المالك ثم إقرارًا منفصلًا في شاشة الطوارئ."
+          : "The current response is a temporary lock based on the attempt limit and wait duration you selected in PIN settings. Other apps or the phone are never wiped automatically. Resetting this app's data requires the owner PIN and a separate acknowledgement on the emergency screen."}</p>
+        <button type="button" onClick={() => openOverlay({ kind: "confirm", action: { type: "begin-emergency-wipe" }, title: lang === "ar" ? "تأكيد إجراء الطوارئ" : "Confirm emergency action" })} className="mt-3 h-11 w-full rounded-lg border border-danger/40 bg-danger/10 text-sm font-semibold text-danger">
+          {lang === "ar" ? "فتح إجراء طوارئ لبيانات التطبيق" : "Open app-data emergency reset"}
+        </button>
+      </section>
+
       <p className="px-1 text-xs leading-relaxed text-muted">
         {lang === "ar"
           ? "ملاحظة الصلاحيات: منع الإزالة يعتمد على Device Owner فقط؛ لا تعوّضه صلاحيات Accessibility أو تجاهل تحسين البطارية أو Foreground Service. قفل التطبيقات يحتاج تفعيل Accessibility يدويًا من شاشة أندرويد. لا يستطيع التطبيق منح نفسه هذه الصلاحيات."
