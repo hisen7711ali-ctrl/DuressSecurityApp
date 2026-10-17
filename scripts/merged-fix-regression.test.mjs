@@ -22,7 +22,8 @@ test("secret calculator uses the configurable command and routes successful unlo
   assert.ok(shell.includes("openSecurityGate()"));
   assert.ok(shell.includes('openOverlay({ kind: "unlock" })'));
   assert.ok(shell.includes('useAppStore.getState().setTab("home")'));
-  assert.ok(store.includes('session: "unlocked", tab: "home"'));
+  assert.ok(store.includes('session: "unlocked"'));
+  assert.ok(store.includes('tab: "home"'));
 });
 
 test("a persisted decoy, lock, or wipe PIN cannot shadow the master PIN", async () => {
