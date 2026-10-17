@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
@@ -142,9 +143,7 @@ export function FakeCalculator() {
       return;
     }
 
-    // Preserve repeated zeroes. Previously `expr === "0"` collapsed every
-    // subsequent zero into the same single character, so commands such as
-    // `00000000` could never be entered through the calculator.
+    // Preserve repeated zeroes: entering 00000000 must produce eight zeroes.
     const next = expr === "0" && key !== "0" && !operator ? key : expr + key;
     setExpr(next);
     setDisplay(next);
