@@ -62,7 +62,14 @@ export function classifyPin(pin: string, pins: PinMap): PinAction {
 
 export function validatePins(pins: PinMap): "duplicate" | null {
   const used = [pins.master, pins.duress, pins.lock, pins.format].filter(Boolean).map(normalizePin);
-  return new Set(used).size === used.length ? null : "duplicate";
+  if (new Set(used).size !== used.length) return "duplicate";
+  // Prefixes would make a short PIN auto-submit before a longer configured PIN could be entered.
+  for (let i = 0; i < used.length; i += 1) {
+    for (let j = i + 1; j < used.length; j += 1) {
+      if (used[i]!.startsWith(used[j]!) || used[j]!.startsWith(used[i]!)) return "duplicate";
+    }
+  }
+  return null;
 }
 
 export function startExtendedLock(now: number = Date.now(), durationMs: number = EXTENDED_LOCK_MS): SecurityState {

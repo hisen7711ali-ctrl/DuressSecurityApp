@@ -102,7 +102,7 @@ type PersistedSlice = {
   mainLockBackgroundPresetId: string | null; appLockBackgroundPresetId: string | null;
   mainLockBackgroundScale: number; mainLockBackgroundX: number; mainLockBackgroundY: number;
   appLockBackgroundScale: number; appLockBackgroundX: number; appLockBackgroundY: number;
-  pins: Pins; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
+  pins: Pins; pinLength: number; homeLockEnabled: boolean; appLockEnabled: boolean; overlayEnabled: boolean;
   preventUninstall: boolean; dedicatedDeviceMode: boolean; deviceOwner: boolean; overlayPermission: boolean; usagePermission: boolean;
   deviceAdmin: boolean; deviceSecure: boolean; accessibilityPermission: boolean; autostartPermission: boolean; notificationPermission: boolean;
   installedApps: DeviceApp[]; lockedPackages: string[]; kioskAllowedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
@@ -112,6 +112,7 @@ type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: 
 type Actions = {
   hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void; setBackgroundImage: (image: string | null, presetId?: string | null) => void;
   setLockBackground: (target: LockBackgroundTarget, image: string | null, presetId: string | null, transform: LockBackgroundTransform) => void;
+  setPinLength: (length: 4 | 7 | 10) => void;
   setTab: (tab: TabId) => void; setPanel: (panel: PanelId) => void; lockSession: () => void; setToast: (msg: string | null) => void;
   openOverlay: (req: OverlayRequest) => void; closeOverlay: () => void;
   submitPin: (pin: string) => "ok" | "duress" | "wipe" | "extended-lock" | "wrong" | "duplicate" | "lockout" | "need-master";
@@ -142,7 +143,7 @@ export const useAppStore = create<AppStore>()(
       lang: "ar", theme: "dark", backgroundImage: null, backgroundPresetId: null,
       mainLockBackgroundImage: null, appLockBackgroundImage: null, mainLockBackgroundPresetId: null, appLockBackgroundPresetId: null,
       mainLockBackgroundScale: 1, mainLockBackgroundX: 0, mainLockBackgroundY: 0, appLockBackgroundScale: 1, appLockBackgroundX: 0, appLockBackgroundY: 0,
-      pins: { ...DEFAULT_PINS }, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
+      pins: { ...DEFAULT_PINS }, pinLength: 4, homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
       deviceAdmin: false, deviceSecure: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], kioskAllowedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, lastCheckAt: nowIso(), maxAttempts: 3,
@@ -184,6 +185,7 @@ export const useAppStore = create<AppStore>()(
           autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
       },
       setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }), setBackgroundImage: (backgroundImage, backgroundPresetId = null) => set({ backgroundImage, backgroundPresetId }),
+      setPinLength: (length) => { if ([4, 7, 10].includes(length)) set({ pinLength: length }); },
       setLockBackground: (target, image, presetId, transform) => {
         const safe = {
           scale: Math.max(1, Math.min(2, Number(transform.scale) || 1)),
@@ -291,7 +293,7 @@ export const useAppStore = create<AppStore>()(
       submitPin: (pin) => {
         const state = get(); if (state.session === "extlocked") return "lockout"; if (Date.now() < state.lockoutUntil) return "lockout";
         const overlay = state.overlay;
-        if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== 4) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
+        if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== state.pinLength) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
         const action = serviceClassifyPin(pin, state.pins);
         if (action === "wipe") { get().beginEmergencyWipe(); return "wipe"; }
         if (action === "extended-lock") {
@@ -382,7 +384,7 @@ export const useAppStore = create<AppStore>()(
           lang: "ar", theme: "dark", backgroundImage: null, backgroundPresetId: null,
           mainLockBackgroundImage: null, appLockBackgroundImage: null, mainLockBackgroundPresetId: null, appLockBackgroundPresetId: null,
           mainLockBackgroundScale: 1, mainLockBackgroundX: 0, mainLockBackgroundY: 0, appLockBackgroundScale: 1, appLockBackgroundX: 0, appLockBackgroundY: 0,
-          pins: { ...DEFAULT_PINS },
+          pins: { ...DEFAULT_PINS }, pinLength: 4,
           homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true,
           preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false,
           overlayPermission: false, usagePermission: false, accessibilityPermission: false,
@@ -404,7 +406,7 @@ export const useAppStore = create<AppStore>()(
       tryBiometricUnlock: async () => { const state = get(); if (!state.biometricEnabled || state.session === "extlocked" || Date.now() < state.lockoutUntil) return false; const overlay = state.overlay; if (overlay && overlay.kind !== "unlock" && overlay.kind !== "app") return false; const ok = await nativeBridge.authenticateBiometric(get().lang === "ar" ? "افتح التطبيق" : "Unlock the app"); if (!ok) return false; if (!overlay || overlay.kind === "unlock") { set({ session: "unlocked", overlay: null, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, lastCheckAt: nowIso() }); return true; } if (overlay.kind === "app") { set({ overlay: null, openedApp: overlay.packageName, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0 }); return true; } return false; },
     }),
     {
-      name: "duress-security-app", storage: createJSONStorage(() => appStorage), version: 8,
+      name: "duress-security-app", storage: createJSONStorage(() => appStorage), version: 9,
       migrate: (persisted) => {
         const old = (persisted ?? {}) as Partial<PersistedSlice>;
         const p = (old.pins ?? {}) as Partial<Pins>;
@@ -420,6 +422,7 @@ export const useAppStore = create<AppStore>()(
           kioskAllowedPackages: Array.isArray(old.kioskAllowedPackages) ? old.kioskAllowedPackages.filter((p): p is string => typeof p === "string" && /^[A-Za-z0-9_.]+$/.test(p)).slice(0, 100) : [],
           mainLockBackgroundX: Math.max(-50, Math.min(50, Number(old.mainLockBackgroundX) || 0)),
           mainLockBackgroundY: Math.max(-50, Math.min(50, Number(old.mainLockBackgroundY) || 0)),
+          pinLength: [4, 7, 10].includes(Number(old.pinLength)) ? Number(old.pinLength) : 4,
           appLockBackgroundScale: Math.max(1, Math.min(2, Number(old.appLockBackgroundScale) || 1)),
           appLockBackgroundX: Math.max(-50, Math.min(50, Number(old.appLockBackgroundX) || 0)),
           appLockBackgroundY: Math.max(-50, Math.min(50, Number(old.appLockBackgroundY) || 0)),
@@ -429,7 +432,7 @@ export const useAppStore = create<AppStore>()(
         mainLockBackgroundImage: s.mainLockBackgroundImage, appLockBackgroundImage: s.appLockBackgroundImage,
         mainLockBackgroundPresetId: s.mainLockBackgroundPresetId, appLockBackgroundPresetId: s.appLockBackgroundPresetId,
         mainLockBackgroundScale: s.mainLockBackgroundScale, mainLockBackgroundX: s.mainLockBackgroundX, mainLockBackgroundY: s.mainLockBackgroundY,
-        appLockBackgroundScale: s.appLockBackgroundScale, appLockBackgroundX: s.appLockBackgroundX, appLockBackgroundY: s.appLockBackgroundY, kioskAllowedPackages: s.kioskAllowedPackages, pins: s.pins, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
+        appLockBackgroundScale: s.appLockBackgroundScale, appLockBackgroundX: s.appLockBackgroundX, appLockBackgroundY: s.appLockBackgroundY, kioskAllowedPackages: s.kioskAllowedPackages, pins: s.pins, pinLength: s.pinLength, homeLockEnabled: s.homeLockEnabled, appLockEnabled: s.appLockEnabled, overlayEnabled: s.overlayEnabled, installedApps: s.installedApps, lockedPackages: s.lockedPackages, ...(s.vaultEncrypted ? {} : { vault: s.vault }), vaultEncrypted: s.vaultEncrypted, vaultMigrationRequired: s.vaultMigrationRequired, failedAttempts: s.failedAttempts, lockoutUntil: s.lockoutUntil, lockoutLevel: s.lockoutLevel, lastCheckAt: s.lastCheckAt, maxAttempts: s.maxAttempts, lockTimeoutSec: s.lockTimeoutSec, biometricEnabled: s.biometricEnabled }),
     },
   ),
 );
