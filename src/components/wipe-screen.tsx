@@ -16,7 +16,15 @@ const OWNED_SECURE_KEYS = [
 async function verifyOwnedSecureStoreEmpty(): Promise<boolean> {
   for (const key of OWNED_SECURE_KEYS) {
     const result = await secureStorageGet(key);
-    if (!result.available || result.found) return false;
+    if (result.available) {
+      if (result.found) return false;
+      continue;
+    }
+    // removeOwned() deletes both app-owned records and the Android Keystore
+    // alias. After a confirmed clear, KEY_MISSING is the expected empty-store
+    // result; unrelated I/O/Keystore failures must still abort the reset.
+    if (result.reason === "KEY_MISSING") continue;
+    return false;
   }
   return true;
 }
