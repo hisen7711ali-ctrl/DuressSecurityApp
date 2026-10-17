@@ -225,7 +225,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Commit reviewed semver-safe dependency lockfile fixes
-        if: success() && github.ref == 'refs/heads/fix/maintenance-and-app-lock'
+        if: success() && (github.ref == 'refs/heads/fix/maintenance-and-app-lock' || github.ref == 'refs/heads/fix/owner-pin-routing-lock-icon-2026-10-17')
         shell: bash
         run: |
           if git diff --quiet -- package-lock.json; then
