@@ -90,12 +90,16 @@ test('emergency reset restores first-run defaults without attempting a device fa
   assert.ok(store.includes('maxAttempts: 3, lockTimeoutSec: 20, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0'));
   assert.ok(store.includes('homeLockEnabled: true, appLockEnabled: true, overlayEnabled: true'));
   const wipeScreen = await read('src/components/wipe-screen.tsx');
+  const settings = await read('src/components/settings-screen.tsx');
   const secureStorage = await read('android-native/plugin/src/main/java/com/duresssecurity/admin/SecureStorage.kt');
   assert.ok(wipeScreen.includes('result.reason === "KEY_MISSING"'));
   assert.ok(wipeScreen.includes("if (result.available)"));
   assert.ok(wipeScreen.includes("if (result.found) return false"));
   assert.ok(wipeScreen.includes("if (!acknowledged || wipeBusy) return"));
   assert.ok(wipeScreen.includes("disabled={!acknowledged || wipeBusy}"));
+  assert.ok(wipeScreen.includes("wipeInProgress.current = true"));
+  assert.ok(store.includes('type: "begin-emergency-wipe"'));
+  assert.ok(settings.includes('action: { type: "begin-emergency-wipe" }'));
   assert.doesNotMatch(wipeScreen, /useEffect\(\(\) => \{\s*void performWipe\(\)/, "mounting the emergency screen must not erase data");
   assert.ok(secureStorage.includes("preferences.edit().clear().commit()"));
   assert.ok(secureStorage.includes("deleteEntry(KEY_ALIAS)"));
