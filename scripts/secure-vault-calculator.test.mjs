@@ -24,6 +24,8 @@ test('calculator remains the ordinary startup screen and its secret command foll
   assert.ok(shell.includes('if (pendingSecurityGate) return <LockGate />'));
   assert.ok(shell.includes('if (overlay?.kind === "unlock") return <LockGate />'));
   assert.ok(wrapper.includes('sequenceRef.current === calculatorCommand'));
+  assert.ok(wrapper.includes('button?.getAttribute("aria-label")?.trim() || button?.textContent?.trim()'));
+  assert.ok(baseCalculator.includes('aria-label={label === "⌫" ? "Delete" : label === "±" ? "Toggle sign" : label}'));
   assert.ok(wrapper.includes('calculatorCommandReady'));
   assert.ok(!baseCalculator.includes('OWNER_TRIGGER'));
   assert.ok(!baseCalculator.includes('20272006'));
