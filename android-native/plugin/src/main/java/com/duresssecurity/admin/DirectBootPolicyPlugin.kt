@@ -14,6 +14,28 @@ class DirectBootPolicyPlugin : Plugin() {
     private fun prefs() = context.createDeviceProtectedStorageContext()
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    override fun load() {
+        super.load()
+        // Refresh the minimal policy whenever the WebView/native bridge starts.
+        // Private PINs, vault keys and other secrets remain in credential-encrypted storage.
+        try {
+            val raw = SecureStorage(context).get("duress-security-app") ?: return
+            val root = JSONObject(raw)
+            val state = root.optJSONObject("state") ?: root
+            val enabled = state.optBoolean("appLockEnabled", false)
+            val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
+            val safe = JSONArray()
+            for (i in 0 until packages.length()) {
+                val pkg = packages.optString(i).trim()
+                if (pkg.matches(Regex("^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+$"))) safe.put(pkg)
+            }
+            prefs().edit().putBoolean(KEY_ENABLED, enabled).putString(KEY_PACKAGES, safe.toString()).apply()
+        } catch (_: Exception) {
+            // During Direct Boot the credential-encrypted store can be unavailable;
+            // keep the last device-protected policy instead of treating it as empty.
+        }
+    }
+
     @PluginMethod
     fun setPolicy(call: PluginCall) {
         val enabled = call.getBoolean("appLockEnabled", false) ?: false
