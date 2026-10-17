@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Fingerprint, ShieldCheck } from "lucide-react";
 import { ToggleRow } from "@/components/apps-screen";
 import { useAppStore, type PermKey } from "@/lib/store";
@@ -6,13 +6,53 @@ import { useCopy } from "@/lib/use-copy";
 import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
 import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
 import { BACKGROUND_PRESETS, type BackgroundPreset } from "@/lib/background-presets";
+import { loadFailedAttemptHistory, type SecurityAttemptRecord } from "@/lib/security-audit";
+
+function presetImageSource(preset: BackgroundPreset): string {
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(preset.svg);
+}
+
+function imageFileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    image.onload = () => {
+      try {
+        if (!image.naturalWidth || !image.naturalHeight) throw new Error("INVALID_IMAGE");
+        const ratio = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("CANVAS_UNAVAILABLE");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        let encoded = canvas.toDataURL("image/jpeg", 0.78);
+        if (encoded.length > 850_000) encoded = canvas.toDataURL("image/jpeg", 0.56);
+        if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
+        resolve(encoded);
+      } catch (error) { reject(error); }
+      finally { cleanup(); }
+    };
+    image.onerror = () => { cleanup(); reject(new Error("IMAGE_LOAD_FAILED")); };
+    image.src = objectUrl;
+  });
+}
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
   const theme = useAppStore((s) => s.theme);
-  const backgroundImage = useAppStore((s) => s.backgroundImage);
-  const backgroundPresetId = useAppStore((s) => s.backgroundPresetId);
-  const setBackgroundImage = useAppStore((s) => s.setBackgroundImage);
+  const mainLockBackgroundImage = useAppStore((s) => s.mainLockBackgroundImage);
+  const appLockBackgroundImage = useAppStore((s) => s.appLockBackgroundImage);
+  const mainLockBackgroundPresetId = useAppStore((s) => s.mainLockBackgroundPresetId);
+  const appLockBackgroundPresetId = useAppStore((s) => s.appLockBackgroundPresetId);
+  const mainLockBackgroundScale = useAppStore((s) => s.mainLockBackgroundScale);
+  const mainLockBackgroundX = useAppStore((s) => s.mainLockBackgroundX);
+  const mainLockBackgroundY = useAppStore((s) => s.mainLockBackgroundY);
+  const appLockBackgroundScale = useAppStore((s) => s.appLockBackgroundScale);
+  const appLockBackgroundX = useAppStore((s) => s.appLockBackgroundX);
+  const appLockBackgroundY = useAppStore((s) => s.appLockBackgroundY);
+  const setLockBackground = useAppStore((s) => s.setLockBackground);
   const setTheme = useAppStore((s) => s.setTheme);
   const setLang = useAppStore((s) => s.setLang);
   const setPanel = useAppStore((s) => s.setPanel);
@@ -29,54 +69,89 @@ export function SettingsScreen() {
   const autostartPermission = useAppStore((s) => s.autostartPermission);
   const notificationPermission = useAppStore((s) => s.notificationPermission);
   const openOverlay = useAppStore((s) => s.openOverlay);
-  const lockSession = useAppStore((s) => s.lockSession);
   const biometricEnabled = useAppStore((s) => s.biometricEnabled);
   const setBiometricEnabled = useAppStore((s) => s.setBiometricEnabled);
   const requestDeviceAdminNative = useAppStore((s) => s.requestDeviceAdminNative);
   const setToast = useAppStore((s) => s.setToast);
   const native = isNativeAndroid();
+  const [backgroundTarget, setBackgroundTarget] = useState<"main" | "app">("main");
+  const [backgroundDraftImage, setBackgroundDraftImage] = useState<string | null>(null);
+  const [backgroundDraftPresetId, setBackgroundDraftPresetId] = useState<string | null>(null);
+  const [backgroundScale, setBackgroundScale] = useState(1);
+  const [backgroundX, setBackgroundX] = useState(0);
+  const [backgroundY, setBackgroundY] = useState(0);
+  const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);
+  const [backgroundPreviewApproved, setBackgroundPreviewApproved] = useState(false);
+  const [failedHistory, setFailedHistory] = useState<SecurityAttemptRecord[] | null>(null);
+
+  const storedLockImage = backgroundTarget === "main" ? mainLockBackgroundImage : appLockBackgroundImage;
+  const storedLockPreset = backgroundTarget === "main" ? mainLockBackgroundPresetId : appLockBackgroundPresetId;
+  const storedScale = backgroundTarget === "main" ? mainLockBackgroundScale : appLockBackgroundScale;
+  const storedX = backgroundTarget === "main" ? mainLockBackgroundX : appLockBackgroundX;
+  const storedY = backgroundTarget === "main" ? mainLockBackgroundY : appLockBackgroundY;
+
+  useEffect(() => {
+    const preset = storedLockPreset ? BACKGROUND_PRESETS.find((item) => item.id === storedLockPreset) : undefined;
+    setBackgroundDraftImage(storedLockImage ?? (preset ? presetImageSource(preset) : null));
+    setBackgroundDraftPresetId(storedLockPreset ?? null);
+    setBackgroundScale(storedScale || 1);
+    setBackgroundX(storedX || 0);
+    setBackgroundY(storedY || 0);
+    setBackgroundPreviewApproved(false);
+    setBackgroundPreviewOpen(false);
+  }, [backgroundTarget, storedLockImage, storedLockPreset, storedScale, storedX, storedY]);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => { void loadFailedAttemptHistory().then((items) => { if (active) setFailedHistory(items); }); };
+    refresh();
+    window.addEventListener("duress-security-audit-updated", refresh);
+    return () => { active = false; window.removeEventListener("duress-security-audit-updated", refresh); };
+  }, []);
 
   async function onBackgroundImageSelected(input: HTMLInputElement) {
     clearDocumentPicker();
-    const file = input.files?.[0]; input.value = "";
-    if (!file) {
-      const current = useAppStore.getState();
-      if (current.session === "unlocked") current.lockSession();
-      return;
-    }
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
     if (!file.type.startsWith("image/")) { setToast(lang === "ar" ? "اختر ملف صورة فقط." : "Select an image file."); return; }
     if (file.size > 20 * 1024 * 1024) { setToast(lang === "ar" ? "الصورة الأصلية أكبر من 20 ميغابايت." : "The source image exceeds 20 MB."); return; }
     try {
-      const bitmap = await createImageBitmap(file);
-      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement("canvas"); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d"); if (!context) throw new Error("CANVAS_UNAVAILABLE");
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
-      let encoded = canvas.toDataURL("image/jpeg", 0.72); if (encoded.length > 850_000) encoded = canvas.toDataURL("image/jpeg", 0.52);
-      if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
-      setBackgroundImage(encoded); setToast(lang === "ar" ? "تم تحديث خلفية التطبيق." : "App background updated.");
-    } catch { setToast(lang === "ar" ? "تعذّر معالجة الصورة. جرّب صورة أصغر أو بصيغة أخرى." : "Could not process the image. Try a smaller image or another format."); }
+      const compressed = await imageFileToDataUrl(file);
+      setBackgroundDraftImage(compressed);
+      setBackgroundDraftPresetId(null);
+      setBackgroundPreviewApproved(false);
+      setBackgroundPreviewOpen(false);
+      setToast(lang === "ar" ? "تم تجهيز الصورة للمعاينة؛ لم تُحفظ بعد." : "Image ready to preview; it has not been saved yet.");
+    } catch {
+      setToast(lang === "ar" ? "تعذّر قراءة الصورة. جرّب صورة أصغر أو بصيغة أخرى." : "Could not read the image. Try a smaller image or another format.");
+    }
   }
 
-  async function onBackgroundPresetSelected(preset: BackgroundPreset) {
-    try {
-      const bitmap = await createImageBitmap(new Blob([preset.svg], { type: "image/svg+xml" }));
-      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d");
-      if (!context) { bitmap.close(); throw new Error("CANVAS_UNAVAILABLE"); }
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      let encoded = canvas.toDataURL("image/jpeg", 0.72);
-      if (encoded.length > 850_000) encoded = canvas.toDataURL("image/jpeg", 0.52);
-      if (encoded.length > 1_000_000) throw new Error("IMAGE_TOO_LARGE");
-      setBackgroundImage(encoded, preset.id);
-      setToast(lang === "ar" ? "تم تطبيق الخلفية." : "Background applied.");
-    } catch {
-      setToast(lang === "ar" ? "تعذّر تطبيق الخلفية الجاهزة." : "Could not apply the preset background.");
-    }
+  function onBackgroundPresetSelected(preset: BackgroundPreset) {
+    setBackgroundDraftImage(presetImageSource(preset));
+    setBackgroundDraftPresetId(preset.id);
+    setBackgroundPreviewApproved(false);
+    setBackgroundPreviewOpen(false);
+  }
+
+  function applyLockBackground() {
+    if (!backgroundDraftImage || !backgroundPreviewApproved) return;
+    setLockBackground(backgroundTarget, backgroundDraftImage, backgroundDraftPresetId, { scale: backgroundScale, x: backgroundX, y: backgroundY });
+    setBackgroundPreviewOpen(false);
+    setToast(lang === "ar" ? "تم حفظ الخلفية لهذا النوع من القفل." : "Background saved for this lock type.");
+  }
+
+  function resetLockBackground() {
+    setLockBackground(backgroundTarget, null, null, { scale: 1, x: 0, y: 0 });
+    setBackgroundDraftImage(null);
+    setBackgroundDraftPresetId(null);
+    setBackgroundScale(1);
+    setBackgroundX(0);
+    setBackgroundY(0);
+    setBackgroundPreviewApproved(false);
+    setBackgroundPreviewOpen(false);
+    setToast(lang === "ar" ? "تمت استعادة الخلفية الافتراضية لهذا القفل." : "Default background restored for this lock.");
   }
 
   async function onActivateDeviceAdmin() {
@@ -172,25 +247,51 @@ export function SettingsScreen() {
           </div>
         </div>
         <div className="border-t border-line px-4 py-3">
-          <p className="text-sm">{lang === "ar" ? "خلفية مخصصة" : "Custom background"}</p>
-          <p className="mt-1 text-xs leading-5 text-muted">{lang === "ar" ? "اختر صورة من الجهاز؛ تُضغط محليًا وتحفظ ضمن إعدادات التطبيق." : "Choose an image from the device; it is compressed locally and saved in app settings."}</p>
-          <input type="file" accept="image/*" className="mt-3 block w-full text-xs text-muted file:me-3 file:rounded-md file:border-0 file:bg-cyan file:px-3 file:py-2 file:font-semibold file:text-night" onClick={beginDocumentPicker} onChange={(event) => void onBackgroundImageSelected(event.currentTarget)} />
+          <p className="text-sm font-semibold">{lang === "ar" ? "خلفيات القفل" : "Lock backgrounds"}</p>
+          <p className="mt-1 text-xs leading-5 text-muted">{lang === "ar" ? "إعداد مستقل لكل قفل. اختر صورة أو خلفية جاهزة، عدّل القص والحجم، افتح المعاينة، ثم اضغط تطبيق للحفظ." : "Each lock has independent settings. Pick an image or preset, adjust crop and scale, preview, then Apply to save."}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-navy p-1">
+            <button type="button" onClick={() => setBackgroundTarget("main")} aria-pressed={backgroundTarget === "main"} className={"rounded-md px-2 py-2 text-xs font-semibold " + (backgroundTarget === "main" ? "bg-cyan text-night" : "text-muted")}>{lang === "ar" ? "قفل التطبيق الرئيسي" : "Main app lock"}</button>
+            <button type="button" onClick={() => setBackgroundTarget("app")} aria-pressed={backgroundTarget === "app"} className={"rounded-md px-2 py-2 text-xs font-semibold " + (backgroundTarget === "app" ? "bg-cyan text-night" : "text-muted")}>{lang === "ar" ? "قفل التطبيقات" : "App Lock"}</button>
+          </div>
+          <label className="mt-3 block text-xs font-semibold text-muted">{lang === "ar" ? "اختيار صورة من المعرض" : "Choose image from gallery"}</label>
+          <input type="file" accept="image/*" className="mt-2 block w-full text-xs text-muted file:me-3 file:rounded-md file:border-0 file:bg-cyan file:px-3 file:py-2 file:font-semibold file:text-night" onClick={beginDocumentPicker} onChange={(event) => void onBackgroundImageSelected(event.currentTarget)} />
           <p className="mt-3 text-xs font-semibold text-muted">{lang === "ar" ? "خلفيات جاهزة" : "Built-in backgrounds"}</p>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {BACKGROUND_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                aria-pressed={backgroundPresetId === preset.id}
-                onClick={() => void onBackgroundPresetSelected(preset)}
-                style={{ backgroundImage: "linear-gradient(0deg, rgba(2,8,16,.8), rgba(2,8,16,.08)), url(\"data:image/svg+xml," + encodeURIComponent(preset.svg) + "\")" }}
-                className={"flex h-20 items-end rounded-lg border bg-cover bg-center p-2 text-start text-[11px] font-semibold text-white " + (backgroundPresetId === preset.id ? "border-cyan ring-2 ring-cyan/40" : "border-line")}
-              >
+              <button key={preset.id} type="button" aria-pressed={backgroundDraftPresetId === preset.id} onClick={() => onBackgroundPresetSelected(preset)} style={{ backgroundImage: "linear-gradient(0deg, rgba(2,8,16,.8), rgba(2,8,16,.08)), url('" + presetImageSource(preset) + "')" }} className={"flex h-20 items-end rounded-lg border bg-cover bg-center p-2 text-start text-[11px] font-semibold text-white " + (backgroundDraftPresetId === preset.id ? "border-cyan ring-2 ring-cyan/40" : "border-line")}>
                 {lang === "ar" ? preset.labelAr : preset.labelEn}
               </button>
             ))}
           </div>
-          {backgroundImage ? <button type="button" onClick={() => { setBackgroundImage(null); setToast(lang === "ar" ? "تمت استعادة الخلفية الافتراضية." : "Default background restored."); }} className="mt-3 h-9 rounded-md border border-line px-3 text-xs">{lang === "ar" ? "إزالة الخلفية المخصصة" : "Remove custom background"}</button> : null}
+          <div className="mt-4 rounded-xl border border-line bg-navy p-3">
+            <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{lang === "ar" ? "ضبط الصورة" : "Image framing"}</p><span className="text-[11px] text-muted">{Math.round(backgroundScale * 100)}%</span></div>
+            <label className="mt-3 block text-xs text-muted">{lang === "ar" ? "تكبير / تصغير" : "Zoom / scale"}</label>
+            <input aria-label={lang === "ar" ? "تكبير الخلفية" : "Background scale"} className="mt-1 w-full accent-cyan" type="range" min="1" max="2" step="0.05" value={backgroundScale} onChange={(e) => { setBackgroundScale(Number(e.target.value)); setBackgroundPreviewApproved(false); }} />
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div><label className="block text-xs text-muted">{lang === "ar" ? "تحريك أفقي" : "Horizontal position"}</label><input aria-label={lang === "ar" ? "تحريك الخلفية أفقياً" : "Horizontal image position"} className="mt-1 w-full accent-cyan" type="range" min="-50" max="50" step="1" value={backgroundX} onChange={(e) => { setBackgroundX(Number(e.target.value)); setBackgroundPreviewApproved(false); }} /></div>
+              <div><label className="block text-xs text-muted">{lang === "ar" ? "تحريك عمودي" : "Vertical position"}</label><input aria-label={lang === "ar" ? "تحريك الخلفية عمودياً" : "Vertical image position"} className="mt-1 w-full accent-cyan" type="range" min="-50" max="50" step="1" value={backgroundY} onChange={(e) => { setBackgroundY(Number(e.target.value)); setBackgroundPreviewApproved(false); }} /></div>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button type="button" disabled={!backgroundDraftImage} onClick={() => { setBackgroundPreviewApproved(true); setBackgroundPreviewOpen(true); }} className="h-10 flex-1 rounded-lg border border-cyan/50 bg-cyan/10 text-xs font-semibold text-cyan disabled:opacity-40">{lang === "ar" ? "معاينة" : "Preview"}</button>
+            <button type="button" disabled={!backgroundDraftImage || !backgroundPreviewApproved} onClick={applyLockBackground} className="h-10 flex-1 rounded-lg bg-cyan text-xs font-semibold text-night disabled:opacity-40">{lang === "ar" ? "تطبيق" : "Apply"}</button>
+            <button type="button" onClick={resetLockBackground} className="h-10 rounded-lg border border-line px-3 text-xs">{lang === "ar" ? "افتراضية" : "Reset"}</button>
+          </div>
+          {backgroundPreviewOpen ? <div role="dialog" aria-modal="true" aria-label={lang === "ar" ? "معاينة خلفية القفل" : "Lock background preview"} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4" onClick={() => setBackgroundPreviewOpen(false)}>
+            <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-4" onClick={(event) => event.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between gap-2"><h3 className="font-semibold">{lang === "ar" ? "معاينة على أبعاد الهاتف" : "Phone-sized preview"}</h3><button type="button" onClick={() => setBackgroundPreviewOpen(false)} className="grid size-9 place-items-center rounded-lg border border-line" aria-label={lang === "ar" ? "إغلاق المعاينة" : "Close preview"}>×</button></div>
+              <div className="relative mx-auto aspect-[9/19] w-full max-w-[230px] overflow-hidden rounded-[2rem] border-[5px] border-black bg-mountains shadow-2xl">
+                {backgroundDraftImage ? <img src={backgroundDraftImage} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: (50 + backgroundX) + "% " + (50 + backgroundY) + "%", transform: "scale(" + backgroundScale + ")" }} /> : null}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/20 to-black/65" />
+                <div className="relative z-10 flex h-full flex-col items-center justify-between px-4 py-8 text-center text-white">
+                  <div><p className="text-xs opacity-80">9:41</p><p className="mt-2 text-2xl font-semibold">09:41</p><p className="mt-1 text-xs opacity-80">{lang === "ar" ? "أدخل رمز الحماية" : "Enter security PIN"}</p></div>
+                  <div className="w-full"><div className="mb-5 flex justify-center gap-3">{[1,2,3,4].map((n) => <span key={n} className="size-2.5 rounded-full border border-white/70" />)}</div><div className="grid grid-cols-3 gap-2">{["1","2","3","4","5","6","7","8","9","•","0","⌫"].map((n) => <span key={n} className="rounded-full bg-white/15 py-2 text-sm backdrop-blur">{n}</span>)}</div></div>
+                </div>
+              </div>
+              <p className="mt-3 text-center text-xs text-muted">{lang === "ar" ? "هذه معاينة للتصميم والقص؛ الحفظ لا يحدث حتى تضغط تطبيق." : "This previews the design and crop; nothing is saved until you press Apply."}</p>
+              <button type="button" onClick={() => setBackgroundPreviewOpen(false)} className="mt-3 h-10 w-full rounded-lg border border-line text-sm">{lang === "ar" ? "رجوع للإعدادات" : "Back to settings"}</button>
+            </div>
+          </div> : null}
         </div>
       </section>
 
@@ -306,6 +407,12 @@ export function SettingsScreen() {
           }}
         />
         <p className="mt-3 text-xs leading-relaxed text-muted">{t.biometricNote}</p>
+      </section>
+
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-cyan">{lang === "ar" ? "تاريخ المحاولات الفاشلة المحلي والمشفّر" : "Local encrypted failed-attempt history"}</h2><button type="button" className="rounded-md border border-line px-3 py-2 text-xs" onClick={() => { void loadFailedAttemptHistory().then(setFailedHistory); }}>{lang === "ar" ? "تحديث" : "Refresh"}</button></div>
+        <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar" ? "يحفظ التطبيق وقت المحاولة واسم الحزمة وعدد المحاولات وطول الإدخال فقط داخل التخزين الآمن في أندرويد. لا نحفظ أرقام PIN نفسها حتى لا تتحول السجلات إلى سجل كلمات سر." : "Android secure storage keeps the time, app package, attempt count and entered length only. PIN digits are never logged."}</p>
+        {failedHistory === null ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "السجل المشفّر متاح داخل نسخة أندرويد فقط." : "The encrypted journal is available only in the Android app."}</p> : failedHistory.length === 0 ? <p className="mt-3 text-xs text-muted">{lang === "ar" ? "لا توجد محاولات مسجلة." : "No attempts recorded."}</p> : <div className="mt-3 max-h-64 space-y-2 overflow-auto">{failedHistory.slice(-10).reverse().map((entry, index) => <div key={entry.at + "-" + entry.packageName + "-" + index} className="rounded-lg border border-line px-3 py-2"><p className="break-all text-xs font-semibold">{entry.packageName}</p><p className="mt-1 text-[11px] text-muted">{new Date(entry.at).toLocaleString(lang === "ar" ? "ar" : "en-US")} · {lang === "ar" ? "المحاولة" : "Attempt"} {entry.attemptNumber} · {lang === "ar" ? "طول الإدخال" : "Input length"} {entry.attemptedLength}</p><p className="mt-1 text-[11px] text-muted">{entry.outcome === "rate-limited" ? (lang === "ar" ? "تم تفعيل الإيقاف المؤقت" : "Rate limited") : (lang === "ar" ? "رمز غير صحيح" : "Rejected")}</p></div>)}</div>}
       </section>
 
       <p className="px-1 text-xs leading-relaxed text-muted">
