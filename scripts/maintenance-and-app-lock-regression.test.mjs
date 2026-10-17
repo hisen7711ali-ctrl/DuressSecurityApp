@@ -41,8 +41,8 @@ test("native app-lock gate uses an on-screen keypad instead of the system keyboa
   assert.match(source, /wipePin/);
   assert.match(source, /dispatchOwnerPinAction\(targetPackage, typed\)/);
   assert.match(source, /performHapticFeedback/);
-  assert.match(source, /android\\.R\\.drawable\\.ic_lock_lock/);
-  assert.match(source, /title\\.setOnClickListener/);
+  assert.ok(source.includes("android.R.drawable.ic_lock_lock"));
+  assert.ok(source.includes("title.setOnClickListener"));
 });
 
 test("native app-lock gate does not dismiss on its own overlay package event", async () => {
