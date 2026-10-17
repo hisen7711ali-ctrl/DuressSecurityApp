@@ -15,7 +15,7 @@ test("protected-app gate is target-aware and routes 5555 to the shared maintenan
   assert.match(service, /TARGET_MAINTENANCE_KEY/);
   assert.match(service, /maintenancePinControls/);
   assert.match(service, /startMaintenanceTicker/);
-  assert.match(service, /title\\.setOnClickListener/);
+  assert.ok(service.includes("title.setOnClickListener"));
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));
   assert.ok(verify.includes("maintenanceUntil == null && policy.extendedLockPin?.let"));
   assert.ok(verify.includes("dispatchOwnerPinAction(targetPackage, typed)"));
