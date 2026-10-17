@@ -22,7 +22,7 @@ import {
 import * as nativeBridge from "@/lib/native-bridge";
 import { appStorage, getStoredValue, setStoredValue } from "@/lib/app-storage";
 import { deleteEncryptedAttachment, lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault } from "@/lib/vault-crypto";
-import { loadConsecutiveMainFailedAttempts } from "@/lib/security-audit";
+import { loadConsecutiveMainFailedAttempts, recordSuccessfulMainUnlock } from "@/lib/security-audit";
 
 export const SECURITY_STORAGE_KEY = "duress-security-state";
 
@@ -228,6 +228,21 @@ export const useAppStore = create<AppStore>()(
             toast: shouldLockOut
               ? (state.lang === "ar" ? `تم إيقاف محاولات الاسترداد مؤقتًا لمدة ${Math.ceil(delayMs / 1000)} ثانية.` : `Recovery attempts paused for ${Math.ceil(delayMs / 1000)} seconds.`)
               : null,
+          });
+          return false;
+        }
+        if (nativeBridge.isNativeAndroid() && !(await recordSuccessfulMainUnlock())) {
+          set({
+            ready: true,
+            session: "storage-error",
+            storageErrorCode: "FAILED_ATTEMPT_HISTORY_WRITE_FAILED",
+            overlay: null,
+            openedApp: null,
+            vaultOpen: false,
+            vaultCryptoReady: false,
+            toast: state.lang === "ar"
+              ? "تعذّر حفظ إعادة ضبط عدّاد المحاولات؛ بقيت الحماية مفعّلة."
+              : "Could not save the attempt-counter reset; protection remains enabled.",
           });
           return false;
         }
