@@ -134,6 +134,9 @@ class AppLockAccessibilityService : AccessibilityService() {
         val wipePin: String?,
         val biometricEnabled: Boolean,
         val maintenancePackages: Map<String, Long>,
+        val pinLength: Int,
+        val maxAttempts: Int,
+        val lockTimeoutSec: Int,
     )
     private data class AttemptState(val attempts: Int, val blockedUntil: Long)
 
@@ -177,9 +180,18 @@ class AppLockAccessibilityService : AccessibilityService() {
                 wipePin = pins.optString("format").takeIf { it.isNotBlank() },
                 biometricEnabled = state.optBoolean("biometricEnabled", false),
                 maintenancePackages = maintenance,
+                pinLength = state.optInt("pinLength", 4).takeIf { it == 4 || it == 7 || it == 10 } ?: 4,
+                maxAttempts = state.optInt("maxAttempts", 3).takeIf { it == 3 || it == 4 || it == 7 || it == 10 } ?: 3,
+                lockTimeoutSec = state.optInt("lockTimeoutSec", 20).takeIf { it == 10 || it == 20 || it == 30 || it == 60 || it == 300 } ?: 20,
             )
         } catch (_: Exception) { null }
     }
+
+    private fun configuredPins(policy: Policy): List<String> =
+        listOfNotNull(policy.masterPin, policy.duressPin, policy.extendedLockPin, policy.wipePin).map(::normalizePin)
+
+    private fun maxPinInputLength(policy: Policy): Int =
+        maxOf(policy.pinLength, configuredPins(policy).maxOfOrNull { it.length } ?: policy.pinLength).coerceIn(4, 10)
 
     private fun targetMaintenanceUntil(policy: Policy, targetPackage: String): Long? {
         val until = policy.maintenancePackages[targetPackage] ?: return null
@@ -234,6 +246,8 @@ class AppLockAccessibilityService : AccessibilityService() {
         attempts = persistedAttempts.attempts
         blockedUntil = persistedAttempts.blockedUntil
         val isArabic = currentLanguage().equals("ar", ignoreCase = true)
+        val gatePolicy = readPolicy()
+        val pinDotCount = gatePolicy?.let(::maxPinInputLength) ?: 4
         val appLabel = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(targetPackage, 0)).toString() } catch (_: Exception) { targetPackage }
         val appIcon = try { packageManager.getApplicationIcon(targetPackage) } catch (_: Exception) { null }
 
@@ -276,7 +290,7 @@ class AppLockAccessibilityService : AccessibilityService() {
 
         val dots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8)) }
         pinDotViews.clear()
-        repeat(4) {
+        repeat(pinDotCount) {
             val dot = View(this).apply { background = makeDotBackground(false) }
             dots.addView(dot, LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginStart = dp(8); marginEnd = dp(8) }); pinDotViews.add(dot)
         }
@@ -296,7 +310,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
             numberPad.addView(row, LinearLayout.LayoutParams(-2, -2))
         }
-        val biometricAvailable = !storageUnavailable && maintenanceUntil == null && readPolicy()?.biometricEnabled == true && BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+        val biometricAvailable = !storageUnavailable && maintenanceUntil == null && gatePolicy?.biometricEnabled == true && BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
         val biometricButton = if (biometricAvailable) Button(this).apply {
             text = if (isArabic) "استخدام البصمة" else "Use fingerprint"; isAllCaps = false; textSize = 14f; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.argb(26, 255, 255, 255)); setStroke(dp(1), Color.rgb(55, 76, 98)) }
@@ -360,17 +374,36 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun handleKey(targetPackage: String, key: String) {
         if (lockView == null || currentTarget != targetPackage) return
         if (blockedUntil > System.currentTimeMillis()) { showBlockedMessage(); return }
-        when (key) { "back" -> if (pinValue.isNotEmpty()) pinValue = pinValue.dropLast(1); "ok" -> { verifyPin(targetPackage); return }; else -> if (pinValue.length < 4) pinValue += key }
-        updatePinDots(); errorView?.text = " "
-        if (pinValue.length == 4) uiHandler.postDelayed({ if (lockView != null && currentTarget == targetPackage && pinValue.length == 4) verifyPin(targetPackage) }, 80L)
+        val policy = readPolicy()
+        val inputLimit = policy?.let(::maxPinInputLength) ?: 4
+        when (key) {
+            "back" -> if (pinValue.isNotEmpty()) pinValue = pinValue.dropLast(1)
+            "ok" -> { verifyPin(targetPackage); return }
+            else -> if (pinValue.length < inputLimit) pinValue += key
+        }
+        updatePinDots()
+        errorView?.text = " "
+        val current = readPolicy()
+        val shouldAutoVerify = current != null && pinValue.isNotEmpty() &&
+            (pinValue.length == current.pinLength || configuredPins(current).any { it == normalizePin(pinValue) })
+        if (shouldAutoVerify) {
+            val submitted = pinValue
+            uiHandler.postDelayed({
+                if (lockView != null && currentTarget == targetPackage && pinValue == submitted) verifyPin(targetPackage)
+            }, 80L)
+        }
     }
 
     private fun verifyPin(targetPackage: String) {
         val now = System.currentTimeMillis()
         if (now < blockedUntil) { showBlockedMessage(); return }
-        if (pinValue.length != 4) { errorView?.text = if (currentLanguage().equals("ar", true)) "أدخل أربعة رموز" else "Enter four characters"; return }
         val policy = readPolicy() ?: run { errorView?.text = if (currentLanguage().equals("ar", true)) "التخزين الآمن غير متاح" else "Secure storage is unavailable"; setKeypadEnabled(false); return }
-        val typed = normalizePin(pinValue); val master = normalizePin(policy.masterPin); val maintenanceUntil = targetMaintenanceUntil(policy, targetPackage)
+        val typed = normalizePin(pinValue)
+        if (typed.length != policy.pinLength && typed !in configuredPins(policy)) {
+            errorView?.text = if (currentLanguage().equals("ar", true)) "أدخل ${policy.pinLength} أرقام أو استخدم الرمز الحالي" else "Enter ${policy.pinLength} digits or use a current PIN"
+            pinValue = ""; updatePinDots(); return
+        }
+        val master = normalizePin(policy.masterPin); val maintenanceUntil = targetMaintenanceUntil(policy, targetPackage)
         if (typed == master) {
             if (maintenanceUntil != null && !clearTargetMaintenance(targetPackage)) { errorView?.text = if (currentLanguage().equals("ar", true)) "تعذّر حفظ إلغاء صيانة هذا التطبيق." else "Could not save maintenance recovery for this app."; return }
             unlockedTarget = targetPackage; clearAttemptState(targetPackage); attempts = 0; blockedUntil = 0L; dismissGate(); return
@@ -424,9 +457,12 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun recordFailedAttempt(targetPackage: String, now: Long, attemptedLength: Int) {
         attempts = (attempts + 1).coerceAtMost(1_000_000); pinValue = ""; updatePinDots()
-        appendAttemptHistory(targetPackage, attemptedLength, attempts, now, if (attempts >= 5) "rate-limited" else "rejected")
-        if (attempts >= 5) {
-            blockedUntil = now + 15_000L
+        val policy = readPolicy()
+        val attemptLimit = policy?.maxAttempts ?: 5
+        val waitMillis = (policy?.lockTimeoutSec?.toLong() ?: 15L) * 1000L
+        appendAttemptHistory(targetPackage, attemptedLength, attempts, now, if (attempts >= attemptLimit) "rate-limited" else "rejected")
+        if (attempts >= attemptLimit) {
+            blockedUntil = now + waitMillis
             if (!saveAttemptState(targetPackage, AttemptState(attempts, blockedUntil))) { blockUntilStorageRecovers(); return }
             setKeypadEnabled(false); showBlockedMessage(); startRetryTicker(targetPackage)
         } else {
