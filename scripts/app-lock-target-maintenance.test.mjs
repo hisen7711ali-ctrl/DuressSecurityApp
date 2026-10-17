@@ -28,7 +28,7 @@ test("protected-app gate routes maintenance per target, routes duress to the own
   const service = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/AppLockAccessibilityService.kt");
   assert.match(service, /policy\.extendedLockPin/);
   assert.match(service, /policy\.duressPin/);
-  assert.match(service, /policy\.wipePin/);
+  assert.match(service, /wipePin = pins\.optString\("format"\)/);
   assert.doesNotMatch(service, /typed\s*==\s*"5555"|typed\s*==\s*"4444"|typed\s*==\s*"7777"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
   const verify = service.slice(service.indexOf("private fun verifyPin"), service.indexOf("private fun recordFailedAttempt"));

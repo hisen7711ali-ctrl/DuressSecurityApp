@@ -24,7 +24,8 @@ test("extended lock shows a lock icon, PIN recovery and truthful maintenance cop
 test("device-level controls are not blocked by a test-device UI check", async () => {
   const source = await read("src/components/settings-screen.tsx");
   assert.match(source, /action: \{ type: "toggle-prevent", value \}/);
-  assert.match(source, /action: \{ type: "toggle-kiosk", value \}/);
+  const kiosk = await read("src/components/kiosk-screen.tsx");
+  assert.match(kiosk, /action: \{ type: "toggle-kiosk", value \}/);
   assert.doesNotMatch(source, /if \(!deviceOwner\) \{\s*setToast\(t\.deviceOwnerOnly/);
 });
 
@@ -217,7 +218,7 @@ test("App Lock 4444 returns to the owner flow while 5555 maintains only the targ
   assert.ok(verify.includes("if (isOwnerAction) { dispatchOwnerPinAction(targetPackage, typed); return }"));
   assert.ok(shell.includes("state.submitPin(pin)"));
   assert.ok(shell.includes("state.activateDuressMode()"));
-  assert.ok(shell.includes("state.beginEmergencyWipe()"));
+  assert.ok(!shell.includes("state.beginEmergencyWipe()"), "App Lock must not silently wipe device/app data from a generic PIN path");
   assert.ok(store.includes('session: "extlocked"'));
   assert.ok(store.includes("startExtendedLock(Date.now(), lockDurationMs())"));
 });
