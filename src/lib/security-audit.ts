@@ -1,6 +1,7 @@
 import * as nativeBridge from "@/lib/native-bridge";
 
 export const SECURITY_AUDIT_STORAGE_KEY = "duress-security-failed-attempt-history";
+export const MAIN_ATTEMPT_COUNTER_STORAGE_KEY = "duress-security-main-failed-attempt-count";
 const MAX_AUDIT_RECORDS = 200;
 const MAIN_APP_PACKAGE = "com.duresssecurity.app";
 
@@ -49,25 +50,10 @@ async function writeRecord(record: SecurityAttemptRecord): Promise<boolean> {
   return saved;
 }
 
-/** Never fall back to plaintext local storage if the Android secure store is unavailable. */
-export async function loadFailedAttemptHistory(): Promise<SecurityAttemptRecord[] | null> {
-  const journal = await readJournal();
-  // Successful-unlock markers are retained internally to calculate the
-  // consecutive-failure counter, but are not shown as failed attempts.
-  return journal === null ? null : journal.records.filter((record) => record.outcome === "rejected" || record.outcome === "rate-limited");
-}
-
-/**
- * Restore consecutive failures from the encrypted journal. A successful owner
- * unlock writes a marker, so an ordinary application restart cannot reset this
- * count. null means the secure journal could not be verified.
- */
-export async function loadConsecutiveMainFailedAttempts(): Promise<number | null> {
-  const journal = await readJournal();
-  if (journal === null) return null;
+function countMainFailuresAfterLastReset(records: SecurityAttemptRecord[]): number {
   let lastResetMarker = -1;
-  for (let i = journal.records.length - 1; i >= 0; i -= 1) {
-    const record = journal.records[i]!;
+  for (let i = records.length - 1; i >= 0; i -= 1) {
+    const record = records[i]!;
     if (
       record.context === "main" &&
       record.packageName === MAIN_APP_PACKAGE &&
@@ -77,28 +63,43 @@ export async function loadConsecutiveMainFailedAttempts(): Promise<number | null
       break;
     }
   }
-  if (lastResetMarker < 0) {
-    // Older app versions logged failures but not successful unlocks. Establish
-    // a one-time migration baseline so those legacy rows cannot falsely block
-    // the owner, while all failures recorded from now on remain restart-safe.
-    const initialized = await writeRecord({
-      at: Math.max(0, Math.floor(Date.now())),
-      packageName: MAIN_APP_PACKAGE,
-      context: "main",
-      attemptedLength: 0,
-      attemptNumber: 1,
-      outcome: "baseline",
-    });
-    return initialized ? 0 : null;
+  if (lastResetMarker < 0) return 0;
+  return records.slice(lastResetMarker + 1).filter((record) =>
+    record.context === "main" &&
+    record.packageName === MAIN_APP_PACKAGE &&
+    (record.outcome === "rejected" || record.outcome === "rate-limited"),
+  ).length;
+}
+
+/** Never fall back to plaintext local storage if the Android secure store is unavailable. */
+export async function loadFailedAttemptHistory(): Promise<SecurityAttemptRecord[] | null> {
+  const journal = await readJournal();
+  return journal === null ? null : journal.records.filter((record) =>
+    record.outcome === "rejected" || record.outcome === "rate-limited",
+  );
+}
+
+/**
+ * The main-lock counter is stored separately from the bounded display journal,
+ * so hundreds of app-lock events cannot evict the counter's reset marker. The
+ * journal is only used once to migrate older installs which have no counter key.
+ * null means the secure store could not be verified.
+ */
+export async function loadConsecutiveMainFailedAttempts(): Promise<number | null> {
+  if (!nativeBridge.isNativeAndroid()) return null;
+  const counterRead = await nativeBridge.secureStorageGet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY);
+  if (!counterRead.available && counterRead.reason !== "KEY_MISSING") return null;
+
+  if (counterRead.found && counterRead.value !== null) {
+    const count = Number(counterRead.value);
+    return Number.isSafeInteger(count) && count >= 0 && count <= 1_000_000 ? count : null;
   }
-  return journal.records
-    .slice(lastResetMarker + 1)
-    .filter((record) =>
-      record.context === "main" &&
-      record.packageName === MAIN_APP_PACKAGE &&
-      (record.outcome === "rejected" || record.outcome === "rate-limited"),
-    )
-    .length;
+
+  const journal = await readJournal();
+  if (journal === null) return null;
+  const migratedCount = countMainFailuresAfterLastReset(journal.records);
+  const saved = await nativeBridge.secureStorageSet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY, String(migratedCount));
+  return saved ? migratedCount : null;
 }
 
 /** Store metadata only; the attempted PIN itself is never retained. */
@@ -106,20 +107,27 @@ export async function recordFailedAttempt(input: Omit<SecurityAttemptRecord, "at
   at?: number;
   outcome: "rejected" | "rate-limited";
 }): Promise<boolean> {
-  const persistedAttemptCount = input.context === "main" ? await loadConsecutiveMainFailedAttempts() : null;
+  let attemptNumber = Math.max(1, Math.floor(input.attemptNumber));
+  if (input.context === "main") {
+    const previous = await loadConsecutiveMainFailedAttempts();
+    if (previous === null) return false;
+    attemptNumber = previous + 1;
+    if (!(await nativeBridge.secureStorageSet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY, String(attemptNumber)))) return false;
+  }
   return writeRecord({
     at: Math.max(0, Math.floor(input.at ?? Date.now())),
     packageName: input.packageName.slice(0, 240),
     context: input.context,
     attemptedLength: Math.max(0, Math.min(10, Math.floor(input.attemptedLength))),
-    // The journal count is authoritative for the main lock across lockout windows.
-    attemptNumber: Math.max(1, Math.floor(persistedAttemptCount === null ? input.attemptNumber : persistedAttemptCount + 1)),
+    attemptNumber,
     outcome: input.outcome,
   });
 }
 
-/** Reset the consecutive main-lock failure count after verified owner unlock. */
+/** Reset the independent restart-safe counter after verified owner unlock. */
 export async function recordSuccessfulMainUnlock(): Promise<boolean> {
+  if (!nativeBridge.isNativeAndroid()) return false;
+  if (!(await nativeBridge.secureStorageSet(MAIN_ATTEMPT_COUNTER_STORAGE_KEY, "0"))) return false;
   return writeRecord({
     at: Math.max(0, Math.floor(Date.now())),
     packageName: MAIN_APP_PACKAGE,
