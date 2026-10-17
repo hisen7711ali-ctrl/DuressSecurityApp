@@ -22,6 +22,7 @@ import {
 import * as nativeBridge from "@/lib/native-bridge";
 import { appStorage, getStoredValue, setStoredValue } from "@/lib/app-storage";
 import { deleteEncryptedAttachment, lockEncryptedVaultSession, persistEncryptedVault, unlockOrCreateEncryptedVault } from "@/lib/vault-crypto";
+import { loadConsecutiveMainFailedAttempts } from "@/lib/security-audit";
 
 export const SECURITY_STORAGE_KEY = "duress-security-state";
 
@@ -158,6 +159,12 @@ export const useAppStore = create<AppStore>()(
         const allowed = new Set(installed.map((a) => a.packageName));
         const loadedSecurity = await loadSecurity();
         if (loadedSecurity === null) { set({ ready: true, session: "storage-error", storageErrorCode: "SECURITY_RECORD_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false }); return; }
+        const encryptedFailureCount = nativeBridge.isNativeAndroid() ? await loadConsecutiveMainFailedAttempts() : null;
+        if (nativeBridge.isNativeAndroid() && encryptedFailureCount === null) {
+          set({ ready: true, session: "storage-error", storageErrorCode: "FAILED_ATTEMPT_HISTORY_UNREADABLE", overlay: null, openedApp: null, vaultOpen: false,
+            toast: get().lang === "ar" ? "تعذّر قراءة سجل المحاولات المشفّر؛ تم إيقاف الدخول حفاظًا على الحماية." : "The encrypted failed-attempt journal could not be read; access is paused for safety." });
+          return;
+        }
         const security = reconcile(loadedSecurity);
         if (security !== loadedSecurity) {
           const securitySaved = await saveSecurity(security);
@@ -174,7 +181,10 @@ export const useAppStore = create<AppStore>()(
         }
         set({ security, ready: true, storageErrorCode: null, pins: withPins(get().pins), installedApps: installed, lockedPackages: (get().lockedPackages ?? []).filter((p) => allowed.has(p)),
           session: homeLock ? "locked" : "unlocked", overlay: homeLock ? { kind: "unlock" } : null,
-          failedAttempts: get().lockoutUntil > Date.now() ? get().failedAttempts : 0, lockoutUntil: get().lockoutUntil > Date.now() ? get().lockoutUntil : 0,
+          failedAttempts: nativeBridge.isNativeAndroid()
+            ? Math.max(encryptedFailureCount ?? 0, get().lockoutUntil > Date.now() ? get().failedAttempts : 0)
+            : (get().lockoutUntil > Date.now() ? get().failedAttempts : 0),
+          lockoutUntil: get().lockoutUntil > Date.now() ? get().lockoutUntil : 0,
           openedApp: null, vaultOpen: false, vaultCryptoReady: false, panel: "none" });
       },
 
