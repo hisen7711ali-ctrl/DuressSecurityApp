@@ -8,6 +8,7 @@ import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
 import com.duresssecurity.admin.SecurityIntegrityPlugin
+import com.duresssecurity.admin.DirectBootPolicyPlugin
 import com.getcapacitor.BridgeActivity
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,6 +18,7 @@ class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
         registerPlugin(SecurityIntegrityPlugin::class.java)
+        registerPlugin(DirectBootPolicyPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
@@ -26,12 +28,7 @@ class MainActivity : BridgeActivity() {
             }, "DuressSecureWarmup").apply { isDaemon = true }.start()
         }
 
-        // Fail closed until the WebView reports that the calculator facade is visible.
         setScreenCaptureAllowed(false)
-        // Keep Android's real Keyguard in charge. The app must not show its
-        // maintenance/calculator UI over the system lock screen or wake the
-        // device automatically; DevicePolicyManager.lockNow() performs an
-        // explicit device-lock request only after the owner enabled Device Admin.
         deliverOwnerPinAction(intent)
         deliverAppLockBiometricTarget(intent)
     }
@@ -94,23 +91,11 @@ class MainActivity : BridgeActivity() {
     override fun onResume() {
         super.onResume()
         setScreenCaptureAllowed(false)
-        try {
-            bridge?.webView?.post {
-                bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-foreground'))", null)
-            }
-        } catch (_: Exception) { }
+        try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-foreground'))", null) } } catch (_: Exception) { }
     }
 
-    override fun onPause() {
-        setScreenCaptureAllowed(false)
-        super.onPause()
-    }
-
-    override fun onStop() {
-        setScreenCaptureAllowed(false)
-        try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-background'))", null) } } catch (_: Exception) { }
-        super.onStop()
-    }
+    override fun onPause() { setScreenCaptureAllowed(false); super.onPause() }
+    override fun onStop() { setScreenCaptureAllowed(false); try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-background'))", null) } } catch (_: Exception) { }; super.onStop() }
 
     companion object {
         const val EXTRA_OWNER_PIN_ACTION = "duress-security-owner-pin-action"
