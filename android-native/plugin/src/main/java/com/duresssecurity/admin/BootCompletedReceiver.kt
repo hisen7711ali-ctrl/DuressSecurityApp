@@ -8,17 +8,39 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.UserManager
 import androidx.core.app.NotificationCompat
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * After the user unlocks Android following reboot, checks the encrypted app lock record
- * and posts a visible notification if the in-app 30-day gate is still active. It does
- * not start an Activity from the background (new Android releases restrict that).
+ * Handles both Direct Boot and normal post-unlock boot.
+ * Only minimal App Lock policy is read from Device Protected Storage before unlock;
+ * private encrypted application state remains in credential-encrypted storage.
  */
 class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        when (intent.action) {
+            Intent.ACTION_LOCKED_BOOT_COMPLETED -> handleLockedBoot(context)
+            Intent.ACTION_BOOT_COMPLETED -> handleUnlockedBoot(context)
+        }
+    }
+
+    private fun handleLockedBoot(context: Context) {
+        val direct = context.createDeviceProtectedStorageContext()
+        val prefs = direct.getSharedPreferences(DirectBootPolicyPlugin.PREFS, Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean(DirectBootPolicyPlugin.KEY_ENABLED, false)
+        val raw = prefs.getString(DirectBootPolicyPlugin.KEY_PACKAGES, "[]") ?: "[]"
+        val packages = try { JSONArray(raw).length() } catch (_: Exception) { 0 }
+        if (!enabled || packages == 0) return
+        // Do not try to launch the WebView before unlock. The accessibility service
+        // is marked directBootAware; its enforcement layer can consume this minimal
+        // device-protected policy without exposing vault/PIN material.
+    }
+
+    private fun handleUnlockedBoot(context: Context) {
+        val userManager = context.getSystemService(Context.USER_SERVICE) as UserManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !userManager.isUserUnlocked) return
         val raw = try { SecureStorage(context).get("duress-security-state") } catch (_: Exception) { null } ?: return
         val until = try { JSONObject(raw).optLong("extendedLockUntil", 0L) } catch (_: Exception) { 0L }
         if (until <= System.currentTimeMillis()) return
