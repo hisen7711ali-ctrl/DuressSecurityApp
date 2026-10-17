@@ -49,6 +49,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     private var biometricUnlockReceiver: BroadcastReceiver? = null
     private var pendingBiometricTarget: String? = null
     private var activeMaintenanceUntil: Long? = null
+    private var configuredAppLanguage: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -126,6 +127,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         return try {
             val root = JSONObject(raw)
             val state = root.optJSONObject("state") ?: root
+            configuredAppLanguage = state.optString("lang").takeIf { it == "ar" || it == "en" }
             val packages = state.optJSONArray("lockedPackages") ?: JSONArray()
             val locked = buildSet {
                 for (index in 0 until packages.length()) packages.optString(index).takeIf { it.isNotBlank() }?.let(::add)
@@ -245,7 +247,7 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
         val countdown = TextView(this).apply { textSize = 12f; setTextColor(Color.rgb(40, 220, 230)); gravity = Gravity.CENTER; setPadding(0, dp(3), 0, dp(5)) }
         maintenanceCountdownView = if (maintenanceUntil != null) countdown else null
-        val quoteView = TextView(this).apply { text = FAITH_HINTS[0]; textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8)) }
+        val quoteView = TextView(this).apply { text = faithHints()[0]; textSize = 12f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(8)) }
         startQuoteTicker(quoteView)
 
         val dots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(5), 0, dp(8)) }
@@ -406,8 +408,9 @@ class AppLockAccessibilityService : AccessibilityService() {
             private var index = 0
             override fun run() {
                 if (lockView == null) { quoteTicker = null; return }
-                index = (index + 1) % FAITH_HINTS.size
-                view.text = FAITH_HINTS[index]
+                val hints = faithHints()
+                index = (index + 1) % hints.size
+                view.text = hints[index]
                 uiHandler.postDelayed(this, 5000L)
             }
         }
@@ -449,7 +452,13 @@ class AppLockAccessibilityService : AccessibilityService() {
     private fun dismissGate() { stopUiTickers(); val current = lockView; if (current != null) try { windowManager?.removeView(current) } catch (_: Exception) { }; lockView = null; errorView = null; maintenanceCountdownView = null; maintenanceRecoveryButton = null; maintenancePinControls = emptyList(); pinValue = ""; pinDotViews.clear(); keypadButtons.clear(); currentTarget = null; activeMaintenanceUntil = null }
     private fun blockUntilStorageRecovers() { blockedUntil = Long.MAX_VALUE; setKeypadEnabled(false); errorView?.text = if (currentLanguage().equals("ar", true)) "تعذر حفظ سجل المحاولات؛ أُوقفت المحاولات حفاظًا على الحماية." else "Attempt state could not be saved; retries are blocked to preserve protection." }
     private fun normalizePin(value: String): String = value.map { ch -> when (ch) { in '\u0660'..'\u0669' -> ('0'.code + ch.code - 0x0660).toChar(); in '\u06f0'..'\u06f9' -> ('0'.code + ch.code - 0x06f0).toChar(); else -> ch } }.joinToString("")
-    @Suppress("DEPRECATION") private fun currentLanguage(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) resources.configuration.locales[0]?.language ?: "en" else resources.configuration.locale?.language ?: "en"
+    @Suppress("DEPRECATION")
+    private fun currentLanguage(): String {
+        configuredAppLanguage?.takeIf { it == "ar" || it == "en" }?.let { return it }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) resources.configuration.locales[0]?.language ?: "en" else resources.configuration.locale?.language ?: "en"
+    }
+
+    private fun faithHints(): List<String> = if (currentLanguage().equals("ar", true)) FAITH_HINTS else FAITH_HINTS_EN
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
@@ -460,6 +469,12 @@ class AppLockAccessibilityService : AccessibilityService() {
             "قال ﷺ: «رِبَاطُ يَوْمٍ وَلَيْلَةٍ خَيْرٌ مِنْ صِيَامِ شَهْرٍ وَقِيَامِهِ»",
             "﴿وَمِنْ آيَاتِهِ أَنْ خَلَقَ لَكُم مِّنْ أَنفُسِكُمْ أَزْوَاجًا لِّتَسْكُنُوا إِلَيْهَا وَجَعَلَ بَيْنَكُم مَّوَدَّةً وَرَحْمَةً﴾",
             "قال ﷺ: «يَا مَعْشَرَ الشَّبَابِ مَنِ اسْتَطَاعَ مِنْكُمُ الْبَاءَةَ فَلْيَتَزَوَّجْ، فَإِنَّهُ أَغَضُّ لِلْبَصَرِ وَأَحْصَنُ لِلْفَرْجِ»",
+        )
+        private val FAITH_HINTS_EN = listOf(
+            "Prepare against them whatever strength you can. (Qur'an 8:60)",
+            "A day and a night of guarding is better than a month of fasting and prayer.",
+            "Among His signs is that He created spouses for you, so you may find tranquility. (Qur'an 30:21)",
+            "Young people, whoever is able to marry should do so.",
         )
         const val ACTION_BIOMETRIC_UNLOCKED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_UNLOCKED"
         const val ACTION_BIOMETRIC_FAILED = "com.duresssecurity.app.ACTION_APP_LOCK_BIOMETRIC_FAILED"
