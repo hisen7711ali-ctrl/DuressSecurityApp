@@ -3,6 +3,7 @@ import { Download, FileText, Image as ImageIcon, LockKeyhole, Plus, ShieldCheck,
 import { useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { deleteEncryptedAttachment, openEncryptedAttachment, persistEncryptedAttachment } from "@/lib/vault-crypto";
+import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
 
 export function FilesScreen() {
   const { t, lang } = useCopy();
@@ -31,6 +32,8 @@ export function FilesScreen() {
   useEffect(() => { if (!vaultOpen && preview) setPreview(null); }, [vaultOpen, preview]);
 
   async function importPickedFile(input: HTMLInputElement) {
+    // Clear the temporary lifecycle exemption synchronously before any async I/O.
+    clearDocumentPicker();
     const picked = input.files?.[0];
     input.value = "";
     if (!picked || !vaultCryptoReady) return;
@@ -41,7 +44,8 @@ export function FilesScreen() {
     const attachmentId = crypto.randomUUID();
     try {
       await persistEncryptedAttachment(attachmentId, picked, picked.type || "application/octet-stream");
-      const saved = await addFile(picked.name, `vault-file-v1:${attachmentId}`);
+      const safeName = picked.name.slice(0, 240).trim() || "file";
+      const saved = await addFile(safeName, `vault-file-v1:${attachmentId}`);
       if (!saved) {
         await deleteEncryptedAttachment(attachmentId).catch(() => undefined);
         setAttachmentError(lang === "ar" ? "تعذّر حفظ مرجع الملف المشفّر داخل الخزنة." : "Could not save the encrypted file reference in the vault.");
@@ -180,7 +184,7 @@ export function FilesScreen() {
         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-cyan/40 bg-cyan/10 px-4 py-3 text-sm font-semibold text-cyan">
           <Upload className="size-4" />
           {attachmentBusy ? (lang === "ar" ? "جارٍ التشفير..." : "Encrypting...") : (lang === "ar" ? "استيراد ملف إلى الخزنة المشفّرة" : "Import file into encrypted vault")}
-          <input type="file" className="sr-only" disabled={attachmentBusy} onChange={(event) => void importPickedFile(event.currentTarget)} />
+          <input type="file" className="sr-only" disabled={attachmentBusy} onClick={beginDocumentPicker} onChange={(event) => void importPickedFile(event.currentTarget)} />
         </label>
         <p className="mt-2 text-xs leading-5 text-muted">{lang === "ar" ? "تُشفّر الملفات المختارة على دفعات داخل بيانات التطبيق الخاصة. النسخة الأصلية لا تُحذف تلقائيًا؛ احذفها يدويًا بعد التحقق من النسخة المشفّرة." : "Selected files are encrypted in chunks inside this app’s private data. The original is not deleted automatically; remove it manually after verifying the encrypted copy."}</p>
         {attachmentError ? <p role="alert" className="mt-2 text-xs text-danger">{attachmentError}</p> : null}
