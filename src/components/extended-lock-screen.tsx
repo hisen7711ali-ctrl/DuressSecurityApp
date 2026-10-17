@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LockKeyhole } from "lucide-react";
 import { AndroidClock } from "@/components/android-clock";
 import { normalizePin, remainingTime } from "@/lib/security-service";
 import { PinDots, PinKeypad } from "@/components/pin-keypad";
@@ -120,8 +121,8 @@ export function ExtendedLockScreen() {
     <div className="bg-mountains flex min-h-svh flex-col select-none">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <AndroidClock lang={lang} />
-        <span className="grid size-16 place-items-center rounded-full bg-red-500/10 text-red-400 ring-1 ring-red-400/30 backdrop-blur" aria-label={lang === "ar" ? "قفل حماية نشط" : "Active security lock"}>
-          <span className="text-4xl leading-none" aria-hidden="true">▼</span>
+        <span className="grid size-16 place-items-center rounded-full bg-cyan/10 text-cyan ring-1 ring-cyan/30 backdrop-blur" aria-label={lang === "ar" ? "قفل حماية نشط" : "Active security lock"}>
+          <LockKeyhole className="size-7" aria-hidden="true" />
         </span>
         <div>
           <button
