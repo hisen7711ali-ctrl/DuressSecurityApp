@@ -24,7 +24,8 @@ class MainActivity : BridgeActivity() {
             }, "DuressSecureWarmup").apply { isDaemon = true }.start()
         }
 
-        setScreenCaptureAllowed(true)
+        // Fail closed until the WebView reports that the calculator facade is visible.
+        setScreenCaptureAllowed(false)
         // Keep Android's real Keyguard in charge. The app must not show its
         // maintenance/calculator UI over the system lock screen or wake the
         // device automatically; DevicePolicyManager.lockNow() performs an
@@ -87,6 +88,27 @@ class MainActivity : BridgeActivity() {
     }
 
     fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+
+    override fun onResume() {
+        super.onResume()
+        // Android can recreate/resume this Activity with the previous window flags.
+        // Start secure, then let the WebView apply the current calculator/lock policy.
+        setScreenCaptureAllowed(false)
+        try {
+            bridge?.webView?.post {
+                bridge?.webView?.evaluateJavascript(
+                    "window.dispatchEvent(new Event('duress-security-native-foreground'))",
+                    null,
+                )
+            }
+        } catch (_: Exception) { }
+    }
+
+    override fun onPause() {
+        // FLAG_SECURE must be present before Android captures a Recents snapshot.
+        setScreenCaptureAllowed(false)
+        super.onPause()
+    }
 
     override fun onStop() {
         setScreenCaptureAllowed(false)
