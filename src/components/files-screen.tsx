@@ -5,6 +5,46 @@ import { useCopy } from "@/lib/use-copy";
 import { deleteEncryptedAttachment, openEncryptedAttachment, persistEncryptedAttachment } from "@/lib/vault-crypto";
 import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
 
+function parseVaultAttachment(body: string): { id: string; mimeType: string | null; size: number | null } | null {
+  const v2 = body.match(/^vault-file-v2:([^:]+):([^:]*):(\\d+)$/);
+  if (v2) {
+    let mimeType: string | null = null;
+    try { mimeType = decodeURIComponent(v2[2] ?? "") || null; } catch { mimeType = null; }
+    const size = Number(v2[3]);
+    return { id: v2[1]!, mimeType, size: Number.isSafeInteger(size) && size >= 0 ? size : null };
+  }
+  const v1 = body.match(/^vault-file-v1:([^:]+)$/);
+  return v1 ? { id: v1[1]!, mimeType: null, size: null } : null;
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return size + " B";
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024; let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return value.toFixed(value >= 10 ? 0 : 1) + " " + units[unit];
+}
+
+function classifyAttachment(mimeType: string, filename: string, lang: string): string {
+  const lower = filename.toLowerCase();
+  if (mimeType.startsWith("image/") || /\\.(png|jpe?g|gif|webp|heic|bmp|svg)$/.test(lower)) return lang === "ar" ? "صورة" : "Image";
+  if (mimeType.startsWith("video/") || /\\.(mp4|mkv|mov|webm|3gp)$/.test(lower)) return lang === "ar" ? "فيديو" : "Video";
+  if (mimeType.startsWith("audio/") || /\\.(mp3|wav|ogg|m4a|flac)$/.test(lower)) return lang === "ar" ? "صوت" : "Audio";
+  if (mimeType.startsWith("text/") || /\\.(txt|md|rtf|csv|log)$/.test(lower)) return lang === "ar" ? "نص / ملاحظات" : "Text / notes";
+  if (/pdf|word|document|spreadsheet|presentation|officedocument/.test(mimeType) || /\\.(pdf|docx?|xlsx?|pptx?)$/.test(lower)) return lang === "ar" ? "مستند" : "Document";
+  if (/zip|rar|7z|tar|gzip/.test(mimeType) || /\\.(zip|rar|7z|tar|gz)$/.test(lower)) return lang === "ar" ? "أرشيف" : "Archive";
+  return lang === "ar" ? "ملف آخر" : "Other file";
+}
+
+function suggestStrongPassphrase(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_+=";
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  let result = "";
+  for (const byte of bytes) result += alphabet[byte % alphabet.length];
+  return result;
+}
+
 export function FilesScreen() {
   const { t, lang } = useCopy();
   const vault = useAppStore((s) => s.vault);
@@ -26,49 +66,63 @@ export function FilesScreen() {
   const [passphraseBusy, setPassphraseBusy] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [pendingAttachmentUrl, setPendingAttachmentUrl] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ title: string; url: string; mimeType: string } | null>(null);
 
   useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview?.url]);
   useEffect(() => { if (!vaultOpen && preview) setPreview(null); }, [vaultOpen, preview]);
+  useEffect(() => {
+    if (!pendingAttachment) { setPendingAttachmentUrl(null); return; }
+    const url = URL.createObjectURL(pendingAttachment);
+    setPendingAttachmentUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingAttachment]);
 
   async function importPickedFile(input: HTMLInputElement) {
-    // Clear the temporary lifecycle exemption synchronously before any async I/O.
     clearDocumentPicker();
     const picked = input.files?.[0];
     input.value = "";
-    if (!picked) {
-      const current = useAppStore.getState();
-      if (current.session === "unlocked") current.lockSession();
-      return;
-    }
+    if (!picked) return;
     if (!vaultCryptoReady) {
       setAttachmentError(lang === "ar" ? "انتهت جلسة الخزانة أو لم تُفتح بعد. افتح الخزانة مجددًا قبل الاستيراد." : "The vault session expired or is not open. Reopen the vault before importing.");
       return;
     }
     if (picked.size === 0) { setAttachmentError(lang === "ar" ? "الملف فارغ." : "The selected file is empty."); return; }
     if (picked.size > 512 * 1024 * 1024) { setAttachmentError(lang === "ar" ? "حجم الملف يتجاوز الحد المدعوم (512 ميغابايت)." : "The file exceeds the supported 512 MB limit."); return; }
+    setAttachmentError("");
+    setPendingAttachment(picked);
+  }
+
+  async function confirmImportPickedFile() {
+    const picked = pendingAttachment;
+    if (!picked || !vaultCryptoReady || attachmentBusy) return;
     setAttachmentBusy(true);
     setAttachmentError("");
     const attachmentId = crypto.randomUUID();
+    const mimeType = picked.type || "application/octet-stream";
     try {
-      await persistEncryptedAttachment(attachmentId, picked, picked.type || "application/octet-stream");
+      await persistEncryptedAttachment(attachmentId, picked, mimeType);
       const safeName = picked.name.slice(0, 240).trim() || "file";
-      const saved = await addFile(safeName, `vault-file-v1:${attachmentId}`);
+      const metadata = "vault-file-v2:" + attachmentId + ":" + encodeURIComponent(mimeType) + ":" + picked.size;
+      const saved = await addFile(safeName, metadata);
       if (!saved) {
         await deleteEncryptedAttachment(attachmentId).catch(() => undefined);
         setAttachmentError(lang === "ar" ? "تعذّر حفظ مرجع الملف المشفّر داخل الخزنة." : "Could not save the encrypted file reference in the vault.");
+      } else {
+        setPendingAttachment(null);
       }
     } catch {
       await deleteEncryptedAttachment(attachmentId).catch(() => undefined);
       setAttachmentError(lang === "ar" ? "تعذّر تشفير الملف أو حفظه. تحقق من مساحة التخزين وحاول مجددًا." : "Could not encrypt or store the file. Check available storage and try again.");
     } finally { setAttachmentBusy(false); }
   }
-  async function openAttachment(file: { title: string; body: string }) {
-    const match = file.body.match(/^vault-file-v1:([^:]+)$/);
+    async function openAttachment(file: { title: string; body: string }) {
+    const match = parseVaultAttachment(file.body);
     if (!match) return;
     setAttachmentBusy(true);
     setAttachmentError("");
-    try { const opened = await openEncryptedAttachment(match[1]!); const url = URL.createObjectURL(opened.blob); setPreview({ title: file.title, url, mimeType: opened.mimeType }); }
+    try { const opened = await openEncryptedAttachment(match.id); const url = URL.createObjectURL(opened.blob); setPreview({ title: file.title, url, mimeType: opened.mimeType }); }
     catch { setAttachmentError(lang === "ar" ? "تعذّر فك تشفير الملف. قد تكون الخزنة مغلقة أو بيانات الملف تالفة." : "Could not decrypt the file. The vault may be locked or the attachment may be damaged."); }
     finally { setAttachmentBusy(false); }
   }
@@ -103,10 +157,6 @@ export function FilesScreen() {
     setPassphraseError("");
     if (!vaultEncrypted && passphrase !== confirmPassphrase) {
       setPassphraseError(lang === "ar" ? "كلمتا المرور غير متطابقتين." : "Passphrases do not match.");
-      return;
-    }
-    if (!vaultEncrypted && passphrase.length < 12) {
-      setPassphraseError(lang === "ar" ? "استخدم كلمة مرور للخزنة من 12 محرفًا على الأقل، وليست رمز PIN." : "Choose a vault passphrase of at least 12 characters; do not reuse your PIN.");
       return;
     }
     setPassphraseBusy(true);
@@ -151,11 +201,15 @@ export function FilesScreen() {
         ) : null}
         <form onSubmit={(event) => void submitVaultPassphrase(event)} className="w-full rounded-xl border border-line bg-surface p-4">
           <label className="mb-2 block text-sm text-muted">{lang === "ar" ? "كلمة مرور الخزنة" : "Vault passphrase"}</label>
-          <input type="password" autoComplete={creating ? "new-password" : "current-password"} value={passphrase} onChange={(e) => setPassphrase(e.target.value)} minLength={creating ? 12 : 1} required className="h-12 w-full rounded-lg bg-navy px-3 text-sm outline-none ring-cyan/40 focus:ring-2" />
+          <input type="password" autoComplete={creating ? "new-password" : "current-password"} value={passphrase} onChange={(e) => setPassphrase(e.target.value)} minLength={1} required className="h-12 w-full rounded-lg bg-navy px-3 text-sm outline-none ring-cyan/40 focus:ring-2" />
           {creating ? <>
             <label className="mb-2 mt-4 block text-sm text-muted">{lang === "ar" ? "تأكيد كلمة المرور" : "Confirm passphrase"}</label>
-            <input type="password" autoComplete="new-password" value={confirmPassphrase} onChange={(e) => setConfirmPassphrase(e.target.value)} minLength={12} required className="h-12 w-full rounded-lg bg-navy px-3 text-sm outline-none ring-cyan/40 focus:ring-2" />
+            <input type="password" autoComplete="new-password" value={confirmPassphrase} onChange={(e) => setConfirmPassphrase(e.target.value)} minLength={1} required className="h-12 w-full rounded-lg bg-navy px-3 text-sm outline-none ring-cyan/40 focus:ring-2" />
           </> : null}
+          {creating ? <div className="mt-3 rounded-lg border border-line bg-navy p-3">
+            <p className="text-xs leading-5 text-muted">{lang === "ar" ? "تنبيه قوة فقط: كلمة المرور القصيرة أو المتوقعة أضعف، لكنها مسموحة. لا نفرض طولًا محددًا. احتفظ بها في مكان آمن؛ لا يمكن استعادتها إذا نُسيت." : "Strength warning only: short or predictable passphrases are weaker, but allowed. No fixed length is enforced. Keep it safe; it cannot be recovered if forgotten."}</p>
+            <button type="button" onClick={() => { const suggestion = suggestStrongPassphrase(); setPassphrase(suggestion); setConfirmPassphrase(suggestion); setPassphraseError(""); }} className="mt-2 h-9 rounded-md border border-cyan/40 px-3 text-xs font-semibold text-cyan">{lang === "ar" ? "اقتراح كلمة مرور قوية" : "Suggest a strong passphrase"}</button>
+          </div> : null}
           {passphraseError ? <p role="alert" className="mt-3 text-sm text-danger">{passphraseError}</p> : null}
           <button type="submit" disabled={passphraseBusy} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night disabled:opacity-50">
             <ShieldCheck className="size-4" />
@@ -225,15 +279,15 @@ export function FilesScreen() {
                 type="button"
                 className="text-start"
                 onClick={() => {
-                  if (file.body.startsWith("vault-file-v1:")) { void openAttachment(file); return; }
+                  if ((file.body.startsWith("vault-file-v1:") || file.body.startsWith("vault-file-v2:"))) { void openAttachment(file); return; }
                   setEditing(file.id); setTitle(file.title); setBody(file.body);
                 }}
               >
                 <h2 className="font-semibold">{file.title}</h2>
-                <p className="mt-1 line-clamp-3 text-sm text-muted">{file.body.startsWith("vault-file-v1:") ? (lang === "ar" ? "مرفق مشفّر — اضغط لفتحه" : "Encrypted attachment — tap to open") : file.body}</p>
+                <p className="mt-1 line-clamp-3 text-sm text-muted">{(file.body.startsWith("vault-file-v1:") || file.body.startsWith("vault-file-v2:")) ? (() => { const info = parseVaultAttachment(file.body); return (lang === "ar" ? "مرفق مشفّر" : "Encrypted attachment") + (info?.mimeType ? " · " + classifyAttachment(info.mimeType, file.title, lang) : "") + (info?.size !== null && info?.size !== undefined ? " · " + formatBytes(info.size) : "") + (lang === "ar" ? " — اضغط لفتحه" : " — tap to open"); })() : file.body}</p>
               </button>
               <div className="flex items-center gap-1">
-              {file.body.startsWith("vault-file-v1:") ? <button type="button" className="grid size-10 place-items-center text-cyan" aria-label={lang === "ar" ? "فتح الملف المشفّر" : "Open encrypted file"} disabled={attachmentBusy} onClick={() => void openAttachment(file)}><Download className="size-4" /></button> : null}
+              {(file.body.startsWith("vault-file-v1:") || file.body.startsWith("vault-file-v2:")) ? <button type="button" className="grid size-10 place-items-center text-cyan" aria-label={lang === "ar" ? "فتح الملف المشفّر" : "Open encrypted file"} disabled={attachmentBusy} onClick={() => void openAttachment(file)}><Download className="size-4" /></button> : null}
               <button
                 type="button"
                 className="grid size-10 place-items-center text-danger"
@@ -253,6 +307,21 @@ export function FilesScreen() {
           </article>
         ))
       )}
+      {pendingAttachment ? <div role="dialog" aria-modal="true" aria-label={lang === "ar" ? "معاينة الملف قبل الإضافة" : "Preview file before adding"} className="fixed inset-0 z-[75] flex items-center justify-center bg-black/85 p-4" onClick={() => { if (!attachmentBusy) setPendingAttachment(null); }}>
+        <div className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl border border-line bg-surface p-4" onClick={(event) => event.stopPropagation()}>
+          <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{lang === "ar" ? "معاينة قبل الإضافة إلى الخزانة" : "Preview before adding to vault"}</h2><button type="button" disabled={attachmentBusy} className="grid size-9 place-items-center rounded-md border border-line disabled:opacity-40" onClick={() => setPendingAttachment(null)} aria-label={lang === "ar" ? "إلغاء المعاينة" : "Cancel preview"}><X className="size-4" /></button></div>
+          {pendingAttachment.type.startsWith("image/") && pendingAttachmentUrl ? <img src={pendingAttachmentUrl} alt={pendingAttachment.name} className="mb-3 max-h-48 w-full rounded-lg object-contain" /> : pendingAttachment.type.startsWith("video/") && pendingAttachmentUrl ? <video src={pendingAttachmentUrl} controls className="mb-3 max-h-48 w-full rounded-lg" /> : pendingAttachment.type.startsWith("audio/") && pendingAttachmentUrl ? <audio src={pendingAttachmentUrl} controls className="mb-3 w-full" /> : <div className="mb-3 flex items-center gap-3 rounded-xl bg-navy p-4"><FileText className="size-8 shrink-0 text-cyan" /><div className="min-w-0"><p className="break-all text-sm font-semibold">{pendingAttachment.name}</p><p className="text-xs text-muted">{lang === "ar" ? "معاينة بيانات الملف" : "File metadata preview"}</p></div></div>}
+          <div className="space-y-2 rounded-xl border border-line bg-navy p-3 text-xs">
+            <p className="break-all"><span className="text-muted">{lang === "ar" ? "الاسم: " : "Name: "}</span>{pendingAttachment.name}</p>
+            <p><span className="text-muted">{lang === "ar" ? "الحجم: " : "Size: "}</span>{formatBytes(pendingAttachment.size)}</p>
+            <p className="break-all"><span className="text-muted">{lang === "ar" ? "النوع: " : "Type: "}</span>{classifyAttachment(pendingAttachment.type || "application/octet-stream", pendingAttachment.name, lang)} · {pendingAttachment.type || "application/octet-stream"}</p>
+            <p><span className="text-muted">{lang === "ar" ? "التشفير: " : "Encryption: "}</span>AES-GCM {lang === "ar" ? "بعد الضغط على «تشفير وإضافة»" : "when you press Encrypt & add"}</p>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-muted">{lang === "ar" ? "لن نضيف الملف قبل موافقتك. ستُشفّر نسخة داخل مساحة التطبيق الخاصة، ولن تُحذف النسخة الأصلية تلقائيًا." : "The file is not added until you approve. An encrypted copy is stored in app-private space; the original is not deleted automatically."}</p>
+          {attachmentError ? <p role="alert" className="mt-2 text-xs text-danger">{attachmentError}</p> : null}
+          <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={attachmentBusy} onClick={() => setPendingAttachment(null)} className="h-11 rounded-lg border border-line text-sm disabled:opacity-40">{lang === "ar" ? "إلغاء" : "Cancel"}</button><button type="button" disabled={attachmentBusy || !vaultCryptoReady} onClick={() => void confirmImportPickedFile()} className="h-11 rounded-lg bg-cyan text-sm font-semibold text-night disabled:opacity-40">{attachmentBusy ? (lang === "ar" ? "جارٍ التشفير..." : "Encrypting...") : (lang === "ar" ? "تشفير وإضافة" : "Encrypt & add")}</button></div>
+        </div>
+      </div> : null}
       {preview ? <div role="dialog" aria-modal="true" aria-label={preview.title} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4" onClick={() => setPreview(null)}>
         <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-line bg-surface p-4" onClick={(event) => event.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between gap-2"><h2 className="truncate font-semibold">{preview.title}</h2><button type="button" className="grid size-9 place-items-center rounded-md border border-line" onClick={() => setPreview(null)} aria-label={lang === "ar" ? "إغلاق المعاينة" : "Close preview"}><X className="size-4" /></button></div>
