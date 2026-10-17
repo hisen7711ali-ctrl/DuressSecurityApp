@@ -229,6 +229,8 @@ test("App Lock 4444 returns to the locked calculator while 5555 maintains only t
   assert.ok(!shell.includes("state.beginEmergencyWipe()"), "App Lock must not silently wipe device/app data from a generic PIN path");
   assert.ok(store.includes('session: "extlocked"'));
   assert.ok(store.includes("startExtendedLock(Date.now(), lockDurationMs())"));
+  const pinWipeBranch = store.slice(store.indexOf('if (action === "wipe")'), store.indexOf('if (action === "extended-lock")'));
+  assert.ok(!pinWipeBranch.includes("beginEmergencyWipe()"), "typing 7777 alone must not perform a reset");
 });
 
 test("main lock failure count is restored from encrypted journal without storing PIN digits", async () => {
