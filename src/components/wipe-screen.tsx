@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ShieldMark } from "@/components/shield-mark";
 import { wipeAppData } from "@/lib/security-service";
 import { useAppStore } from "@/lib/store";
@@ -36,9 +36,11 @@ export function WipeScreen() {
   const [wipeError, setWipeError] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [wipeBusy, setWipeBusy] = useState(false);
+  const wipeInProgress = useRef(false);
 
   const performWipe = useCallback(async () => {
-    if (!acknowledged || wipeBusy) return;
+    if (!acknowledged || wipeInProgress.current) return;
+    wipeInProgress.current = true;
     setWipeError(false);
     setWipeBusy(true);
     try {
@@ -60,9 +62,10 @@ export function WipeScreen() {
     } catch {
       setWipeError(true);
     } finally {
+      wipeInProgress.current = false;
       setWipeBusy(false);
     }
-  }, [acknowledged, wipeBusy, wipeLocal]);
+  }, [acknowledged, wipeLocal]);
 
   return (
     <div className="bg-mountains flex min-h-svh flex-col items-center justify-center px-6 text-center">
