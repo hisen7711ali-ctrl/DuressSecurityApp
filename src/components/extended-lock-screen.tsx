@@ -58,7 +58,6 @@ export function ExtendedLockScreen() {
       setRecoveryError(lang === "ar" ? "أدخل الرمز بطوله المحدد أو رمز المالك الحالي." : "Enter the selected PIN length or the currently configured owner PIN.");
       return;
     }
-    const latest = useAppStore.getState();
     if (Date.now() < latest.lockoutUntil) {
       const seconds = Math.ceil((latest.lockoutUntil - Date.now()) / 1000);
       setRecoveryError(lang === "ar" ? `انتظر ${seconds} ثانية قبل المحاولة مجددًا.` : `Wait ${seconds} seconds before trying again.`);
