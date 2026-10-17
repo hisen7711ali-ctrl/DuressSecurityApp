@@ -184,4 +184,10 @@ test("native App Lock keypad is not an Android text field or system keyboard", a
   assert.match(service, /"back"/);
   assert.match(service, /"ok"/);
   assert.match(service, /dispatchOwnerPinAction\(targetPackage, typed\)/);
+  const files = await read("src/components/files-screen.tsx");
+  assert.match(files, /vault-file-v1/);
+  assert.match(files, /تُشفّر الملفات المختارة/);
+  const shell = await read("src/components/app-shell.tsx");
+  assert.match(shell, /custom-app-background/);
+  assert.match(shell, /setTab\("home"\)/);
 });

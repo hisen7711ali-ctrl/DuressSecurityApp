@@ -133,10 +133,11 @@ export async function wipeAppData(opts: { preserveKeys?: string[] } = {}): Promi
   }
   if (typeof indexedDB !== "undefined") {
     const dbs = await indexedDB.databases?.();
-    for (const db of dbs ?? []) {
-      if (!db.name || !(db.name.startsWith("duress-security") || db.name.startsWith("duress-"))) continue;
+    const names = new Set((dbs ?? []).map((db) => db.name).filter((name): name is string => Boolean(name && (name.startsWith("duress-security") || name.startsWith("duress-")))));
+    names.add("duress-security-vault-files");
+    for (const name of names) {
       await new Promise<void>((resolve, reject) => {
-        const req = indexedDB.deleteDatabase(db.name!);
+        const req = indexedDB.deleteDatabase(name);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error ?? new Error("IndexedDB deletion failed"));
         req.onblocked = () => reject(new Error("OWNED_DATABASE_DELETE_BLOCKED"));

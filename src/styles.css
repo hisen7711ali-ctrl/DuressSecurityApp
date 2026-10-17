@@ -138,3 +138,13 @@ html[data-theme="light"] .bg-mountains {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Optional owner-selected image background, compressed and stored locally. */
+html[data-custom-background="true"] .bg-mountains,
+html[data-custom-background="true"] .calculator-fullscreen-root {
+  background-image: var(--custom-app-background) !important;
+  background-position: center !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+}

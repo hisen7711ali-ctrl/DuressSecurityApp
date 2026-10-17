@@ -49,8 +49,17 @@ test('vault v2 uses PBKDF2 600k, AES-GCM, device secret and authenticated header
   assert.match(vault, /LEGACY_VAULT_STORAGE_KEY/);
   assert.match(vault, /verifyV2/);
   assert.match(vault, /VAULT_RECORD_MISSING/);
+  assert.match(vault, /persistEncryptedAttachment/);
+  assert.match(vault, /openEncryptedAttachment/);
+  assert.match(vault, /ATTACHMENT_CHUNK_SIZE = 1024 \* 1024/);
+  assert.match(vault, /additionalData: asBufferSource\(attachmentAad\(id, index, meta\.totalChunks, meta\.mimeType, meta\.size\)\)/);
   assert.match(store, /persistEncryptedVault/);
+  assert.match(store, /deleteEncryptedAttachment/);
   assert.match(store, /vaultEncrypted: false/);
+  const files = await read("src/components/files-screen.tsx");
+  assert.match(files, /type="file"/);
+  assert.match(files, /persistEncryptedAttachment/);
+  assert.match(files, /openEncryptedAttachment/);
 });
 
 test('retry lockout survives reload through persisted application state', async () => {
