@@ -4,6 +4,7 @@ import { ToggleRow } from "@/components/apps-screen";
 import { useAppStore, type PermKey } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { isNativeAndroid, lockNow as requestSystemLock } from "@/lib/native-bridge";
+import { beginDocumentPicker, clearDocumentPicker } from "@/lib/document-picker-guard";
 
 export function SettingsScreen() {
   const { t, lang } = useCopy();
@@ -34,6 +35,7 @@ export function SettingsScreen() {
   const native = isNativeAndroid();
 
   async function onBackgroundImageSelected(input: HTMLInputElement) {
+    clearDocumentPicker();
     const file = input.files?.[0]; input.value = ""; if (!file) return;
     if (!file.type.startsWith("image/")) { setToast(lang === "ar" ? "اختر ملف صورة فقط." : "Select an image file."); return; }
     if (file.size > 20 * 1024 * 1024) { setToast(lang === "ar" ? "الصورة الأصلية أكبر من 20 ميغابايت." : "The source image exceeds 20 MB."); return; }
@@ -144,7 +146,7 @@ export function SettingsScreen() {
         <div className="border-t border-line px-4 py-3">
           <p className="text-sm">{lang === "ar" ? "خلفية مخصصة" : "Custom background"}</p>
           <p className="mt-1 text-xs leading-5 text-muted">{lang === "ar" ? "اختر صورة من الجهاز؛ تُضغط محليًا وتحفظ ضمن إعدادات التطبيق." : "Choose an image from the device; it is compressed locally and saved in app settings."}</p>
-          <input type="file" accept="image/*" className="mt-3 block w-full text-xs text-muted file:me-3 file:rounded-md file:border-0 file:bg-cyan file:px-3 file:py-2 file:font-semibold file:text-night" onChange={(event) => void onBackgroundImageSelected(event.currentTarget)} />
+          <input type="file" accept="image/*" className="mt-3 block w-full text-xs text-muted file:me-3 file:rounded-md file:border-0 file:bg-cyan file:px-3 file:py-2 file:font-semibold file:text-night" onClick={beginDocumentPicker} onChange={(event) => void onBackgroundImageSelected(event.currentTarget)} />
           {backgroundImage ? <button type="button" onClick={() => { setBackgroundImage(null); setToast(lang === "ar" ? "تمت استعادة الخلفية الافتراضية." : "Default background restored."); }} className="mt-3 h-9 rounded-md border border-line px-3 text-xs">{lang === "ar" ? "إزالة الخلفية المخصصة" : "Remove custom background"}</button> : null}
         </div>
       </section>
