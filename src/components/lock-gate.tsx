@@ -11,7 +11,8 @@ import { appName, useAppStore } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
 import { normalizePin } from "@/lib/security-service";
-import { recordFailedAttempt } from "@/lib/security-audit";
+import { recordFailedAttempt, recordSuccessfulMainUnlock } from "@/lib/security-audit";
+import { isNativeAndroid } from "@/lib/native-bridge";
 
 const TYPABLE = new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "أ", "ي", "ع"]);
 
@@ -67,7 +68,7 @@ export function LockGate() {
     return candidate.length === pinLength || matchesExistingPin(candidate);
   }
 
-  function finish(next?: string) {
+  async function finish(next?: string) {
     const current = overlay;
     const pin = (next ?? value).trim();
     if (pin.length !== pinLength && !(current?.kind !== "set-pin" && matchesExistingPin(pin))) {
@@ -84,6 +85,27 @@ export function LockGate() {
         ? (lang === "ar" ? "تم رفض المسح التلقائي. تم الحفاظ على القفل؛ مسح بيانات التطبيق المستهدف يتطلب إجراءً صريحًا من إعدادات أندرويد." : "Automatic wiping is blocked. The lock remains active; clearing the target app requires an explicit Android Settings action.")
         : (lang === "ar" ? "7777 لا يمسح بيانات تطبيق الحماية من قفله الرئيسي." : "7777 does not erase the security app from its own main lock."));
       return;
+    }
+    // Write a reset marker before opening the main session. The encrypted
+    // journal is the restart-safe source of consecutive failed attempts.
+    const latestState = useAppStore.getState();
+    if (current?.kind === "unlock" && normalizePin(pin) === normalizePin(latestState.pins.master) && isNativeAndroid()) {
+      const recorded = await recordSuccessfulMainUnlock();
+      if (!recorded) {
+        useAppStore.setState({
+          ready: true,
+          session: "storage-error",
+          storageErrorCode: "FAILED_ATTEMPT_HISTORY_WRITE_FAILED",
+          overlay: null,
+          openedApp: null,
+          vaultOpen: false,
+          vaultCryptoReady: false,
+        });
+        setToast(lang === "ar"
+          ? "تعذّر حفظ إعادة ضبط عدّاد المحاولات في التخزين المشفّر؛ أُوقف الدخول حفاظًا على الحماية."
+          : "Could not save the secure attempt-counter reset; access is paused for safety.");
+        return;
+      }
     }
     const result = submitPin(pin);
     if (result === "duplicate") {
