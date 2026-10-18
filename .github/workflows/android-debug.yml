@@ -3,14 +3,11 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17]
+    branches: [main, master, merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17, merge/full-fix-2026-10-18]
 
 permissions:
   contents: write
 
-# Every push creates a new run. Keep the newest branch revision in CI and
-# cancel stale builds so repeated documentation/fix commits do not queue many
-# Gradle builds in parallel and delay the artifact needed for testing.
 concurrency:
   group: android-debug-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +18,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -32,7 +29,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Resolve available dependency fixes without force or major upgrades
