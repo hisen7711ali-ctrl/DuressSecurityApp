@@ -27,14 +27,16 @@ test("secure reads fail closed instead of becoming a missing/default record", as
   assert.match(store, /nativeBridge\.isNativeAndroid\(\) \? null/);
 });
 
-test("storage failures are fail-closed and recovery cannot erase data", async () => {
+test("storage failures are fail-closed and recovery never erases data automatically", async () => {
   const store = await read("src/lib/store.ts");
   const shell = await read("src/components/app-shell.tsx");
   const recovery = await read("src/components/storage-recovery-screen.tsx");
   assert.match(store, /session:\s*"storage-error"/);
   assert.match(shell, /session === "storage-error"/);
   assert.match(recovery, /Retry secure storage/);
-  assert.doesNotMatch(recovery, /secureStorageClearOwned/);
+  assert.match(recovery, /secureStorageClearOwned/);
+  assert.match(recovery, /window\.confirm/);
+  assert.match(recovery, /if \(!confirmed\) return/);
   assert.match(recovery, /لم يتم حذف أي سجل تلقائيًا/);
 });
 
