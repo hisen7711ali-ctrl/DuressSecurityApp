@@ -5,21 +5,23 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 
-/**
- * Required by Android for any app that wants Device Admin rights
- * (DevicePolicyManager.lockNow). Deliberately does nothing beyond
- * telling the user plainly what happened — it does NOT try to resist being
- * disabled: the user can always remove this app's admin rights from
- * Settings → Security → Device admin apps, same as any other legitimate app.
- */
+/** Device Admin receiver used by the security lock implementation. */
 class AdminReceiver : DeviceAdminReceiver() {
+    private fun show(context: Context, message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
+
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
-        Toast.makeText(context, "تم تفعيل صلاحية مسؤول الجهاز لتطبيق DuressSecurityApp", Toast.LENGTH_LONG).show()
+        runCatching {
+            show(context, "تم تفعيل صلاحية مسؤول الجهاز لتطبيق DuressSecurityApp")
+        }
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
         super.onDisabled(context, intent)
-        Toast.makeText(context, "تم إلغاء صلاحية مسؤول الجهاز", Toast.LENGTH_LONG).show()
+        runCatching {
+            show(context, "تم إلغاء صلاحية مسؤول الجهاز")
+        }
     }
 }
