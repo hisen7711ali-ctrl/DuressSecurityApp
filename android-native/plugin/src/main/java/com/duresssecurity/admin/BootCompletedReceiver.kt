@@ -14,7 +14,12 @@ import android.os.UserManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 
-/** Restores the two protection layers after boot without requiring Device Owner. */
+/**
+ * After reboot: restore protection without Device Owner.
+ * - If Device Admin is active and home/app lock was enabled → lockNow() (system lock screen).
+ * - App-lock AccessibilityService is directBootAware and re-reads policy from encrypted storage.
+ * - Extended-lock notification when still active.
+ */
 class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         when (intent?.action) {
@@ -24,20 +29,24 @@ class BootCompletedReceiver : BroadcastReceiver() {
     }
 
     private fun handleLockedBoot(context: Context) {
-        // Only boot-safe state is consulted here; the accessibility service restores app gates separately.
-        applyBootLock(context)
+        // Direct-boot safe: only device-protected policy + optional system lock.
+        tryLockScreen(context)
+        // AccessibilityService is directBootAware and will re-apply app gates when ready.
     }
 
     private fun handleUnlockedBoot(context: Context) {
         val userManager = context.getSystemService(Context.USER_SERVICE) as UserManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !userManager.isUserUnlocked) return
 
-        applyBootLock(context)
+        tryLockScreen(context)
         notifyExtendedLockIfNeeded(context)
     }
 
-    /** Device Admin is deliberately the only authority used for lockNow(). */
-    private fun applyBootLock(context: Context) {
+    /**
+     * System lock screen via Device Admin only — Device Owner is NOT required.
+     * Reads homeLockEnabled / appLockEnabled from the same encrypted app state used by the UI.
+     */
+    private fun tryLockScreen(context: Context) {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val admin = ComponentName(context, AdminReceiver::class.java)
         if (!dpm.isAdminActive(admin)) return
