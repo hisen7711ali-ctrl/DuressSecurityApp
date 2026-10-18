@@ -5,14 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Build
 
-/**
- * Safe cross-app data reset helper.
- *
- * Android only permits automatic clearing of another application's user data
- * through DevicePolicyManager for a Device Owner/Profile Owner on supported
- * Android versions. No shell, Shizuku, hidden filesystem API, or package
- * manager command is used here.
- */
+/** Safe cross-app data reset helper using only the official DevicePolicyManager API. */
 object TargetAppDataWiper {
     fun isSupported(context: Context, targetPackage: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
@@ -32,7 +25,7 @@ object TargetAppDataWiper {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val admin = ComponentName(context, adminReceiver)
         return try {
-            dpm.clearApplicationUserData(targetPackage, executor, listener)
+            dpm.clearApplicationUserData(admin, targetPackage, executor, listener)
             true
         } catch (_: SecurityException) {
             false
