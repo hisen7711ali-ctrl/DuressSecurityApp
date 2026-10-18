@@ -1,0 +1,84 @@
+name: Merge full-fix check
+
+on:
+  push:
+    branches:
+      - merge/full-fix-2026-10-18
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-full-fix-check
+  cancel-in-progress: true
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Tests
+        run: npm test
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Authentication invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > dev-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/__app-env >/dev/null; then
+              npm run check:auth
+              exit 0
+            fi
+            sleep 1
+          done
+          cat dev-server.log
+          exit 1
+      - name: Build debug APK
+        run: npm run apk:debug
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$aapt" dump badging "$apk" | tee apk-badging.txt
+          "$aapt" dump permissions "$apk" | tee apk-permissions.txt
+          grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt
+          for p in android.permission.USE_BIOMETRIC android.permission.RECEIVE_BOOT_COMPLETED android.permission.POST_NOTIFICATIONS android.permission.SYSTEM_ALERT_WINDOW android.permission.PACKAGE_USAGE_STATS; do grep -Fq "$p" apk-permissions.txt; done
+          ! grep -Fq 'android.permission.INTERNET' apk-permissions.txt
+          ! grep -Fq 'android.permission.ACCESS_NETWORK_STATE' apk-permissions.txt
+          ! grep -Fq 'android.permission.QUERY_ALL_PACKAGES' apk-permissions.txt
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: duress-security-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
