@@ -1,21 +1,34 @@
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
+import * as nativeBridge from "@/lib/native-bridge";
 
 /** Fail-closed recovery when Android Keystore storage is unavailable. */
 export function StorageRecoveryScreen({ errorCode }: { errorCode?: string | null }) {
   const { lang } = useCopy();
   const ar = lang === "ar";
+  const [resetting, setResetting] = useState(false);
   const retry = () => window.location.reload();
+  const resetSecureStorage = async () => {
+    const confirmed = window.confirm(ar
+      ? "سيتم إعادة تهيئة التخزين الآمن ومفتاح Android Keystore. قد تفقد إعدادات وبيانات الحماية المحفوظة إذا لم توجد نسخة قابلة للاستعادة. هل تريد المتابعة؟"
+      : "This will reinitialize secure storage and the Android Keystore key. Saved security settings and data may be lost if no recoverable copy exists. Continue?");
+    if (!confirmed) return;
+    setResetting(true);
+    const cleared = await nativeBridge.secureStorageClearOwned();
+    if (!cleared) {
+      setResetting(false);
+      window.alert(ar ? "تعذّرت إعادة تهيئة التخزين الآمن. لم يتم حذف البيانات." : "Secure storage could not be reinitialized. No data was deleted.");
+      return;
+    }
+    window.location.reload();
+  };
   const message = ar
-    ? "تم إيقاف الدخول لحماية البيانات. "
-      + "لم يتم إنشاء مفتاح بديل ولم يتم حذف أي سجل تلقائيًا."
-    : "Access is paused to protect your data. "
-      + "No replacement key was created and no stored record was erased automatically.";
+    ? "تم إيقاف الدخول لحماية البيانات. لم يتم إنشاء مفتاح بديل ولم يتم حذف أي سجل تلقائيًا."
+    : "Access is paused to protect your data. No replacement key was created and no stored record was erased automatically.";
   const details = ar
-    ? "إذا كان السبب بطء المحاكي أو بدء تشغيل Android، أعد المحاولة. "
-      + "إذا كان المفتاح مفقودًا أو البيانات تالفة فلن يقوم التطبيق بالكتابة فوقها."
-    : "If this is a slow emulator or startup delay, retry. "
-      + "If the key is missing or the data is corrupted, the app will not overwrite it.";
+    ? "إذا كان السبب بطء بدء Android، أعد الفحص أولًا. إذا كان مفتاح Keystore مفقودًا أو التخزين تالفًا، استخدم إعادة التهيئة كخيار استرداد أخير."
+    : "If Android is still starting, retry first. If the Keystore key is missing or storage is corrupted, use reinitialize as the last recovery option.";
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-night px-6 py-10 text-center">
@@ -37,10 +50,20 @@ export function StorageRecoveryScreen({ errorCode }: { errorCode?: string | null
       <button
         type="button"
         onClick={retry}
-        className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night"
+        disabled={resetting}
+        className="mt-6 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-cyan font-semibold text-night disabled:opacity-60"
       >
         <RefreshCw className="size-4" />
         {ar ? "إعادة الفحص والمحاولة" : "Retry secure storage"}
+      </button>
+      <button
+        type="button"
+        onClick={() => void resetSecureStorage()}
+        disabled={resetting}
+        className="mt-3 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg border border-danger/50 bg-danger-bg font-semibold text-danger disabled:opacity-60"
+      >
+        <RotateCcw className="size-4" />
+        {resetting ? (ar ? "جارٍ إعادة التهيئة…" : "Reinitializing…") : (ar ? "إعادة تهيئة التخزين الآمن" : "Reinitialize secure storage")}
       </button>
     </main>
   );
