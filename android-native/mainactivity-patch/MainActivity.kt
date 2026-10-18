@@ -7,20 +7,13 @@ import android.os.Looper
 import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
-import com.duresssecurity.admin.SecurityIntegrityPlugin
-import com.duresssecurity.admin.DirectBootPolicyPlugin
-import com.duresssecurity.admin.InstalledAppsPlugin
-import com.getcapacitor.BridgeActivity
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Capacitor MainActivity with native security bridge and non-blocking secure-store warmup. */
+/** Capacitor MainActivity with the native security bridge and non-blocking secure-store warmup. */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(SecurityAdminPlugin::class.java)
-        registerPlugin(SecurityIntegrityPlugin::class.java)
-        registerPlugin(DirectBootPolicyPlugin::class.java)
-        registerPlugin(InstalledAppsPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         if (SECURE_WARMUP_STARTED.compareAndSet(false, true)) {
@@ -88,16 +81,35 @@ class MainActivity : BridgeActivity() {
         pendingAppLockBiometricTarget = null
     }
 
-    fun setScreenCaptureAllowed(allowed: Boolean) { if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    fun setScreenCaptureAllowed(allowed: Boolean) {
+        if (allowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
 
     override fun onResume() {
         super.onResume()
         setScreenCaptureAllowed(false)
-        try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-foreground'))", null) } } catch (_: Exception) { }
+        try {
+            bridge?.webView?.post {
+                bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-foreground'))", null)
+            }
+        } catch (_: Exception) { }
     }
 
-    override fun onPause() { setScreenCaptureAllowed(false); super.onPause() }
-    override fun onStop() { setScreenCaptureAllowed(false); try { bridge?.webView?.post { bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-background'))", null) } } catch (_: Exception) { }; super.onStop() }
+    override fun onPause() {
+        setScreenCaptureAllowed(false)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        setScreenCaptureAllowed(false)
+        try {
+            bridge?.webView?.post {
+                bridge?.webView?.evaluateJavascript("window.dispatchEvent(new Event('duress-security-native-background'))", null)
+            }
+        } catch (_: Exception) { }
+        super.onStop()
+    }
 
     companion object {
         const val EXTRA_OWNER_PIN_ACTION = "duress-security-owner-pin-action"
