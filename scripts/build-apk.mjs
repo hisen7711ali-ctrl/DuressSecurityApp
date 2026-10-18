@@ -21,6 +21,12 @@ try {
   // native patching/branding. Do not sync or JVM-align a second time here:
   // Capacitor sync can overwrite the exact files we just hardened.
   await run(process.execPath, ["scripts/android-setup.mjs"]);
+
+  // The security bridge is composed of the core plugin plus several companion
+  // plugins/helpers. Copy them after Capacitor setup and immediately before
+  // Gradle so generated Android files cannot remove them.
+  await run(process.execPath, ["scripts/copy-native-security-extras.mjs"]);
+
   const androidDir = path.join(root, "android");
   const wrapper = path.join(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
   await access(wrapper);
