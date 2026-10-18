@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.WindowManager
 import com.duresssecurity.admin.SecureStorage
 import com.duresssecurity.admin.SecurityAdminPlugin
+import com.getcapacitor.BridgeActivity
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
