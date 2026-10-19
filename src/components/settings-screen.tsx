@@ -330,14 +330,16 @@ export function SettingsScreen() {
         <ToggleRow
           label={lang === "ar" ? "منع الإزالة" : "Block uninstall"}
           hint={preventUninstall
-            ? (lang === "ar" ? "سياسة منع الإزالة مفعّلة على مستوى أندرويد." : "Android uninstall-block policy is active on this device.")
-            : !deviceOwner
-              ? (lang === "ar"
-                ? "غير مدعوم بعد: يلزم إعداد رسمي كمالك الجهاز (Device Owner). مسؤول الجهاز العادي والأذونات الإضافية لا تمنع الإزالة. للاختبار فقط على محاكي جديد ونظيف بعد تثبيت التطبيق: adb shell dpm set-device-owner com.duresssecurity.app/com.duresssecurity.admin.AdminReceiver أو استخدم QR Provisioning رسميًا. لا تنفّذ الأمر على هاتفك الأساسي؛ قد يفشل إذا كان الجهاز مُعدًا بالفعل."
-                : "Not supported yet: formal Device Owner provisioning is required. Device Admin and extra permissions cannot block uninstall. Use a clean dedicated test emulator with official provisioning or adb dpm; do not run it on your primary phone.")
-              : (lang === "ar" ? "مالك الجهاز مفعّل، لكن أندرويد لم يؤكد سياسة منع الإزالة بعد." : "Device Owner is active, but Android has not confirmed the uninstall-block policy yet.")}
+            ? (deviceOwner
+              ? (lang === "ar" ? "منع الإزالة الصارم مفعّل بواسطة Device Owner." : "Hard uninstall blocking is active through Device Owner.")
+              : (lang === "ar" ? "الحماية مرتبطة بمسؤول الجهاز: يجب تعطيل مسؤول الجهاز قبل إزالة التطبيق." : "Device Admin protection is active: Android requires the administrator to be disabled before uninstalling."))
+            : (!deviceOwner && !deviceAdmin)
+              ? (lang === "ar" ? "فعّل مسؤول الجهاز أو أعدد التطبيق كمالك للجهاز. مسؤول الجهاز يحمي التطبيق من الإزالة إلى أن يُلغى تفعيله؛ وDevice Owner يضيف منع الإزالة الصارم." : "Enable Device Admin or provision the app as Device Owner. Device Admin requires deactivation before uninstall; Device Owner adds hard uninstall blocking.")
+              : deviceOwner
+                ? (lang === "ar" ? "مالك الجهاز مفعّل؛ يمكنك تفعيل منع الإزالة الصارم." : "Device Owner is active; hard uninstall blocking can be enabled.")
+                : (lang === "ar" ? "مسؤول الجهاز مفعّل؛ ستتطلب إزالة التطبيق تعطيل مسؤول الجهاز أولًا." : "Device Admin is active; uninstall requires disabling the administrator first."))}
           on={preventUninstall}
-          disabled={!deviceOwner && !preventUninstall}
+          disabled={!deviceOwner && !deviceAdmin && !preventUninstall}
           onToggle={(value) =>
             openOverlay({
               kind: "confirm",
