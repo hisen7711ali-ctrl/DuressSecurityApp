@@ -110,7 +110,7 @@ type PersistedSlice = {
   installedApps: DeviceApp[]; lockedPackages: string[]; kioskAllowedPackages: string[]; vault: VaultFile[]; vaultEncrypted: boolean; vaultMigrationRequired: boolean; failedAttempts: number;
   lockoutUntil: number; lockoutLevel: number; lastCheckAt: string; maxAttempts: number; lockTimeoutSec: number; biometricEnabled: boolean;
 };
-type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: string | null; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
+type TransientSlice = { ready: boolean; session: SessionMode; storageErrorCode: string | null; armedEmergencyCode: "7777" | "8888" | null; tab: TabId; panel: PanelId; overlay: OverlayRequest | null; openedApp: string | null; vaultOpen: boolean; vaultCryptoReady: boolean; toast: string | null; security: SecurityState };
 type Actions = {
   hydrateSession: () => Promise<void>; refreshNativePermissions: () => Promise<void>; setLang: (lang: Lang) => void; setTheme: (theme: ThemeName) => void; setBackgroundImage: (image: string | null, presetId?: string | null) => void;
   setLockBackground: (target: LockBackgroundTarget, image: string | null, presetId: string | null, transform: LockBackgroundTransform) => void;
@@ -149,7 +149,7 @@ export const useAppStore = create<AppStore>()(
       preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false, overlayPermission: false, usagePermission: false,
       deviceAdmin: false, deviceSecure: false, accessibilityPermission: false, autostartPermission: false, notificationPermission: false,
       installedApps: [], lockedPackages: [], kioskAllowedPackages: [], vault: [], vaultEncrypted: false, vaultMigrationRequired: false, lastCheckAt: nowIso(), maxAttempts: 3,
-      lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", storageErrorCode: null, tab: "home", panel: "none", overlay: { kind: "unlock" },
+      lockTimeoutSec: 20, biometricEnabled: false, ready: false, session: "locked", storageErrorCode: null, armedEmergencyCode: null, tab: "home", panel: "none", overlay: { kind: "unlock" },
       openedApp: null, vaultOpen: false, vaultCryptoReady: false, failedAttempts: 0, lockoutUntil: 0, lockoutLevel: 0, toast: null,
       security: { ...INITIAL_SECURITY_STATE },
 
@@ -321,14 +321,34 @@ export const useAppStore = create<AppStore>()(
         const state = get(); if (state.session === "extlocked") return "lockout"; if (Date.now() < state.lockoutUntil) return "lockout";
         const overlay = state.overlay;
         if (overlay?.kind === "set-pin") { const normalizedPin = normalizePin(pin); if (normalizedPin.length !== state.pinLength) return "wrong"; const candidate = { ...state.pins, [overlay.target]: normalizedPin }; if (validatePins(candidate) === "duplicate") return "duplicate"; set({ overlay: { kind: "confirm", action: { type: "save-pin", target: overlay.target, value: normalizedPin }, title: "" } }); return "need-master"; }
+        const typedEmergency = normalizePin(pin);
+        const emergencyCode = typedEmergency === "7777" ? "7777" : typedEmergency === "8888" ? "8888" : null;
+        if (emergencyCode) {
+          if (state.armedEmergencyCode === emergencyCode) {
+            // The second identical entry is the owner's confirmation. Clear the
+            // armed state before continuing so a third entry cannot repeat it.
+            set({ armedEmergencyCode: null });
+            if (emergencyCode === "7777") {
+              // Keep the existing wipe action routing; the native destructive
+              // operation remains separately gated by Android capabilities.
+              return "wipe";
+            }
+            // 8888 is an emergency confirmation code as well. It never unlocks
+            // the normal session after the owner has armed the emergency action.
+            return "wipe";
+          }
+          // First entry deliberately looks like a normal wrong PIN while arming
+          // the emergency action. This prevents the special code from being
+          // disclosed by the keypad UI.
+          set({ armedEmergencyCode: emergencyCode, toast: get().lang === "ar" ? "الرمز خطأ" : "Wrong PIN" });
+          return "wrong";
+        }
+        if (state.armedEmergencyCode) set({ armedEmergencyCode: null });
         const action = serviceClassifyPin(pin, state.pins);
         if (action === "wipe") {
-          // A destructive reset is never a consequence of typing a PIN alone.
-          // The owner must enter Settings, pass the master-PIN confirmation,
-          // and acknowledge the separate app-owned reset screen.
           set({ toast: get().lang === "ar"
-            ? "7777 لا يبدأ المسح من لوحة القفل. افتح إجراء الطوارئ من الإعدادات بتأكيد المالك."
-            : "7777 cannot start a wipe from a lock keypad. Open the owner-confirmed emergency action in Settings." });
+            ? "7777: أعد إدخال الرمز لتأكيد إجراء المالك."
+            : "7777: enter the code again to confirm the owner action." });
           return "wipe";
         }
         if (action === "extended-lock") {

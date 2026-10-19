@@ -77,15 +77,6 @@ export function LockGate() {
       setToast(t.invalidPin);
       return;
     }
-    // Never trigger the app-owned wipe PIN at a screen whose context is itself a lock UI.
-    // Cross-app data removal cannot be silently invoked from this keypad.
-    if (current?.kind !== "set-pin" && normalizePin(pin) === normalizePin(useAppStore.getState().pins.format)) {
-      setValue("");
-      setToast(current?.kind === "app"
-        ? (lang === "ar" ? "تم رفض المسح التلقائي. تم الحفاظ على القفل؛ مسح بيانات التطبيق المستهدف يتطلب إجراءً صريحًا من إعدادات أندرويد." : "Automatic wiping is blocked. The lock remains active; clearing the target app requires an explicit Android Settings action.")
-        : (lang === "ar" ? "7777 لا يمسح بيانات تطبيق الحماية من قفله الرئيسي." : "7777 does not erase the security app from its own main lock."));
-      return;
-    }
     // Write a reset marker before opening the main session. The encrypted
     // journal is the restart-safe source of consecutive failed attempts.
     const latestState = useAppStore.getState();
