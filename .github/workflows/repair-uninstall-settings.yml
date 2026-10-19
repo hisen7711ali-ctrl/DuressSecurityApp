@@ -1,0 +1,29 @@
+name: Repair uninstall settings
+
+on:
+  push:
+    branches: [merge/full-fix-2026-10-18]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Apply settings repair
+        run: node scripts/repair-uninstall-settings-2026-10-19.mjs
+      - name: Commit settings repair
+        shell: bash
+        run: |
+          if git diff --quiet -- src/components/settings-screen.tsx; then
+            echo "No settings repair changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/settings-screen.tsx
+          git commit -m "fix: support Device Admin uninstall protection semantics [skip ci]"
+          git push
