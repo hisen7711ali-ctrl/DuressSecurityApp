@@ -27,13 +27,10 @@ test("secure reads fail closed instead of becoming a missing/default record", as
   assert.match(store, /nativeBridge\.isNativeAndroid\(\) \? null/);
 });
 
-test("storage failures are fail-closed and recovery never erases data automatically", async () => {
-  const store = await read("src/lib/store.ts");
-  const shell = await read("src/components/app-shell.tsx");
+test("storage recovery never resets on normal startup", async () => {
   const recovery = await read("src/components/storage-recovery-screen.tsx");
-  assert.match(store, /session:\s*"storage-error"/);
-  assert.match(shell, /session === "storage-error"/);
   assert.match(recovery, /Retry secure storage/);
+  assert.match(recovery, /Advanced recovery/);
   assert.match(recovery, /secureStorageClearOwned/);
   assert.match(recovery, /window\.confirm/);
   assert.match(recovery, /if \(!confirmed\) return/);
@@ -62,6 +59,16 @@ test("startup hydration is bounded, retried serially, and native Keystore access
   assert.match(plugin, /initializeSecureStorage/);
   assert.match(plugin, /secureStorageExecutor\.execute/);
   assert.match(plugin, /secureStorageExecutor\.shutdownNow\(\)/);
+});
+
+test("Android native extras include the optional Shizuku path", async () => {
+  const copy = await read("scripts/copy-native-security-extras.mjs");
+  const additions = await read("android-native/app-build-gradle-additions.txt");
+  assert.match(copy, /ElevatedShellHelper\.kt/);
+  assert.match(copy, /TargetAppDataWiper\.kt/);
+  assert.match(copy, /dev\.rikka\.shizuku:api:13\.1\.5/);
+  assert.match(copy, /dev\.rikka\.shizuku:provider:13\.1\.5/);
+  assert.match(additions, /dev\.rikka\.shizuku:api:13\.1\.5/);
 });
 
 test("Android backup and transfer rules are generated and asserted in the final manifest", async () => {

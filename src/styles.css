@@ -31,45 +31,15 @@
 }
 
 @layer base {
-  html,
-  body,
-  #app {
-    min-height: 100%;
-  }
-
-  html {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  body {
-    margin: 0;
-    background: var(--color-night);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-  }
-
-  button:not(:disabled),
-  [role="button"]:not(:disabled) {
-    cursor: pointer;
-  }
-
-  h1,
-  h2,
-  h3 {
-    text-wrap: balance;
-  }
-
-  p {
-    text-wrap: pretty;
-  }
+  html, body, #app { min-height: 100%; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { margin: 0; background: var(--color-night); color: var(--color-ink); font-family: var(--font-sans); }
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
 }
 
-html[data-theme="light"] body {
-  background: var(--color-paper);
-  color: var(--color-ink-light);
-}
-
+html[data-theme="light"] body { background: var(--color-paper); color: var(--color-ink-light); }
 html[data-theme="light"] {
   --color-night: #efe7d6;
   --color-navy: #f6f2e9;
@@ -84,63 +54,38 @@ html[data-theme="light"] {
   --shadow-panel: 0 0 0 1px rgba(23, 32, 51, 0.08), 0 10px 24px rgba(23, 32, 51, 0.08);
 }
 
-.quote-font {
-  font-family: var(--font-quote);
-}
-
+.quote-font { font-family: var(--font-quote); }
 .bg-mountains {
-  background-image:
-    linear-gradient(180deg, rgba(6, 18, 31, 0.18) 0%, rgba(6, 18, 31, 0.55) 48%, rgba(6, 18, 31, 0.96) 100%),
-    url("/mountains.jpg");
-  background-size: cover;
-  background-position: center 30%;
+  background-image: linear-gradient(180deg, rgba(6, 18, 31, 0.18) 0%, rgba(6, 18, 31, 0.55) 48%, rgba(6, 18, 31, 0.96) 100%), url("/mountains.jpg");
+  background-size: cover; background-position: center 30%;
 }
-
 html[data-theme="light"] .bg-mountains {
-  background-image:
-    linear-gradient(180deg, rgba(246, 242, 233, 0.2) 0%, rgba(246, 242, 233, 0.55) 50%, rgba(246, 242, 233, 0.96) 100%),
-    url("/mountains.jpg");
+  background-image: linear-gradient(180deg, rgba(246, 242, 233, 0.2) 0%, rgba(246, 242, 233, 0.55) 50%, rgba(246, 242, 233, 0.96) 100%), url("/mountains.jpg");
 }
 
-.key-press:active {
-  transform: scale(0.98);
+/* Stronger security keypad: clear hierarchy, depth, touch feedback and a deliberate action key. */
+.key-press {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  -webkit-tap-highlight-color: transparent;
 }
+.key-press:active { transform: scale(0.95); box-shadow: 0 3px 9px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+.app-lock-backdrop .key-press { min-height: 64px; }
+.app-lock-backdrop .key-press.bg-cyan { border-color: rgba(255, 255, 255, 0.24); box-shadow: 0 9px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
 
 @keyframes pin-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-7px);
-  }
-  40% {
-    transform: translateX(7px);
-  }
-  60% {
-    transform: translateX(-4px);
-  }
-  80% {
-    transform: translateX(4px);
-  }
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
 }
-
-.pin-shake {
-  animation: pin-shake 0.4s ease;
-}
+.pin-shake { animation: pin-shake 0.4s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-
-/* Optional owner-selected image background, compressed and stored locally. */
 html[data-custom-background="true"] .bg-mountains,
 html[data-custom-background="true"] .calculator-fullscreen-root,
 html[data-custom-background="true"] .app-lock-backdrop {
