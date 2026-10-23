@@ -26,16 +26,18 @@ jobs:
         run: node scripts/repair-uninstall-settings-2026-10-19.mjs
       - name: Apply Device Admin protection repair
         run: node scripts/repair-device-admin-protection-2026-10-19.mjs
+      - name: Apply final regression repairs
+        run: node scripts/repair-ci-failures-2026-10-23.mjs
       - name: Commit security repairs
         shell: bash
         run: |
-          if git diff --quiet -- src/lib/store.ts src/components/lock-gate.tsx src/components/settings-screen.tsx; then
+          if git diff --quiet -- src/lib/store.ts src/components/lock-gate.tsx src/components/settings-screen.tsx src/lib/background-presets.ts; then
             echo "No security repair changes needed."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/lib/store.ts src/components/lock-gate.tsx src/components/settings-screen.tsx
-            git commit -m "fix: repair security PIN and uninstall protection routing [skip ci]"
+            git add src/lib/store.ts src/components/lock-gate.tsx src/components/settings-screen.tsx src/lib/background-presets.ts
+            git commit -m "fix: repair security PIN and lock background regressions [skip ci]"
             git push
           fi
       - name: Node.js
