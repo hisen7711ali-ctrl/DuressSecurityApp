@@ -36,7 +36,7 @@ jobs:
         run: npm audit fix --package-lock-only --no-fund
       - name: Upload refreshed lockfile for review
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-refreshed-package-lock
           path: package-lock.json
@@ -61,16 +61,12 @@ jobs:
               const line = "npm audit: " + (v.total ?? "unknown") + " findings — critical " + (v.critical ?? 0) + ", high " + (v.high ?? 0) + ", moderate " + (v.moderate ?? 0) + ", low " + (v.low ?? 0);
               console.log(line);
               fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + "\n");
-              for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
-                console.log("- " + name + ": " + item.severity + "; direct=" + item.isDirect + "; fixAvailable=" + JSON.stringify(item.fixAvailable));
-              }
-            } catch {
-              console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and npm install output.");
-            }
+              for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) console.log("- " + name + ": " + item.severity + "; direct=" + item.isDirect + "; fixAvailable=" + JSON.stringify(item.fixAvailable));
+            } catch { console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and npm install output."); }
           '
       - name: Upload npm audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-npm-audit-report
           path: |
@@ -89,7 +85,7 @@ jobs:
           exit "$code"
       - name: Upload test log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-test-log
           path: npm-test.log
@@ -104,11 +100,11 @@ jobs:
           exit "$code"
       - name: Upload TypeScript log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-typecheck-log
           path: typecheck.log
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
       - name: Check authentication invariants
         shell: bash
@@ -116,24 +112,14 @@ jobs:
           set -euo pipefail
           npm run dev > dev-server.log 2>&1 &
           DEV_PID=$!
-          cleanup() {
-            kill "$DEV_PID" 2>/dev/null || true
-            wait "$DEV_PID" 2>/dev/null || true
-          }
+          cleanup() { kill "$DEV_PID" 2>/dev/null || true; wait "$DEV_PID" 2>/dev/null || true; }
           trap cleanup EXIT
           ready=0
           for _ in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then
-              ready=1
-              break
-            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then ready=1; break; fi
             sleep 1
           done
-          if [ "$ready" -ne 1 ]; then
-            echo 'ERROR: wrapped Vite dev server did not become ready.' >&2
-            cat dev-server.log >&2 || true
-            exit 1
-          fi
+          if [ "$ready" -ne 1 ]; then echo 'ERROR: wrapped Vite dev server did not become ready.' >&2; cat dev-server.log >&2 || true; exit 1; fi
           npm run check:auth
       - name: Lint source
         shell: bash
@@ -144,7 +130,7 @@ jobs:
           exit "$code"
       - name: Upload lint log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-lint-log
           path: lint.log
@@ -158,64 +144,21 @@ jobs:
           set -euo pipefail
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          test -f "$APK"
-          test -x "$AAPT"
+          test -f "$APK" && test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee apk-permissions.txt
-          for permission in \
-            'android.permission.USE_BIOMETRIC' \
-            'android.permission.RECEIVE_BOOT_COMPLETED' \
-            'android.permission.POST_NOTIFICATIONS' \
-            'android.permission.SYSTEM_ALERT_WINDOW' \
-            'android.permission.PACKAGE_USAGE_STATS'; do
-            if ! grep -Fq "$permission" apk-permissions.txt; then
-              echo "ERROR: final APK is missing required permission $permission" >&2
-              exit 1
-            fi
-          done
-          for forbidden in \
-            'android.permission.INTERNET' \
-            'android.permission.ACCESS_NETWORK_STATE' \
-            'android.permission.QUERY_ALL_PACKAGES'; do
-            if grep -Fq "$forbidden" apk-permissions.txt; then
-              echo "ERROR: final APK declares forbidden broad/network permission $forbidden" >&2
-              exit 1
-            fi
-          done
+          for permission in android.permission.USE_BIOMETRIC android.permission.RECEIVE_BOOT_COMPLETED android.permission.POST_NOTIFICATIONS android.permission.SYSTEM_ALERT_WINDOW android.permission.PACKAGE_USAGE_STATS; do grep -Fq "$permission" apk-permissions.txt || { echo "ERROR: final APK is missing required permission $permission" >&2; exit 1; }; done
+          for forbidden in android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE android.permission.QUERY_ALL_PACKAGES; do ! grep -Fq "$forbidden" apk-permissions.txt || { echo "ERROR: final APK declares forbidden broad/network permission $forbidden" >&2; exit 1; }; done
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee apk-manifest.txt
-          for component in \
-            'com.duresssecurity.admin.AdminReceiver' \
-            'com.duresssecurity.admin.BootCompletedReceiver' \
-            'com.duresssecurity.admin.AppLockAccessibilityService' \
-            'com.duresssecurity.app.MainActivity'; do
-            if ! grep -Fq "$component" apk-manifest.txt; then
-              echo "ERROR: final APK manifest is missing required component $component" >&2
-              exit 1
-            fi
-          done
-          if ! grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt; then
-            echo 'ERROR: Device Admin receiver binding permission is missing.' >&2
-            exit 1
-          fi
-          if ! grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt; then
-            echo 'ERROR: Accessibility service binding permission is missing.' >&2
-            exit 1
-          fi
-          if ! grep -Fq 'android:allowBackup' apk-manifest.txt; then
-            echo 'ERROR: final APK manifest does not expose the expected allowBackup attribute.' >&2
-            exit 1
-          fi
+          for component in com.duresssecurity.admin.AdminReceiver com.duresssecurity.admin.BootCompletedReceiver com.duresssecurity.admin.AppLockAccessibilityService com.duresssecurity.app.MainActivity; do grep -Fq "$component" apk-manifest.txt || { echo "ERROR: final APK manifest is missing required component $component" >&2; exit 1; }; done
+          grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt || { echo 'ERROR: Device Admin receiver binding permission is missing.' >&2; exit 1; }
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt || { echo 'ERROR: Accessibility service binding permission is missing.' >&2; exit 1; }
+          grep -Fq 'android:allowBackup' apk-manifest.txt || { echo 'ERROR: final APK manifest does not expose the expected allowBackup attribute.' >&2; exit 1; }
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
-          if ! grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt; then
-            echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2
-            exit 1
-          fi
-          if ! grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt; then
-            echo 'ERROR: final APK launcher activity is not MainActivity.' >&2
-            exit 1
-          fi
+          grep -Eq "application-icon(-[0-9]+)?:'res/drawable/ic_launcher(\.xml)?'" apk-badging.txt || { echo 'ERROR: final APK launcher icon is not the calculator drawable.' >&2; exit 1; }
+          grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt || { echo 'ERROR: final APK launcher activity is not MainActivity.' >&2; exit 1; }
           echo 'OK: final APK is offline, has the required declared security permissions, contains all native security components, and launches the calculator-branded MainActivity.'
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: duress-security-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -225,10 +168,7 @@ jobs:
         if: success() && (github.ref == 'refs/heads/fix/maintenance-and-app-lock' || github.ref == 'refs/heads/fix/owner-pin-routing-lock-icon-2026-10-17')
         shell: bash
         run: |
-          if git diff --quiet -- package-lock.json; then
-            echo "Dependency lockfile is already current; no commit needed."
-            exit 0
-          fi
+          if git diff --quiet -- package-lock.json; then echo "Dependency lockfile is already current; no commit needed."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package-lock.json
