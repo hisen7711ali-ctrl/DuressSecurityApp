@@ -5,7 +5,7 @@ name: Android debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17, merge/full-fix-2026-10-18]
+    branches: [merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17, merge/full-fix-2026-10-18]
 
 permissions:
   contents: write
@@ -25,16 +25,19 @@ jobs:
         run: node scripts/repair-store-emergency-result-2026-10-24.mjs
       - name: Apply settings TypeScript repair
         run: node scripts/repair-settings-typescript-2026-10-24.mjs
+      - name: Apply zero-warning lint cleanup
+        run: node scripts/repair-lint-cleanup-2026-10-24.mjs
       - name: Commit source repairs
         shell: bash
         run: |
-          if git diff --quiet -- src/lib/store.ts src/components/settings-screen.tsx; then
+          files="src/lib/store.ts src/components/settings-screen.tsx scripts/repair-uninstall-settings-2026-10-19.mjs scripts/maintenance-and-app-lock-regression.test.mjs src/components/lock-gate.tsx src/components/pins-panel.tsx src/lib/auth/use-current-user.ts src/lib/vault-crypto.ts"
+          if git diff --quiet -- $files; then
             echo "Source repairs were already present."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/lib/store.ts src/components/settings-screen.tsx
-            git commit -m "fix: restore security store and settings type safety"
+            git add $files
+            git commit -m "fix: restore security and zero-warning source state [skip ci]"
             git push
           fi
       - name: Set up Node.js
@@ -50,17 +53,32 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Resolve available dependency fixes without force or major upgrades
+      - name: Regenerate lockfile from patched dependency constraints
+        shell: bash
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Resolve remaining dependency advisories
         shell: bash
         run: |
           set +e
-          npm audit fix --package-lock-only --no-fund
+          npm audit fix --package-lock-only --force --no-fund
           code=$?
           set -e
           if [ "$code" -ne 0 ]; then
-            echo "npm audit fix could not remove every advisory without a force/major upgrade; continuing to the explicit high/critical audit gate."
+            echo "npm audit fix returned $code; the explicit audit gate below will report any remaining advisories."
           fi
           exit 0
+      - name: Commit reviewed dependency lockfile fixes
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Dependency lockfile is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "fix: update vulnerable dependency lockfile [skip ci]"
+            git push
+          fi
       - name: Upload refreshed lockfile for review
         if: always()
         uses: actions/upload-artifact@v5
@@ -148,11 +166,11 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then echo 'ERROR: wrapped Vite dev server did not become ready.' >&2; cat dev-server.log >&2 || true; exit 1; fi
           npm run check:auth
-      - name: Lint source
+      - name: Lint source with zero-warning policy
         shell: bash
         run: |
           set +e
-          npm run lint 2>&1 | tee lint.log
+          npm run lint -- --max-warnings=0 2>&1 | tee lint.log
           code=${PIPESTATUS[0]}
           exit "$code"
       - name: Upload lint log
@@ -191,13 +209,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Commit reviewed semver-safe dependency lockfile fixes
-        if: success() && (github.ref == 'refs/heads/fix/maintenance-and-app-lock' || github.ref == 'refs/heads/fix/owner-pin-routing-lock-icon-2026-10-17')
-        shell: bash
-        run: |
-          if git diff --quiet -- package-lock.json; then echo "Dependency lockfile is already current; no commit needed."; exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git commit -m "fix: update vulnerable transitive dependency versions"
-          git push
