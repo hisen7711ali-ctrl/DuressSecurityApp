@@ -4,7 +4,7 @@ import { useAppStore, type PinKind } from "@/lib/store";
 import { useCopy } from "@/lib/use-copy";
 import { copy } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { getCalculatorCommand, loadCalculatorCommand, normalizeCalculatorCommand, setCalculatorCommand } from "@/lib/calculator-command";
+import { loadCalculatorCommand, normalizeCalculatorCommand, setCalculatorCommand } from "@/lib/calculator-command";
 
 const KINDS: PinKind[] = ["master", "lock", "duress", "format"];
 const ATTEMPT_OPTIONS = [3, 4, 7, 10] as const;

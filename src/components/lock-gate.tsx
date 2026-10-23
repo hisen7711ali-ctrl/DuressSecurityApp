@@ -22,13 +22,9 @@ export function LockGate() {
   const session = useAppStore((s) => s.session);
   const installedApps = useAppStore((s) => s.installedApps);
   const mainLockBackgroundImage = useAppStore((s) => s.mainLockBackgroundImage);
-  const appLockBackgroundImage = useAppStore((s) => s.appLockBackgroundImage);
   const mainLockBackgroundScale = useAppStore((s) => s.mainLockBackgroundScale);
   const mainLockBackgroundX = useAppStore((s) => s.mainLockBackgroundX);
   const mainLockBackgroundY = useAppStore((s) => s.mainLockBackgroundY);
-  const appLockBackgroundScale = useAppStore((s) => s.appLockBackgroundScale);
-  const appLockBackgroundX = useAppStore((s) => s.appLockBackgroundX);
-  const appLockBackgroundY = useAppStore((s) => s.appLockBackgroundY);
   const submitPin = useAppStore((s) => s.submitPin);
   const configuredPins = useAppStore((s) => s.pins);
   const pinLength = useAppStore((s) => s.pinLength);

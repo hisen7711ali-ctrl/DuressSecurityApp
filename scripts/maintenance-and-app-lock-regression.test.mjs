@@ -173,7 +173,6 @@ test("uninstall protection is visibly unsupported until Device Owner and stays p
 
 test("Android asks the owner for only the permission needed by each explicit feature", async () => {
   const store = await read("src/lib/store.ts");
-  const settings = await read("src/components/settings-screen.tsx");
   const plugin = await read("android-native/plugin/src/main/java/com/duresssecurity/admin/SecurityAdminPlugin.kt");
   assert.match(store, /requestSystemPermission\("accessibilityPermission"\)/);
   const extended = store.slice(store.indexOf('if (action === "extended-lock")'), store.indexOf('if (action === "duress")'));

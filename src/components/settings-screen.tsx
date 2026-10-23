@@ -60,10 +60,8 @@ export function SettingsScreen() {
   const setTheme = useAppStore((s) => s.setTheme);
   const setLang = useAppStore((s) => s.setLang);
   const setPanel = useAppStore((s) => s.setPanel);
-  const homeLockEnabled = useAppStore((s) => s.homeLockEnabled);
   const preventUninstall = useAppStore((s) => s.preventUninstall);
   const deviceOwner = useAppStore((s) => s.deviceOwner);
-  const dedicatedDeviceMode = useAppStore((s) => s.dedicatedDeviceMode);
   const refreshNativePermissions = useAppStore((s) => s.refreshNativePermissions);
   const overlayPermission = useAppStore((s) => s.overlayPermission);
   const usagePermission = useAppStore((s) => s.usagePermission);

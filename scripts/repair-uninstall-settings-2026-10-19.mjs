@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 const path = "src/components/settings-screen.tsx";
 let source = await readFile(path, "utf8");
-const pattern = /          hint=\{preventUninstall[\s\S]*?\n          disabled=\{!deviceOwner && !preventUninstall\}/;
+const pattern = /\s{10}hint=\{preventUninstall[\s\S]*?\n          disabled=\{!deviceOwner && !preventUninstall\}/;
 const replacement = `          hint={preventUninstall
             ? (deviceOwner
               ? (lang === "ar" ? "منع الإزالة الصارم مفعّل بواسطة Device Owner." : "Hard uninstall blocking is active through Device Owner.")
