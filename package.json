@@ -5,7 +5,9 @@
   "sideEffects": false,
   "type": "module",
   "overrides": {
-    "nf3": "0.3.17"
+    "nf3": "0.3.17",
+    "fast-uri": "3.1.9",
+    "zod": "4.6.7"
   },
   "scripts": {
     "dev": "node scripts/with-app-env.mjs vite dev --host 0.0.0.0 --port 8080",
@@ -79,7 +81,7 @@
     "tw-animate-css": "^1.3.4",
     "typescript": "^5.7.0",
     "vaul": "^1.1.2",
-    "vite": "^8.2.0",
+    "vite": "^8.3.4",
     "zustand": "^5.0.0",
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
