@@ -21,18 +21,20 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
+      - name: Restore and type-fix security store
+        run: node scripts/repair-store-emergency-result-2026-10-24.mjs
       - name: Apply settings TypeScript repair
         run: node scripts/repair-settings-typescript-2026-10-24.mjs
-      - name: Commit settings TypeScript repair
+      - name: Commit source repairs
         shell: bash
         run: |
-          if git diff --quiet -- src/components/settings-screen.tsx; then
-            echo "Settings TypeScript repair was already present."
+          if git diff --quiet -- src/lib/store.ts src/components/settings-screen.tsx; then
+            echo "Source repairs were already present."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/components/settings-screen.tsx
-            git commit -m "fix: repair settings screen TypeScript"
+            git add src/lib/store.ts src/components/settings-screen.tsx
+            git commit -m "fix: restore security store and settings type safety"
             git push
           fi
       - name: Set up Node.js
