@@ -28,6 +28,7 @@ jobs:
           node scripts/repair-store-emergency-result-2026-10-24.mjs
           node scripts/repair-settings-typescript-2026-10-24.mjs
           node scripts/repair-lint-cleanup-2026-10-24.mjs
+          node scripts/repair-vault-verification-2026-10-24.mjs
 
       - name: Commit source repairs
         shell: bash
@@ -60,10 +61,10 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Regenerate lockfile from package constraints
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error
 
       - name: Validate lockfile matches package.json
-        run: npm ci --dry-run --ignore-scripts --no-audit --no-fund
+        run: npm ci --dry-run --ignore-scripts --no-audit --no-fund --loglevel=error
 
       - name: Commit refreshed lockfile
         shell: bash
@@ -79,10 +80,10 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --loglevel=error
 
       - name: Dependency audit - zero findings
-        run: npm audit --audit-level=low
+        run: npm audit --audit-level=low --loglevel=error
 
       - name: Run tests
         run: npm test
