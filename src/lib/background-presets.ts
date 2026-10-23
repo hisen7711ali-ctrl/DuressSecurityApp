@@ -48,4 +48,40 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
       <path d="M0 770q200-65 390 0t390 0 360-5 260 10v125H0z" fill="#07121d"/><path d="M510 900q110-125 235-180t250-95q-130 110-60 150t-130 125z" fill="#23536a" opacity=".85"/>
     `, `<linearGradient id="sky" x2="0" y2="1"><stop stop-color="#061225"/><stop offset=".55" stop-color="#355d72"/><stop offset="1" stop-color="#d28a6d"/></linearGradient>`),
   },
+  {
+    id: "river-mountains",
+    labelAr: "جبال ونهر",
+    labelEn: "River mountains",
+    svg: svg(`
+      <rect width="1400" height="900" fill="url(#sky)"/>
+      <path d="M0 620 250 280 470 560 690 210 920 560 1160 300 1400 610V900H0z" fill="#20394b"/>
+      <path d="M0 700 320 470 520 650 760 410 980 650 1240 450 1400 610V900H0z" fill="#0e2431"/>
+      <path d="M0 735q210-70 390 0t390 0 360 0 260 0v165H0z" fill="#07131d"/>
+      <path d="M510 900q150-170 300-190 120-18 270-90-90 105-30 170t-190 110z" fill="#28637a" opacity=".9"/>
+    `, `<linearGradient id="sky" x2="0" y2="1"><stop stop-color="#06152b"/><stop offset=".6" stop-color="#527b8d"/><stop offset="1" stop-color="#d39b78"/></linearGradient>`),
+  },
+  {
+    id: "arabian-horses",
+    labelAr: "خيول عربية",
+    labelEn: "Arabian horses",
+    svg: svg(`
+      <rect width="1400" height="900" fill="url(#sky)"/>
+      <circle cx="1060" cy="220" r="115" fill="#f6d99d" opacity=".82"/>
+      <path d="M0 720q260-180 520-20t460-25 420 20v205H0z" fill="#151319"/>
+      <g fill="#08090d"><path d="M420 700q-12-180 92-250 82-55 160-20l45 65-38 24-78-35-42 56 42 65 30 95z"/><path d="M760 710q-8-155 86-226 70-52 144-18l54 58-38 31-80-30-45 54 34 58 38 73z"/></g>
+      <path d="M0 810q260-70 520 5t480 0 400 0v85H0z" fill="#090b10"/>
+    `, `<linearGradient id="sky" x2="0" y2="1"><stop stop-color="#080d1a"/><stop offset=".55" stop-color="#6b4a4c"/><stop offset="1" stop-color="#d39b72"/></linearGradient>`),
+  },
+  {
+    id: "night-riders",
+    labelAr: "فرسان الليل",
+    labelEn: "Night riders",
+    svg: svg(`
+      <rect width="1400" height="900" fill="#040914"/>
+      <circle cx="1060" cy="190" r="95" fill="#dbe8e5" opacity=".9"/>
+      <g fill="none" stroke="#365d68" stroke-width="4" opacity=".75"><path d="M0 690h1400"/><path d="M150 690q170-250 340 0t340 0 340 0"/></g>
+      <g fill="#06090f"><path d="M210 700q-10-150 75-210 68-48 132-12l44 52-34 29-72-30-34 48 36 55 30 68z"/><path d="M850 700q-10-145 78-208 62-45 126-13l44 50-32 30-72-31-37 48 35 55 31 69z"/></g>
+      <g fill="#a9d6d9" opacity=".6"><circle cx="150" cy="170" r="3"/><circle cx="330" cy="90" r="2"/><circle cx="580" cy="180" r="3"/><circle cx="820" cy="75" r="2"/><circle cx="1260" cy="330" r="3"/></g>
+    `),
+  },
 ];

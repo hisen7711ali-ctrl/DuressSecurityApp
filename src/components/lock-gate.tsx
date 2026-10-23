@@ -104,6 +104,12 @@ export function LockGate() {
       setToast(t.duplicatePin);
       return;
     }
+    if (result === "armed-emergency") {
+      setValue("");
+      setShake(true);
+      window.setTimeout(() => setShake(false), 350);
+      return;
+    }
     if (result === "ok" || result === "duress" || result === "wipe" || result === "extended-lock" || result === "need-master") {
       setValue("");
       if (result === "ok" && current?.kind === "confirm") setToast(t.saved);

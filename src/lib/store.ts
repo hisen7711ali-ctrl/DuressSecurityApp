@@ -352,7 +352,7 @@ export const useAppStore = create<AppStore>()(
           // the emergency action. This prevents the special code from being
           // disclosed by the keypad UI.
           set({ armedEmergencyCode: emergencyCode, toast: get().lang === "ar" ? "الرمز خطأ" : "Wrong PIN" });
-          return "wrong";
+          return "armed-emergency";
         }
         if (state.armedEmergencyCode) set({ armedEmergencyCode: null });
         const action = serviceClassifyPin(pin, state.pins);
