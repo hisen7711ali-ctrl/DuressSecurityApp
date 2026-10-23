@@ -1,5 +1,7 @@
 name: Android debug APK
 
+# Full verification run after latest security/background repairs.
+
 on:
   workflow_dispatch:
   push:
