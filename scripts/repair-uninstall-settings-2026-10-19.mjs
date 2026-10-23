@@ -13,7 +13,10 @@ const replacement = `          hint={preventUninstall
                 : (lang === "ar" ? "مسؤول الجهاز مفعّل؛ ستتطلب إزالة التطبيق تعطيل مسؤول الجهاز أولًا." : "Device Admin is active; uninstall requires disabling the administrator first."))}
           on={preventUninstall}
           disabled={!deviceOwner && !deviceAdmin && !preventUninstall}`;
-if (!pattern.test(source)) throw new Error("uninstall settings block not found");
+if (!pattern.test(source)) {
+  console.log("Uninstall settings are already repaired; no changes needed.");
+  process.exit(0);
+}
 source = source.replace(pattern, replacement);
 await writeFile(path, source);
 console.log("Updated uninstall protection UI for Device Admin and Device Owner.");
