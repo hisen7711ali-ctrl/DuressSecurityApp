@@ -1,0 +1,145 @@
+name: Full zero-warning verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [merge/full-fix-2026-10-18]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: full-zero-warning-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_OPTIONS: --no-deprecation
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Apply source repairs
+        run: |
+          node scripts/repair-store-emergency-result-2026-10-24.mjs
+          node scripts/repair-settings-typescript-2026-10-24.mjs
+          node scripts/repair-lint-cleanup-2026-10-24.mjs
+
+      - name: Commit source repairs
+        shell: bash
+        run: |
+          files="src/lib/store.ts src/components/settings-screen.tsx scripts/repair-uninstall-settings-2026-10-19.mjs scripts/maintenance-and-app-lock-regression.test.mjs src/components/lock-gate.tsx src/components/pins-panel.tsx src/lib/auth/use-current-user.ts src/lib/vault-crypto.ts"
+          if git diff --quiet -- $files; then
+            echo "Source repairs already present."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add $files
+            git commit -m "fix: apply full source cleanup [skip ci]"
+            git push
+          fi
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+
+      - name: Regenerate lockfile from package constraints
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Validate lockfile matches package.json
+        run: npm ci --dry-run --ignore-scripts --no-audit --no-fund
+
+      - name: Commit refreshed lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "package-lock.json is already synchronized."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "fix: synchronize dependency lockfile [skip ci]"
+            git push
+          fi
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Dependency audit - zero findings
+        run: npm audit --audit-level=low
+
+      - name: Run tests
+        run: npm test
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Authentication invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > dev-server.log 2>&1 &
+          DEV_PID=$!
+          cleanup() { kill "$DEV_PID" 2>/dev/null || true; wait "$DEV_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/__app-env >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then cat dev-server.log; exit 1; fi
+          npm run check:auth
+
+      - name: Lint - zero warnings
+        run: npm run lint -- --max-warnings=0
+
+      - name: Build debug APK
+        run: npm run apk:debug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          test -f "$APK"
+          "$AAPT" dump permissions "$APK" > apk-permissions.txt
+          for permission in android.permission.USE_BIOMETRIC android.permission.RECEIVE_BOOT_COMPLETED android.permission.POST_NOTIFICATIONS android.permission.SYSTEM_ALERT_WINDOW android.permission.PACKAGE_USAGE_STATS; do
+            grep -Fq "$permission" apk-permissions.txt
+          done
+          for forbidden in android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE android.permission.QUERY_ALL_PACKAGES; do
+            ! grep -Fq "$forbidden" apk-permissions.txt
+          done
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > apk-manifest.txt
+          for component in com.duresssecurity.admin.AdminReceiver com.duresssecurity.admin.BootCompletedReceiver com.duresssecurity.admin.AppLockAccessibilityService com.duresssecurity.app.MainActivity; do
+            grep -Fq "$component" apk-manifest.txt
+          done
+          grep -Fq 'android.permission.BIND_DEVICE_ADMIN' apk-manifest.txt
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' apk-manifest.txt
+          "$AAPT" dump badging "$APK" > apk-badging.txt
+          grep -Fq "launchable-activity: name='com.duresssecurity.app.MainActivity'" apk-badging.txt
+          echo "APK verification passed."
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: duress-security-debug-apk-final
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
