@@ -339,7 +339,7 @@ export function SettingsScreen() {
                 ? (lang === "ar" ? "مالك الجهاز مفعّل؛ يمكنك تفعيل منع الإزالة الصارم." : "Device Owner is active; hard uninstall blocking can be enabled.")
                 : (lang === "ar" ? "مسؤول الجهاز مفعّل؛ ستتطلب إزالة التطبيق تعطيل مسؤول الجهاز أولًا." : "Device Admin is active; uninstall requires disabling the administrator first."))}
           on={preventUninstall}
-          disabled={!deviceOwner && !preventUninstall}
+          disabled={!deviceOwner && !deviceAdmin && !preventUninstall}
           onToggle={(value) =>
             openOverlay({
               kind: "confirm",

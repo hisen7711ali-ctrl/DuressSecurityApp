@@ -193,7 +193,7 @@ export const useAppStore = create<AppStore>()(
         const status = await nativeBridge.getPermissionStatus();
         if (!status) { set({ overlayPermission: false, usagePermission: false, accessibilityPermission: false, notificationPermission: false, autostartPermission: false, deviceAdmin: false, deviceSecure: false, preventUninstall: false, dedicatedDeviceMode: false, deviceOwner: false }); return; }
         set({ overlayPermission: status.overlayPermission, usagePermission: status.usagePermission, accessibilityPermission: status.accessibilityPermission, notificationPermission: status.notificationPermission,
-          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
+          autostartPermission: status.autostartPermission, deviceAdmin: status.deviceAdmin, deviceSecure: status.deviceSecure, preventUninstall: status.preventUninstall || status.deviceAdmin, dedicatedDeviceMode: status.dedicatedDeviceMode, deviceOwner: status.deviceOwner });
       },
       setLang: (lang) => set({ lang }), setTheme: (theme) => set({ theme }), setBackgroundImage: (backgroundImage, backgroundPresetId = null) => set({ backgroundImage, backgroundPresetId }),
       setPinLength: (length) => { if ([4, 7, 10].includes(length)) set({ pinLength: length }); },
@@ -297,7 +297,17 @@ export const useAppStore = create<AppStore>()(
           }
         }
         if (action.type === "toggle-overlay") set({ overlayEnabled: action.value });
-        if (action.type === "toggle-prevent") void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => {
+        if (action.type === "toggle-prevent") {
+          const current = get();
+          if (current.deviceAdmin && !current.deviceOwner) {
+            if (!action.value) {
+              set({ toast: current.lang === "ar" ? "لإيقاف حماية الإزالة يجب أولًا إلغاء مسؤول الجهاز من إعدادات أندرويد." : "To disable uninstall protection, first deactivate Device Admin in Android Settings." });
+              return;
+            }
+            set({ preventUninstall: true });
+            return;
+          }
+          void nativeBridge.setSelfUninstallBlocked(action.value).then(async (ok) => {
           await get().refreshNativePermissions();
           if (!ok && action.value) {
             const state = get();
@@ -308,7 +318,8 @@ export const useAppStore = create<AppStore>()(
                 : (state.lang === "ar" ? "أندرويد لم يؤكد تفعيل سياسة منع الإزالة؛ لم يتم تفعيلها." : "Android did not confirm the uninstall-block policy; it was not enabled.");
             set({ toast: message });
           }
-        });
+          });
+        }
         if (action.type === "toggle-kiosk") void nativeBridge.setKioskMode(action.value, get().kioskAllowedPackages).then(async (ok) => { await get().refreshNativePermissions(); if (!ok) set({ toast: get().lang === "ar" ? "أندرويد لم يسمح بتفعيل وضع الجهاز المخصص على هذا الجهاز." : "Android did not allow dedicated-device mode on this device." }); });
         if (action.type === "save-pin") set((s) => ({ pins: { ...s.pins, [action.target]: normalizePin(action.value) }, lastCheckAt: nowIso() }));
         if (action.type === "delete-file") { void get().deleteFile(action.id); }
