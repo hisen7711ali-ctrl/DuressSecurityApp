@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Delete, Equal } from "lucide-react";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
+
+const OWNER_TRIGGER = "20272006";
+const OWNER_TRIGGER_FULL = `${OWNER_TRIGGER}=`;
+
+type Props = { onSecretCommand?: (sequence: string) => boolean };
 
 const ROWS = [
   ["AC", "⌫", "%", "÷"],
@@ -86,19 +91,22 @@ function CalculatorButton({ label, onClick, tone = "number", wide = false }: {
   );
 }
 
-export function FakeCalculator() {
+export function FakeCalculator({ onSecretCommand }: Props = {}) {
   const { lang } = useCopy();
   const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
+  const ownerSequenceRef = useRef("");
 
   function tap(key: string) {
     if (key === "AC") {
+      ownerSequenceRef.current = "";
       setExpr("");
       setDisplay("0");
       return;
     }
 
     if (key === "⌫") {
+      ownerSequenceRef.current = ownerSequenceRef.current.slice(0, -1);
       setExpr((current) => {
         const next = current.slice(0, -1);
         setDisplay(next || "0");
@@ -108,12 +116,14 @@ export function FakeCalculator() {
     }
 
     if (key === "±") {
+      ownerSequenceRef.current = "";
       const next = expr.startsWith("-") ? expr.slice(1) : expr ? `-${expr}` : "-";
       setExpr(next);
       setDisplay(next || "0");
       return;
     }
     if (key === "%") {
+      ownerSequenceRef.current = "";
       if (!expr) return;
       const numeric = Number.parseFloat(expr);
       if (Number.isFinite(numeric)) {
@@ -128,6 +138,10 @@ export function FakeCalculator() {
       return;
     }
     if (key === "=") {
+      if (ownerSequenceRef.current === OWNER_TRIGGER) {
+        onSecretCommand?.(OWNER_TRIGGER_FULL);
+      }
+      ownerSequenceRef.current = "";
       const result = evalExpr(expr || display);
       setDisplay(result);
       setExpr(result === "Error" ? "" : result);
@@ -135,6 +149,19 @@ export function FakeCalculator() {
     }
 
     const operator = ["+", "−", "×", "÷"].includes(key);
+    if (operator) {
+      ownerSequenceRef.current = "";
+    } else if (/^\d$/.test(key)) {
+      const nextOwnerSequence = `${ownerSequenceRef.current}${key}`;
+      if (OWNER_TRIGGER.startsWith(nextOwnerSequence)) {
+        ownerSequenceRef.current = nextOwnerSequence;
+      } else {
+        ownerSequenceRef.current = OWNER_TRIGGER.startsWith(key) ? key : "";
+      }
+    } else {
+      ownerSequenceRef.current = "";
+    }
+
     const last = expr.at(-1);
     if (operator && last && ["+", "−", "×", "÷"].includes(last)) {
       const next = expr.slice(0, -1) + key;
