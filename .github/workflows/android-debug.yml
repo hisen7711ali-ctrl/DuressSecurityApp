@@ -1,6 +1,7 @@
 name: Android debug APK
 
 # Full verification run after latest security/background repairs.
+# Verification trigger: vault v2 invariant restored on the merge branch.
 
 on:
   workflow_dispatch:
@@ -9,6 +10,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  NODE_OPTIONS: --no-deprecation
 
 concurrency:
   group: android-debug-${{ github.ref }}
@@ -27,10 +31,12 @@ jobs:
         run: node scripts/repair-settings-typescript-2026-10-24.mjs
       - name: Apply zero-warning lint cleanup
         run: node scripts/repair-lint-cleanup-2026-10-24.mjs
+      - name: Restore vault verification invariants
+        run: node scripts/repair-vault-verification-2026-10-24.mjs
       - name: Commit source repairs
         shell: bash
         run: |
-          files="src/lib/store.ts src/components/settings-screen.tsx scripts/repair-uninstall-settings-2026-10-19.mjs scripts/maintenance-and-app-lock-regression.test.mjs src/components/lock-gate.tsx src/components/pins-panel.tsx src/lib/auth/use-current-user.ts src/lib/vault-crypto.ts"
+          files="src/lib/store.ts src/components/settings-screen.tsx scripts/repair-uninstall-settings-2026-10-19.mjs scripts/maintenance-and-app-lock-regression.test.mjs src/components/lock-gate.tsx src/components/pins-panel.tsx src/components/settings-screen.tsx src/lib/auth/use-current-user.ts src/lib/vault-crypto.ts"
           if git diff --quiet -- $files; then
             echo "Source repairs were already present."
           else
