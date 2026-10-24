@@ -2,6 +2,7 @@ name: Android debug APK
 
 # Full verification run after latest security/background repairs.
 # Verification trigger: vault v2 invariant restored on the merge branch.
+# This workflow is verification-only: source/lock repairs are applied in-memory to avoid concurrent push races.
 
 on:
   workflow_dispatch:
@@ -9,7 +10,7 @@ on:
     branches: [merged-fix, fix/maintenance-and-app-lock, fix/owner-pin-routing-lock-icon-2026-10-17, merge/full-fix-2026-10-18]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NODE_OPTIONS: --no-deprecation
@@ -33,19 +34,6 @@ jobs:
         run: node scripts/repair-lint-cleanup-2026-10-24.mjs
       - name: Restore vault verification invariants
         run: node scripts/repair-vault-verification-2026-10-24.mjs
-      - name: Commit source repairs
-        shell: bash
-        run: |
-          files="src/lib/store.ts src/components/settings-screen.tsx scripts/repair-uninstall-settings-2026-10-19.mjs scripts/maintenance-and-app-lock-regression.test.mjs src/components/lock-gate.tsx src/components/pins-panel.tsx src/components/settings-screen.tsx src/lib/auth/use-current-user.ts src/lib/vault-crypto.ts"
-          if git diff --quiet -- $files; then
-            echo "Source repairs were already present."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add $files
-            git commit -m "fix: restore security and zero-warning source state [skip ci]"
-            git push
-          fi
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -61,40 +49,20 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Regenerate lockfile from patched dependency constraints
         shell: bash
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Resolve remaining dependency advisories
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error
+      - name: Resolve remaining dependency advisories in workspace
         shell: bash
         run: |
           set +e
-          npm audit fix --package-lock-only --force --no-fund
+          npm audit fix --package-lock-only --force --no-fund --loglevel=error
           code=$?
           set -e
           if [ "$code" -ne 0 ]; then
             echo "npm audit fix returned $code; the explicit audit gate below will report any remaining advisories."
           fi
           exit 0
-      - name: Commit reviewed dependency lockfile fixes
-        shell: bash
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo "Dependency lockfile is already current."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "fix: update vulnerable dependency lockfile [skip ci]"
-            git push
-          fi
-      - name: Upload refreshed lockfile for review
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: duress-security-refreshed-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Install from the refreshed lockfile
-        run: npm ci --no-audit --no-fund
+      - name: Install from refreshed lockfile
+        run: npm ci --no-audit --no-fund --loglevel=error
       - name: Generate npm audit report
         if: always()
         shell: bash
@@ -113,7 +81,7 @@ jobs:
               console.log(line);
               fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + "\n");
               for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) console.log("- " + name + ": " + item.severity + "; direct=" + item.isDirect + "; fixAvailable=" + JSON.stringify(item.fixAvailable));
-            } catch { console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and npm install output."); }
+            } catch { console.log("npm audit returned no parseable JSON report; inspect npm-audit.json and install output."); }
           '
       - name: Upload npm audit report
         if: always()
@@ -126,7 +94,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Fail CI when high or critical dependency advisories remain
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --loglevel=error
       - name: Run tests
         shell: bash
         run: |
