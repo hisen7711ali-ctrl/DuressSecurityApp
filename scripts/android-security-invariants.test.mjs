@@ -66,9 +66,12 @@ test("Android native extras include the optional Shizuku path", async () => {
   const additions = await read("android-native/app-build-gradle-additions.txt");
   assert.match(copy, /ElevatedShellHelper\.kt/);
   assert.match(copy, /TargetAppDataWiper\.kt/);
-  assert.match(copy, /dev\.rikka\.shizuku:api:13\.1\.5/);
-  assert.match(copy, /dev\.rikka\.shizuku:provider:13\.1\.5/);
-  assert.match(additions, /dev\.rikka\.shizuku:api:13\.1\.5/);
+  assert.match(copy, /dev\.rikka\.shizuku:api:12\.2\.0/);
+  assert.match(copy, /dev\.rikka\.shizuku:provider:12\.2\.0/);
+  assert.match(additions, /dev\.rikka\.shizuku:api:12\.2\.0/);
+  assert.match(additions, /dev\.rikka\.shizuku:provider:12\.2\.0/);
+  assert.doesNotMatch(copy, /dev\.rikka\.shizuku:.*:13\.1\.5/);
+  assert.doesNotMatch(additions, /dev\.rikka\.shizuku:.*:13\.1\.5/);
 });
 
 test("Android backup and transfer rules are generated and asserted in the final manifest", async () => {
