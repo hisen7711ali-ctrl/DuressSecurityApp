@@ -18,6 +18,7 @@ implementation "androidx.biometric:biometric:1.1.0"
 # launcher-intent <queries> declaration (without QUERY_ALL_PACKAGES), replaces MainActivity
 # with the registered plugin, and disables Android auto-backup for Keystore-bound data.
 
-# Optional Shizuku (user installs Shizuku app and grants this app) for pm clear on real devices without Device Owner:
-implementation "dev.rikka.shizuku:api:13.1.5"
-implementation "dev.rikka.shizuku:provider:13.1.5"
+# Optional Shizuku (user installs Shizuku app and grants this app) for pm clear on real devices without Device Owner.
+# Shizuku 13.x requires API 24 in the provider manifest; 12.2.0 keeps the project's API 23 floor.
+implementation "dev.rikka.shizuku:api:12.2.0"
+implementation "dev.rikka.shizuku:provider:12.2.0"
