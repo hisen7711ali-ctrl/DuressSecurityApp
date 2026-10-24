@@ -125,7 +125,7 @@ export async function persistEncryptedAttachment(id: string, file: Blob, mimeTyp
 
 /** Decrypt only into a short-lived in-memory Blob for viewing or explicit download. */
 export async function openEncryptedAttachment(id: string): Promise<{ blob: Blob; mimeType: string }> {
-  if (!activeKey || activeVersion !== 2) throw new Error("VAULT_LOCKED");
+  if (!activeKey || activeVersion !== 3) throw new Error("VAULT_LOCKED");
   const key = activeKey;
   const meta = await readAttachmentRecord(id);
   if (!meta || meta.recordType !== "meta" || !meta.complete || meta.id !== id ||
