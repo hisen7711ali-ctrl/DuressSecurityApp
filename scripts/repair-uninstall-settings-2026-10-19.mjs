@@ -1,7 +1,19 @@
 import { readFile, writeFile } from "node:fs/promises";
+
 const path = "src/components/settings-screen.tsx";
 let source = await readFile(path, "utf8");
-const pattern = /\s{10}hint=\{preventUninstall[\s\S]*?\n          disabled=\{!deviceOwner && !preventUninstall\}/;
+
+const hintMarker = "          hint={preventUninstall";
+const disabledMarker = "          disabled={!deviceOwner && !preventUninstall}";
+const start = source.indexOf(hintMarker);
+const endMarker = source.indexOf(disabledMarker, start);
+
+if (start === -1 || endMarker === -1) {
+  console.log("Uninstall settings are already repaired; no changes needed.");
+  process.exit(0);
+}
+
+const end = endMarker + disabledMarker.length;
 const replacement = `          hint={preventUninstall
             ? (deviceOwner
               ? (lang === "ar" ? "منع الإزالة الصارم مفعّل بواسطة Device Owner." : "Hard uninstall blocking is active through Device Owner.")
@@ -13,10 +25,7 @@ const replacement = `          hint={preventUninstall
                 : (lang === "ar" ? "مسؤول الجهاز مفعّل؛ ستتطلب إزالة التطبيق تعطيل مسؤول الجهاز أولًا." : "Device Admin is active; uninstall requires disabling the administrator first."))}
           on={preventUninstall}
           disabled={!deviceOwner && !deviceAdmin && !preventUninstall}`;
-if (!pattern.test(source)) {
-  console.log("Uninstall settings are already repaired; no changes needed.");
-  process.exit(0);
-}
-source = source.replace(pattern, replacement);
+
+source = source.slice(0, start) + replacement + source.slice(end);
 await writeFile(path, source);
 console.log("Updated uninstall protection UI for Device Admin and Device Owner.");
