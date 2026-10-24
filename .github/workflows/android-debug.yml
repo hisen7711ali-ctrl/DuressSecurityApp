@@ -1,7 +1,7 @@
 name: Android debug APK
 
 # Full verification run after latest security/background repairs.
-# Verification trigger: vault v2 invariant restored on the merge branch.
+# Verification trigger: lint repair for uninstall-settings maintenance script.
 # This workflow is verification-only: source/lock repairs are applied in-memory to avoid concurrent push races.
 
 on:
