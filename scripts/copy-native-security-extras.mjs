@@ -20,11 +20,12 @@ for (const file of [
 
 // Shizuku is intentionally optional. The app must still build and run without it;
 // reflection in ElevatedShellHelper simply returns false when the service is absent.
+// 12.2.0 is used here because the project keeps an API 23 minimum.
 const gradlePath = path.join(root, "android/app/build.gradle");
 let gradle = await readFile(gradlePath, "utf8");
 const shizukuDependencies = [
-  'implementation "dev.rikka.shizuku:api:13.1.5"',
-  'implementation "dev.rikka.shizuku:provider:13.1.5"',
+  'implementation "dev.rikka.shizuku:api:12.2.0"',
+  'implementation "dev.rikka.shizuku:provider:12.2.0"',
 ];
 for (const dependency of shizukuDependencies) {
   if (!gradle.includes(dependency)) {
@@ -32,5 +33,9 @@ for (const dependency of shizukuDependencies) {
     else gradle += `\n\ndependencies {\n    ${dependency}\n}\n`;
   }
 }
+// Remove stale Shizuku 13.x entries if this script is re-run over an older generated Gradle file.
+gradle = gradle
+  .replace(/\s*implementation "dev\.rikka\.shizuku:api:13\.1\.5"\n?/g, "\n")
+  .replace(/\s*implementation "dev\.rikka\.shizuku:provider:13\.1\.5"\n?/g, "\n");
 await writeFile(gradlePath, gradle);
 console.log("Native security extras and optional Shizuku dependencies prepared successfully.");
